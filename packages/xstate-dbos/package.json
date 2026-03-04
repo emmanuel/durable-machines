@@ -33,9 +33,11 @@
     "statechart"
   ],
   "peerDependencies": {
+    "@dbos-inc/dbos-sdk": "^4.0.0",
     "xstate": "^5.0.0"
   },
   "devDependencies": {
+    "@dbos-inc/dbos-sdk": "^4.0.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0",
     "xstate": "^5.19.0"

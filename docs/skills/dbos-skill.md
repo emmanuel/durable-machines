@@ -615,14 +615,14 @@ async function parentWorkflow() {
 async function approvalWorkflow(requestId: string, reviewerId: string) {
   // Send notification (via step)
   await DBOS.runStep(() => notifyReviewer(reviewerId, requestId), { name: "notify" });
-  
+
   // Wait for human response (up to 72 hours)
   const response = await DBOS.recv<{ decision: string }>("approval", 259200);
-  
+
   if (!response || response.decision === "reject") {
     return "rejected";
   }
-  
+
   await DBOS.runStep(() => processApproval(requestId), { name: "processApproval" });
   return "approved";
 }

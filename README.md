@@ -189,6 +189,13 @@ const state = await getMachineState(client, "order-123");
 
 Registers an XState machine as a DBOS workflow. **Must be called before `DBOS.launch()`.**
 
+Options:
+
+- **`maxWaitSeconds`** — max seconds to wait for events in quiescent states (default: 86400)
+- **`stepRetryPolicy`** — retry policy for invoke steps
+- **`channels`** — channel adapters for prompt delivery
+- **`enableTransitionStream`** — when `true`, records every state transition with timestamps for visualization (default: `false`)
+
 Returns a `DurableMachine` with:
 
 - **`start(workflowId, input)`** — start a new instance
@@ -213,6 +220,13 @@ Returned by `start()` and `get()`:
 ### Channel adapters
 
 - **`consoleChannel()`** — in-memory channel adapter for testing/development
+
+### Visualization
+
+- **`serializeMachineDefinition(machine)`** — serialize the machine's static graph (states, transitions, metadata) into a flat, JSON-serializable `SerializedMachine` for UI rendering
+- **`getVisualizationState(machine, workflowId)`** — combine the static graph with runtime data (current state, transition history, step info, active sleep) into a `MachineVisualizationState` snapshot
+- **`computeStateDurations(transitions)`** — compute time spent in each state from transition records
+- **`detectActiveStep(steps)`** — find the currently executing (incomplete) step
 
 ### Utilities
 
@@ -264,12 +278,12 @@ This library is under active development. The core workflow engine is functional
 - Prompt lifecycle: `sendPrompt` on entry, `resolvePrompt` on transition
 - Public API: `createDurableMachine`, `DurableMachineHandle`
 - External client helpers (`sendMachineEvent`, `getMachineState`)
-- 67 tests (47 unit + 20 integration)
+- Visualization: `serializeMachineDefinition()`, `getVisualizationState()`, opt-in transition stream
+- 86 tests (63 unit + 23 integration)
 
 ### Planned
 
 - Channel adapters for external delivery (Slack, email, webhook)
-- Visualization and inspectability utilities
 - Webhook gateway for inbound event routing
 - Multi-replica clustering (heartbeat + reaper)
 - KEDA autoscaler manifest generation

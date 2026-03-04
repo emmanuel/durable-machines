@@ -133,6 +133,53 @@ export interface ChannelAdapter {
   updatePrompt?(params: UpdatePromptParams): Promise<void>;
 }
 
+// ─── Visualization ─────────────────────────────────────────────────────────
+
+export interface SerializedStateNode {
+  path: string;
+  type: "atomic" | "compound" | "parallel" | "final" | "history";
+  quiescent?: boolean;
+  prompt?: PromptConfig;
+  invoke?: { id: string; src: string }[];
+  after?: {
+    delay: number | string;
+    target?: string;
+    reenter?: boolean;
+    guard?: string;
+  }[];
+  always?: { target?: string; guard?: string }[];
+  on?: Record<string, { target?: string; guard?: string }[]>;
+  children?: string[];
+}
+
+export interface SerializedMachine {
+  id: string;
+  initial: string;
+  states: Record<string, SerializedStateNode>;
+}
+
+export interface TransitionRecord {
+  from: StateValue | null;
+  to: StateValue;
+  ts: number;
+}
+
+export interface StateDuration {
+  state: StateValue;
+  enteredAt: number;
+  exitedAt: number | null;
+  durationMs: number;
+}
+
+export interface MachineVisualizationState {
+  definition: SerializedMachine;
+  currentState: DurableStateSnapshot | null;
+  transitions: TransitionRecord[];
+  stateDurations: StateDuration[];
+  activeStep: StepInfo | null;
+  activeSleep: { wakeAt: number } | null;
+}
+
 // ─── Options ────────────────────────────────────────────────────────────────
 
 export interface StepRetryPolicy {
@@ -146,6 +193,7 @@ export interface DurableMachineOptions {
   maxWaitSeconds?: number;
   stepRetryPolicy?: StepRetryPolicy;
   channels?: ChannelAdapter[];
+  enableTransitionStream?: boolean;
 }
 
 // ─── Errors ─────────────────────────────────────────────────────────────────

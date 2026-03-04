@@ -1,7 +1,7 @@
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import { initialTransition, transition } from "xstate";
 import type { AnyStateMachine, AnyMachineSnapshot, AnyEventObject } from "xstate";
-import type { DurableMachineOptions, ChannelAdapter, PromptConfig } from "./types.js";
+import type { DurableMachineOptions, ChannelAdapter, PromptConfig, TransitionRecord } from "./types.js";
 import { DurableMachineError } from "./types.js";
 import { isQuiescent } from "./quiescent.js";
 import { getPromptConfig } from "./prompt.js";
@@ -30,6 +30,7 @@ export function createMachineLoop(
 ) {
   const actorImpls = extractActorImplementations(machine);
   const channels: ChannelAdapter[] = options.channels ?? [];
+  const enableTransitionStream = options.enableTransitionStream ?? false;
 
   return async function machineLoop(
     input: Record<string, unknown>,
@@ -38,6 +39,14 @@ export function createMachineLoop(
     let snapshot: AnyMachineSnapshot = initialSnapshot;
 
     await DBOS.setEvent("xstate.state", serializeSnapshot(snapshot));
+
+    // Transition history (opt-in)
+    const transitions: TransitionRecord[] = [];
+    if (enableTransitionStream) {
+      const initTs = await DBOS.now();
+      transitions.push({ from: null, to: snapshot.value, ts: initTs });
+      await DBOS.setEvent("xstate.transitions", transitions);
+    }
 
     // Track which after delays have already fired in the current state.
     // Reset when the state value changes.
@@ -49,8 +58,17 @@ export function createMachineLoop(
       snapshot = resolveTransientTransitions(machine, snapshot);
       if (snapshot.status === "done") break;
 
-      // Reset firedDelays when state changes
+      // Reset firedDelays when state changes (e.g. transient transitions)
       if (!stateValueEquals(snapshot.value, prevStateValue)) {
+        if (enableTransitionStream) {
+          const transientTs = await DBOS.now();
+          transitions.push({
+            from: prevStateValue,
+            to: snapshot.value,
+            ts: transientTs,
+          });
+          await DBOS.setEvent("xstate.transitions", transitions);
+        }
         firedDelays = new Set<number>();
         prevStateValue = snapshot.value;
       }
@@ -120,6 +138,16 @@ export function createMachineLoop(
 
       // Reset firedDelays when state changes after a step
       if (!stateValueEquals(snapshot.value, prevStateValue)) {
+        // Emit transition record (opt-in)
+        if (enableTransitionStream) {
+          const transitionTs = await DBOS.now();
+          transitions.push({
+            from: prevStateValue,
+            to: snapshot.value,
+            ts: transitionTs,
+          });
+          await DBOS.setEvent("xstate.transitions", transitions);
+        }
         firedDelays = new Set<number>();
         prevStateValue = snapshot.value;
       }

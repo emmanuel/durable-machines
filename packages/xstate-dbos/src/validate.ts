@@ -8,7 +8,7 @@ const META_KEY = "xstate-dbos";
  * Walks all state nodes in a machine recursively, yielding
  * the dot-separated path and the state node object.
  */
-function* walkStateNodes(
+export function* walkStateNodes(
   stateNode: any,
   parentPath = "",
 ): Generator<[string, any]> {

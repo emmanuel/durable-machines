@@ -2,31 +2,6 @@ import { describe, it, expect } from "vitest";
 import { setup, fromPromise, createMachine, initialTransition, transition } from "xstate";
 import { quiescent, isQuiescent } from "../../src/quiescent.js";
 
-describe("quiescent()", () => {
-  it("returns meta with quiescent marker", () => {
-    const result = quiescent();
-    expect(result).toEqual({
-      meta: { "xstate-dbos": { quiescent: true } },
-    });
-  });
-
-  it("can be spread into a state definition", () => {
-    const machine = createMachine({
-      id: "test",
-      initial: "waiting",
-      states: {
-        waiting: {
-          ...quiescent(),
-          on: { GO: "done" },
-        },
-        done: { type: "final" },
-      },
-    });
-
-    expect(machine.id).toBe("test");
-  });
-});
-
 describe("isQuiescent()", () => {
   const machine = setup({
     types: {

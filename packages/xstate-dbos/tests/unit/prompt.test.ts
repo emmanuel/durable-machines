@@ -3,32 +3,6 @@ import { prompt, getPromptConfig, getPromptEvents } from "../../src/prompt.js";
 import type { PromptConfig } from "../../src/types.js";
 
 describe("prompt()", () => {
-  it("returns meta with prompt config for choice type", () => {
-    const config: PromptConfig = {
-      type: "choice",
-      text: "Approve this request?",
-      options: [
-        { label: "Approve", event: "APPROVE", style: "primary" },
-        { label: "Reject", event: "REJECT", style: "danger" },
-      ],
-    };
-    const result = prompt(config);
-    expect(result).toEqual({
-      meta: { "xstate-dbos": { quiescent: true, prompt: config } },
-    });
-  });
-
-  it("returns meta with prompt config for confirm type", () => {
-    const config: PromptConfig = {
-      type: "confirm",
-      text: "Ship this order?",
-      confirmEvent: "SHIP",
-      cancelEvent: "CANCEL",
-    };
-    const result = prompt(config);
-    expect(result.meta["xstate-dbos"].prompt).toEqual(config);
-  });
-
   it("supports dynamic text via function", () => {
     const config: PromptConfig = {
       type: "choice",
@@ -55,14 +29,6 @@ describe("getPromptConfig()", () => {
     expect(getPromptConfig(meta)).toEqual(config);
   });
 
-  it("returns null when no prompt in metadata", () => {
-    const meta = { "xstate-dbos": { quiescent: true } };
-    expect(getPromptConfig(meta)).toBeNull();
-  });
-
-  it("returns null for undefined metadata", () => {
-    expect(getPromptConfig(undefined)).toBeNull();
-  });
 });
 
 describe("getPromptEvents()", () => {

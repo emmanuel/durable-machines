@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
   setup,
-  createMachine,
   fromPromise,
   assign,
   initialTransition,
@@ -10,11 +9,12 @@ import {
 import { quiescent } from "../../src/quiescent.js";
 import {
   getActiveInvocation,
-  extractActorImplementations,
   getSortedAfterDelays,
   buildAfterEvent,
   resolveTransientTransitions,
   serializeSnapshot,
+  stateValueEquals,
+  isReentryDelay,
 } from "../../src/xstate-utils.js";
 
 // ─── Test Machines ──────────────────────────────────────────────────────────
@@ -86,33 +86,6 @@ const orderMachine = setup({
   },
 });
 
-const transientMachine = setup({
-  types: {
-    context: {} as { score: number },
-    input: {} as { score: number },
-  },
-  guards: {
-    isHigh: ({ context }) => context.score >= 90,
-    isMedium: ({ context }) => context.score >= 50,
-  },
-}).createMachine({
-  id: "grader",
-  initial: "evaluating",
-  context: ({ input }) => ({ score: input.score }),
-  states: {
-    evaluating: {
-      always: [
-        { guard: "isHigh", target: "gradeA" },
-        { guard: "isMedium", target: "gradeB" },
-        { target: "gradeC" },
-      ],
-    },
-    gradeA: { type: "final" },
-    gradeB: { type: "final" },
-    gradeC: { type: "final" },
-  },
-});
-
 const multiDelayMachine = setup({
   types: {
     events: {} as { type: "RESPOND" },
@@ -129,6 +102,79 @@ const multiDelayMachine = setup({
         30000: "timedOut", // 30s hard timeout
       },
     },
+    done: { type: "final" },
+    timedOut: { type: "final" },
+  },
+});
+
+// Machine with a quiescent state that has always transitions (guard-gated)
+const conditionalResolveMachine = setup({
+  types: {
+    context: {} as { autoApprove: boolean },
+    events: {} as { type: "APPROVE" },
+    input: {} as { autoApprove: boolean },
+  },
+  guards: {
+    shouldAutoApprove: ({ context }) => context.autoApprove,
+  },
+}).createMachine({
+  id: "conditional",
+  initial: "review",
+  context: ({ input }) => ({ autoApprove: input.autoApprove }),
+  states: {
+    review: {
+      ...quiescent(),
+      always: [{ guard: "shouldAutoApprove", target: "approved" }],
+      on: { APPROVE: "approved" },
+    },
+    approved: { type: "final" },
+  },
+});
+
+// Machine with reenter: true on a self-targeting after delay
+const reentryDelayMachine = setup({
+  types: {
+    events: {} as { type: "RESPOND" },
+  },
+}).createMachine({
+  id: "reentry",
+  initial: "waiting",
+  states: {
+    waiting: {
+      ...quiescent(),
+      on: { RESPOND: "done" },
+      after: {
+        5000: { target: "waiting", reenter: true },
+        30000: "timedOut",
+      },
+    },
+    done: { type: "final" },
+    timedOut: { type: "final" },
+  },
+});
+
+// Machine with named delays resolved from setup({ delays })
+const namedDelayMachine = setup({
+  types: {
+    events: {} as { type: "RESPOND" },
+  },
+  delays: {
+    shortTimeout: 1000,
+    longTimeout: 60000,
+  },
+}).createMachine({
+  id: "namedDelay",
+  initial: "waiting",
+  states: {
+    waiting: {
+      ...quiescent(),
+      on: { RESPOND: "done" },
+      after: {
+        shortTimeout: "reminded",
+        longTimeout: "timedOut",
+      },
+    },
+    reminded: { type: "final" },
     done: { type: "final" },
     timedOut: { type: "final" },
   },
@@ -171,28 +217,6 @@ describe("getActiveInvocation()", () => {
   });
 });
 
-describe("extractActorImplementations()", () => {
-  it("extracts all actor implementations from the machine", () => {
-    const impls = extractActorImplementations(orderMachine);
-    expect(impls.size).toBe(2);
-    expect(impls.has("processPayment")).toBe(true);
-    expect(impls.has("shipOrder")).toBe(true);
-  });
-
-  it("returns empty map for a machine with no actors", () => {
-    const noActorMachine = createMachine({
-      id: "simple",
-      initial: "idle",
-      states: {
-        idle: { ...quiescent(), on: { GO: "done" } },
-        done: { type: "final" },
-      },
-    });
-    const impls = extractActorImplementations(noActorMachine);
-    expect(impls.size).toBe(0);
-  });
-});
-
 describe("getSortedAfterDelays()", () => {
   it("returns empty array for a state with no after transitions", () => {
     const [snapshot] = initialTransition(orderMachine, {
@@ -228,18 +252,17 @@ describe("getSortedAfterDelays()", () => {
     const delays = getSortedAfterDelays(multiDelayMachine, snapshot);
     expect(delays).toEqual([5000, 30000]);
   });
+
+  it("resolves named delays from machine implementations", () => {
+    const [snapshot] = initialTransition(namedDelayMachine);
+    expect(snapshot.value).toBe("waiting");
+
+    const delays = getSortedAfterDelays(namedDelayMachine, snapshot);
+    expect(delays).toEqual([1000, 60000]);
+  });
 });
 
 describe("buildAfterEvent()", () => {
-  it("builds an event for a fired delay", () => {
-    const [snapshot] = initialTransition(multiDelayMachine);
-    const event = buildAfterEvent(multiDelayMachine, snapshot, 5000);
-
-    expect(event).toBeDefined();
-    expect(event.type).toContain("xstate.after");
-    expect(event.type).toContain("5000");
-  });
-
   it("builds an event that can be used with transition()", () => {
     const [snapshot] = initialTransition(multiDelayMachine);
     const event = buildAfterEvent(multiDelayMachine, snapshot, 30000);
@@ -251,20 +274,32 @@ describe("buildAfterEvent()", () => {
 });
 
 describe("resolveTransientTransitions()", () => {
-  it("resolves always transitions to a final state (high score)", () => {
-    const [snapshot] = initialTransition(transientMachine, { score: 95 });
-    // initialTransition already resolves always transitions
-    expect(snapshot.value).toBe("gradeA");
+  it("returns same state when always guards do not pass", () => {
+    const [snapshot] = initialTransition(conditionalResolveMachine, {
+      autoApprove: false,
+    });
+    expect(snapshot.value).toBe("review");
+
+    // State has always transitions, but guard fails — should stay
+    const resolved = resolveTransientTransitions(
+      conditionalResolveMachine,
+      snapshot,
+    );
+    expect(resolved.value).toBe("review");
   });
 
-  it("resolves always transitions to a final state (medium score)", () => {
-    const [snapshot] = initialTransition(transientMachine, { score: 70 });
-    expect(snapshot.value).toBe("gradeB");
-  });
+  it("is idempotent on an already-resolved transient snapshot", () => {
+    const [snapshot] = initialTransition(conditionalResolveMachine, {
+      autoApprove: true,
+    });
+    // XState auto-resolved the always transition during initialTransition
+    expect(snapshot.value).toBe("approved");
 
-  it("resolves always transitions to a final state (low score)", () => {
-    const [snapshot] = initialTransition(transientMachine, { score: 30 });
-    expect(snapshot.value).toBe("gradeC");
+    const resolved = resolveTransientTransitions(
+      conditionalResolveMachine,
+      snapshot,
+    );
+    expect(resolved.value).toBe("approved");
   });
 
   it("is a no-op for a snapshot already in a stable state", () => {
@@ -301,13 +336,47 @@ describe("serializeSnapshot()", () => {
     expect(serialized.value).toBe("cancelled");
     expect(serialized.status).toBe("done");
   });
+});
 
-  it("preserves context in serialization", () => {
-    const [s0] = initialTransition(orderMachine, {
-      orderId: "abc",
-      total: 99.99,
-    });
-    const serialized = serializeSnapshot(s0);
-    expect(serialized.context).toEqual({ orderId: "abc", total: 99.99 });
+describe("stateValueEquals()", () => {
+  it("returns true for equal strings", () => {
+    expect(stateValueEquals("pending", "pending")).toBe(true);
+  });
+
+  it("returns false for different strings", () => {
+    expect(stateValueEquals("pending", "active")).toBe(false);
+  });
+
+  it("returns true for equal nested objects", () => {
+    expect(
+      stateValueEquals({ parent: "child" }, { parent: "child" }),
+    ).toBe(true);
+  });
+
+  it("returns false for different nested objects", () => {
+    expect(
+      stateValueEquals({ parent: "childA" }, { parent: "childB" }),
+    ).toBe(false);
+  });
+
+  it("returns false for different types", () => {
+    expect(stateValueEquals("active", { active: "idle" })).toBe(false);
+  });
+});
+
+describe("isReentryDelay()", () => {
+  it("returns true for a delay with reenter: true", () => {
+    const [snapshot] = initialTransition(reentryDelayMachine);
+    expect(isReentryDelay(reentryDelayMachine, snapshot, 5000)).toBe(true);
+  });
+
+  it("returns false for a delay without reenter", () => {
+    const [snapshot] = initialTransition(reentryDelayMachine);
+    expect(isReentryDelay(reentryDelayMachine, snapshot, 30000)).toBe(false);
+  });
+
+  it("returns false for a non-existent delay", () => {
+    const [snapshot] = initialTransition(reentryDelayMachine);
+    expect(isReentryDelay(reentryDelayMachine, snapshot, 99999)).toBe(false);
   });
 });

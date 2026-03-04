@@ -144,6 +144,30 @@ waitingForResponse: {
 },
 ```
 
+Multiple delays are supported — the workflow fires them in order. Self-targeting delays with `reenter: true` restart timers and re-fire entry actions, tracked via `firedDelays` to prevent duplicate execution during recovery. Named delays (defined in `setup({ delays })`) are resolved at runtime.
+
+### Channel adapters
+
+Channel adapters decouple prompt rendering from the state machine. The machine declares *what* to ask; the adapter decides *how* to deliver it (Slack, email, webhook, etc.).
+
+```typescript
+import { createDurableMachine, consoleChannel } from "xstate-dbos";
+
+const channel = consoleChannel();
+const durable = createDurableMachine(machine, { channels: [channel] });
+
+// After the workflow reaches a prompt state:
+console.log(channel.prompts); // [{ workflowId, prompt, context, resolvedWith? }]
+```
+
+The `ChannelAdapter` interface:
+
+- **`sendPrompt(params)`** — render the prompt; returns an opaque handle
+- **`resolvePrompt(params)`** — update the prompt after the user responds (optional)
+- **`updatePrompt(params)`** — update the prompt when context changes within the same state (optional)
+
+`consoleChannel()` is a built-in in-memory adapter for testing and development.
+
 ### External clients
 
 Send events and read state from outside the DBOS runtime — only needs a Postgres connection:
@@ -186,11 +210,16 @@ Returned by `start()` and `get()`:
 - **`quiescent()`** — marks a state as a durable wait point
 - **`prompt(config)`** — marks a state as a prompt (implies quiescent)
 
+### Channel adapters
+
+- **`consoleChannel()`** — in-memory channel adapter for testing/development
+
 ### Utilities
 
 - **`validateMachineForDurability(machine)`** — validate without registering
 - **`isQuiescent(machine, snapshot)`** — check if current state is quiescent
 - **`getPromptConfig(meta)`** — extract prompt config from state metadata
+- **`getPromptEvents(config)`** — extract event types from a prompt config
 - **`sendMachineEvent(client, workflowId, event)`** — send event via external client
 - **`getMachineState(client, workflowId)`** — read state via external client
 
@@ -226,17 +255,20 @@ This library is under active development. The core workflow engine is functional
 ### Implemented
 
 - Core type system and error hierarchy
-- `quiescent()` and `prompt()` state markers
+- `quiescent()` and `prompt()` state markers with four prompt types (`choice`, `confirm`, `text_input`, `form`)
 - Machine validation at registration time
 - XState utility functions (invocation extraction, delay handling, transient resolution, snapshot serialization)
 - DBOS workflow loop with invoke execution, event reception, and `after` timeout handling
+- `after` transitions with multiple delays, `firedDelays` tracking, `reenter: true` support, and named delays
+- Channel adapter interface with `consoleChannel()` built-in adapter
+- Prompt lifecycle: `sendPrompt` on entry, `resolvePrompt` on transition
 - Public API: `createDurableMachine`, `DurableMachineHandle`
 - External client helpers (`sendMachineEvent`, `getMachineState`)
-- 50 tests (44 unit + 6 integration)
+- 67 tests (47 unit + 20 integration)
 
 ### Planned
 
-- Channel adapters for prompt delivery (Slack, email, console)
+- Channel adapters for external delivery (Slack, email, webhook)
 - Visualization and inspectability utilities
 - Webhook gateway for inbound event routing
 - Multi-replica clustering (heartbeat + reaper)

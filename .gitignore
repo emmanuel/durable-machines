@@ -80,6 +80,8 @@ out
 
 # Nuxt.js build / generate output
 .nuxt
+
+# Build output
 dist
 
 # Gatsby files

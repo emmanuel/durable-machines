@@ -18,6 +18,8 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
     "test:watch": "vitest"
   },
   "engines": {
@@ -39,7 +41,7 @@
   "devDependencies": {
     "@dbos-inc/dbos-sdk": "^4.0.0",
     "typescript": "^5.7.0",
-    "vitest": "^3.0.0",
+    "vitest": "^4.0.18",
     "xstate": "^5.19.0"
   }
 }

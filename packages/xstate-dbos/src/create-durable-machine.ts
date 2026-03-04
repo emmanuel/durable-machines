@@ -10,15 +10,18 @@ import type {
 import { validateMachineForDurability } from "./validate.js";
 import { createMachineLoop } from "./machine-loop.js";
 
+// Cache registered workflows by name to avoid double-registration
+const registeredWorkflows = new Map<string, (...args: any[]) => Promise<any>>();
+
 /**
  * The main entry point for creating a durable XState machine.
  *
- * Validates the machine definition, builds a DBOS workflow function,
- * registers it, and returns an interface for starting and managing
- * durable machine instances.
+ * **Must be called before `DBOS.launch()`** — DBOS requires all workflow
+ * registrations to happen before the runtime starts.
  *
  * ```ts
  * const durable = createDurableMachine(orderMachine);
+ * await DBOS.launch();
  * const handle = await durable.start("order-123", { orderId: "123", total: 99.99 });
  * await handle.send({ type: "PAY" });
  * ```
@@ -47,9 +50,16 @@ export function createDurableMachine<T extends AnyStateMachine>(
   validateMachineForDurability(machine);
 
   const opts = options ?? {};
-  const loop = createMachineLoop(machine, opts);
   const workflowName = `xstate:${machine.id}`;
-  const workflow = DBOS.registerWorkflow(loop, { name: workflowName });
+
+  // Reuse existing registration if createDurableMachine is called
+  // multiple times with the same machine id
+  let workflow = registeredWorkflows.get(workflowName);
+  if (!workflow) {
+    const loop = createMachineLoop(machine, opts);
+    workflow = DBOS.registerWorkflow(loop, { name: workflowName });
+    registeredWorkflows.set(workflowName, workflow);
+  }
 
   return {
     machine,

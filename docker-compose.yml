@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:17
+    ports:
+      - "5442:5432"
+    environment:
+      POSTGRES_USER: xstate_dbos
+      POSTGRES_PASSWORD: xstate_dbos
+      POSTGRES_DB: xstate_dbos_test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U xstate_dbos -d xstate_dbos_test"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+    tmpfs:
+      - /var/lib/postgresql/data

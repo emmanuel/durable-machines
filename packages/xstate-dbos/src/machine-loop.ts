@@ -163,23 +163,18 @@ async function waitForEventOrTimeout(
 /**
  * Resolves the callable creator function from an actor logic implementation.
  *
- * XState stores fromPromise actors as logic objects with the creator
- * function accessible through their config.
+ * XState v5 `fromPromise()` returns an actor logic object where `config`
+ * is the async creator function directly (not nested under `config.creator`).
  */
 function resolveActorCreator(impl: any): (params: { input: unknown }) => Promise<unknown> {
-  // fromPromise logic stores the creator in config.creator
-  if (typeof impl?.config?.creator === "function") {
-    return impl.config.creator;
+  // fromPromise: impl.config IS the async creator function
+  if (typeof impl?.config === "function") {
+    return impl.config;
   }
 
-  // If the impl itself is callable (shouldn't happen with standard XState, but defensive)
+  // If the impl itself is callable
   if (typeof impl === "function") {
     return impl;
-  }
-
-  // Wrapped implementation: { src: AnyActorLogic, input: ... }
-  if (impl?.src?.config?.creator) {
-    return impl.src.config.creator;
   }
 
   throw new DurableMachineError(

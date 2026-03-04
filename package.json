@@ -9,6 +9,10 @@
   "scripts": {
     "build": "pnpm -r build",
     "test": "pnpm -r test",
-    "typecheck": "pnpm -r typecheck"
+    "test:unit": "pnpm -r test:unit",
+    "test:integration": "pnpm -r test:integration",
+    "typecheck": "pnpm -r typecheck",
+    "db:up": "docker compose up -d --wait",
+    "db:down": "docker compose down"
   }
 }

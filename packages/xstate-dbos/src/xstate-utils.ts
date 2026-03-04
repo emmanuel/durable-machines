@@ -135,16 +135,15 @@ function resolveDelay(
  * XState v5 uses the event type format: `xstate.after.{delay}.{stateId}`
  */
 export function buildAfterEvent(
-  _machine: AnyStateMachine,
+  machine: AnyStateMachine,
   snapshot: AnyMachineSnapshot,
   delay: number,
 ): AnyEventObject {
-  // Find the state node that owns this delay
+  // Find the state node that owns this delay by resolving all delay types
   for (const node of snapshot._nodes) {
     const afterDefs: any[] = node.after ?? [];
     for (const def of afterDefs) {
-      const resolvedDelay =
-        typeof def.delay === "number" ? def.delay : null;
+      const resolvedDelay = resolveDelay(def.delay, machine, snapshot);
       if (resolvedDelay === delay) {
         // Use the event type from the transition definition itself
         // XState stores the event descriptor on the transition
@@ -219,9 +218,31 @@ export function serializeSnapshot(
 }
 
 /**
+ * Checks whether a specific `after` delay on the current snapshot has
+ * `reenter: true`, indicating that the state will be exited and re-entered
+ * (timers restart, entry actions fire again).
+ */
+export function isReentryDelay(
+  machine: AnyStateMachine,
+  snapshot: AnyMachineSnapshot,
+  delay: number,
+): boolean {
+  for (const node of snapshot._nodes) {
+    const afterDefs: any[] = node.after ?? [];
+    for (const def of afterDefs) {
+      const resolvedDelay = resolveDelay(def.delay, machine, snapshot);
+      if (resolvedDelay === delay) {
+        return def.reenter === true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
  * Compares two state values for structural equality.
  */
-function stateValueEquals(a: unknown, b: unknown): boolean {
+export function stateValueEquals(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (typeof a !== typeof b) return false;
   if (typeof a === "string") return a === b;

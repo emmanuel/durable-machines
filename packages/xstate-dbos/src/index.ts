@@ -18,8 +18,10 @@ export {
   extractActorImplementations,
   getSortedAfterDelays,
   buildAfterEvent,
+  isReentryDelay,
   resolveTransientTransitions,
   serializeSnapshot,
+  stateValueEquals,
 } from "./xstate-utils.js";
 
 // Types

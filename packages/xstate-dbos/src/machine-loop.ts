@@ -9,8 +9,10 @@ import {
   extractActorImplementations,
   getSortedAfterDelays,
   buildAfterEvent,
+  isReentryDelay,
   resolveTransientTransitions,
   serializeSnapshot,
+  stateValueEquals,
 } from "./xstate-utils.js";
 
 const DEFAULT_MAX_WAIT_SECONDS = 86400; // 24 hours
@@ -35,10 +37,21 @@ export function createMachineLoop(
 
     await DBOS.setEvent("xstate.state", serializeSnapshot(snapshot));
 
+    // Track which after delays have already fired in the current state.
+    // Reset when the state value changes.
+    let firedDelays = new Set<number>();
+    let prevStateValue = snapshot.value;
+
     while (snapshot.status !== "done") {
       // 1. Resolve transient transitions (always/eventless)
       snapshot = resolveTransientTransitions(machine, snapshot);
       if (snapshot.status === "done") break;
+
+      // Reset firedDelays when state changes
+      if (!stateValueEquals(snapshot.value, prevStateValue)) {
+        firedDelays = new Set<number>();
+        prevStateValue = snapshot.value;
+      }
 
       // 2. Determine what the current state needs
       const invocation = getActiveInvocation(machine, snapshot);
@@ -46,13 +59,27 @@ export function createMachineLoop(
       if (invocation) {
         snapshot = await executeInvocation(machine, snapshot, invocation, actorImpls, options);
       } else if (isQuiescent(machine, snapshot)) {
-        snapshot = await waitForEventOrTimeout(machine, snapshot, options);
+        const result = await waitForEventOrTimeout(machine, snapshot, firedDelays, options);
+        if (result.firedDelay !== null && isReentryDelay(machine, snapshot, result.firedDelay)) {
+          // reenter: true means the state is exited and re-entered —
+          // all after timers restart, so clear the tracking set
+          firedDelays = new Set<number>();
+        } else if (result.firedDelay !== null) {
+          firedDelays.add(result.firedDelay);
+        }
+        snapshot = result.snapshot;
       } else {
         throw new DurableMachineError(
           `State "${JSON.stringify(snapshot.value)}" is not quiescent, ` +
             `has no invocation, and has no transient transition. ` +
             `This should have been caught by validation.`,
         );
+      }
+
+      // Reset firedDelays when state changes after a step
+      if (!stateValueEquals(snapshot.value, prevStateValue)) {
+        firedDelays = new Set<number>();
+        prevStateValue = snapshot.value;
       }
 
       // 3. Publish updated state
@@ -111,28 +138,47 @@ async function executeInvocation(
   }
 }
 
+interface WaitResult {
+  snapshot: AnyMachineSnapshot;
+  /** The delay (ms) that fired, or null if an external event arrived or no timeout. */
+  firedDelay: number | null;
+}
+
 /**
  * Waits for an external event or timeout in a quiescent state.
  *
- * Uses DBOS.recv() with the shortest `after` delay as timeout,
+ * Uses DBOS.recv() with the shortest unfired `after` delay as timeout,
  * implementing the race between external events and delayed transitions.
+ *
+ * When a state has multiple `after` delays (e.g. 5s reminder + 30s timeout),
+ * `firedDelays` tracks which have already fired so the next iteration uses
+ * the correct remaining delay.
  */
 async function waitForEventOrTimeout(
   machine: AnyStateMachine,
   snapshot: AnyMachineSnapshot,
+  firedDelays: Set<number>,
   options: DurableMachineOptions,
-): Promise<AnyMachineSnapshot> {
-  const delays = getSortedAfterDelays(machine, snapshot);
+): Promise<WaitResult> {
+  const allDelays = getSortedAfterDelays(machine, snapshot);
+  const delays = allDelays.filter((d) => !firedDelays.has(d));
   const hasAfter = delays.length > 0;
 
+  // For remaining delays, subtract the largest already-fired delay
+  // to compute the effective remaining wait time
+  const maxFired = firedDelays.size > 0 ? Math.max(...firedDelays) : 0;
+  const effectiveDelayMs = hasAfter
+    ? Math.max(0, delays[0] - maxFired)
+    : 0;
+
   const timeoutSec = hasAfter
-    ? Math.ceil(delays[0] / 1000) // Round up to nearest second
+    ? Math.max(1, Math.ceil(effectiveDelayMs / 1000))
     : (options.maxWaitSeconds ?? DEFAULT_MAX_WAIT_SECONDS);
 
   // Write wake-up time for KEDA observability
   if (hasAfter) {
     const now = await DBOS.now();
-    const wakeAt = now + delays[0];
+    const wakeAt = now + effectiveDelayMs;
     await DBOS.setEvent("xstate.wakeAt", wakeAt);
   }
 
@@ -146,18 +192,18 @@ async function waitForEventOrTimeout(
   if (event !== null) {
     // External event arrived before timeout
     const [next] = transition(machine, snapshot, event);
-    return next;
+    return { snapshot: next, firedDelay: null };
   }
 
   if (hasAfter) {
-    // Timeout expired — fire the after event
+    // Timeout expired — fire the next after event
     const afterEvent = buildAfterEvent(machine, snapshot, delays[0]);
     const [next] = transition(machine, snapshot, afterEvent as AnyEventObject);
-    return next;
+    return { snapshot: next, firedDelay: delays[0] };
   }
 
   // No event, no timeout — return same snapshot (loop re-enters)
-  return snapshot;
+  return { snapshot, firedDelay: null };
 }
 
 /**

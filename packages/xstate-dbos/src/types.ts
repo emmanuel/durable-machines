@@ -93,6 +93,46 @@ export interface StepInfo {
   completedAtEpochMs?: number;
 }
 
+// ─── Channel Adapters ───────────────────────────────────────────────────────
+
+/** Parameters passed to `sendPrompt`. */
+export interface SendPromptParams {
+  workflowId: string;
+  stateValue: StateValue;
+  prompt: PromptConfig;
+  context: Record<string, unknown>;
+}
+
+/** Parameters passed to `resolvePrompt`. */
+export interface ResolvePromptParams {
+  handle: unknown;
+  event: AnyEventObject;
+  newStateValue: StateValue;
+}
+
+/** Parameters passed to `updatePrompt`. */
+export interface UpdatePromptParams {
+  handle: unknown;
+  prompt: PromptConfig;
+  context: Record<string, unknown>;
+}
+
+/**
+ * Adapts prompt metadata into a concrete delivery mechanism (Slack, email,
+ * console, etc.). The machine declares *what* to ask; the adapter decides
+ * *how* to render it.
+ */
+export interface ChannelAdapter {
+  /** Render a prompt to the user. Returns an opaque handle for later updates. */
+  sendPrompt(params: SendPromptParams): Promise<{ handle: unknown }>;
+
+  /** Update the prompt after the user responds (e.g. replace buttons with outcome text). */
+  resolvePrompt?(params: ResolvePromptParams): Promise<void>;
+
+  /** Update the prompt when context changes within the same state. */
+  updatePrompt?(params: UpdatePromptParams): Promise<void>;
+}
+
 // ─── Options ────────────────────────────────────────────────────────────────
 
 export interface StepRetryPolicy {
@@ -105,6 +145,7 @@ export interface StepRetryPolicy {
 export interface DurableMachineOptions {
   maxWaitSeconds?: number;
   stepRetryPolicy?: StepRetryPolicy;
+  channels?: ChannelAdapter[];
 }
 
 // ─── Errors ─────────────────────────────────────────────────────────────────

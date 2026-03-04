@@ -1,9 +1,10 @@
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import { initialTransition, transition } from "xstate";
 import type { AnyStateMachine, AnyMachineSnapshot, AnyEventObject } from "xstate";
-import type { DurableMachineOptions } from "./types.js";
+import type { DurableMachineOptions, ChannelAdapter, PromptConfig } from "./types.js";
 import { DurableMachineError } from "./types.js";
 import { isQuiescent } from "./quiescent.js";
+import { getPromptConfig } from "./prompt.js";
 import {
   getActiveInvocation,
   extractActorImplementations,
@@ -28,6 +29,7 @@ export function createMachineLoop(
   options: DurableMachineOptions,
 ) {
   const actorImpls = extractActorImplementations(machine);
+  const channels: ChannelAdapter[] = options.channels ?? [];
 
   return async function machineLoop(
     input: Record<string, unknown>,
@@ -59,15 +61,55 @@ export function createMachineLoop(
       if (invocation) {
         snapshot = await executeInvocation(machine, snapshot, invocation, actorImpls, options);
       } else if (isQuiescent(machine, snapshot)) {
+        // Send prompt before waiting (if channels configured and state has a prompt)
+        const promptConfig = getSnapshotPromptConfig(snapshot);
+        let promptHandles: unknown[] | null = null;
+
+        if (promptConfig && channels.length > 0) {
+          promptHandles = await DBOS.runStep(
+            async () => {
+              const handles: unknown[] = [];
+              for (const ch of channels) {
+                const { handle } = await ch.sendPrompt({
+                  workflowId: DBOS.workflowID!,
+                  stateValue: snapshot.value,
+                  prompt: promptConfig,
+                  context: snapshot.context as Record<string, unknown>,
+                });
+                handles.push(handle);
+              }
+              return handles;
+            },
+            { name: `prompt:${JSON.stringify(snapshot.value)}` },
+          );
+        }
+
+        const prevValue = snapshot.value;
         const result = await waitForEventOrTimeout(machine, snapshot, firedDelays, options);
         if (result.firedDelay !== null && isReentryDelay(machine, snapshot, result.firedDelay)) {
-          // reenter: true means the state is exited and re-entered —
-          // all after timers restart, so clear the tracking set
           firedDelays = new Set<number>();
         } else if (result.firedDelay !== null) {
           firedDelays.add(result.firedDelay);
         }
         snapshot = result.snapshot;
+
+        // Resolve prompt after transition (if state changed and prompt was sent)
+        if (promptHandles && !stateValueEquals(prevValue, snapshot.value)) {
+          await DBOS.runStep(
+            async () => {
+              for (let i = 0; i < channels.length; i++) {
+                await channels[i].resolvePrompt?.({
+                  handle: promptHandles[i],
+                  event: result.firedDelay !== null
+                    ? buildAfterEvent(machine, snapshot, result.firedDelay)
+                    : { type: "xstate.resolved" },
+                  newStateValue: snapshot.value,
+                });
+              }
+            },
+            { name: `resolve-prompt:${JSON.stringify(prevValue)}` },
+          );
+        }
       } else {
         throw new DurableMachineError(
           `State "${JSON.stringify(snapshot.value)}" is not quiescent, ` +
@@ -227,4 +269,17 @@ function resolveActorCreator(impl: any): (params: { input: unknown }) => Promise
     `Cannot resolve actor creator. The actor implementation must be created ` +
       `with fromPromise(). Got: ${typeof impl}`,
   );
+}
+
+/**
+ * Extracts the prompt config from the active state nodes in a snapshot.
+ */
+function getSnapshotPromptConfig(
+  snapshot: AnyMachineSnapshot,
+): PromptConfig | null {
+  for (const node of snapshot._nodes) {
+    const config = getPromptConfig(node.meta);
+    if (config) return config;
+  }
+  return null;
 }

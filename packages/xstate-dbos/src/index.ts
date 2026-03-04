@@ -24,6 +24,10 @@ export {
   stateValueEquals,
 } from "./xstate-utils.js";
 
+// Channel adapters
+export { consoleChannel } from "./console-channel.js";
+export type { ConsoleChannel, ConsolePromptRecord } from "./console-channel.js";
+
 // Types
 export type {
   DurableStateSnapshot,
@@ -40,6 +44,10 @@ export type {
   DurableMachineOptions,
   StepRetryPolicy,
   StepInfo,
+  ChannelAdapter,
+  SendPromptParams,
+  ResolvePromptParams,
+  UpdatePromptParams,
 } from "./types.js";
 
 export {

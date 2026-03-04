@@ -11,7 +11,7 @@ const META_KEY = "xstate-dbos";
 function* walkStateNodes(
   stateNode: any,
   parentPath = "",
-): Generator<[string, unknown]> {
+): Generator<[string, any]> {
   const states = stateNode.states ?? {};
   for (const [key, child] of Object.entries(states)) {
     const path = parentPath ? `${parentPath}.${key}` : key;

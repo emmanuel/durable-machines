@@ -5,6 +5,16 @@ export { prompt, getPromptConfig, getPromptEvents } from "./prompt.js";
 // Validation
 export { validateMachineForDurability } from "./validate.js";
 
+// XState utilities
+export {
+  getActiveInvocation,
+  extractActorImplementations,
+  getSortedAfterDelays,
+  buildAfterEvent,
+  resolveTransientTransitions,
+  serializeSnapshot,
+} from "./xstate-utils.js";
+
 // Types
 export type {
   DurableStateSnapshot,

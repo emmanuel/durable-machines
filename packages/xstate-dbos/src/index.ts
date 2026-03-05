@@ -36,6 +36,10 @@ export type { EmailChannelOptions, EmailPromptHandle, SendEmailParams } from "./
 export { twilioSmsChannel } from "./channels/twilio-sms.js";
 export type { TwilioSmsChannelOptions, TwilioSmsPromptHandle } from "./channels/twilio-sms.js";
 
+// Lifecycle
+export { gracefulShutdown, isShuttingDown } from "./shutdown.js";
+export type { GracefulShutdownOptions } from "./shutdown.js";
+
 // Types
 export type {
   SerializedMachine,

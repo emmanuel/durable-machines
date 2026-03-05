@@ -8,6 +8,7 @@ import {
   directTransform,
 } from "@xstate-dbos/webhook-gateway";
 import type { SlackInteractivePayload } from "@xstate-dbos/webhook-gateway";
+import { gracefulShutdown } from "xstate-dbos";
 
 interface GenericPayload {
   workflowId?: string;
@@ -49,10 +50,15 @@ async function main() {
     ],
   });
 
-  serve({ fetch: gateway.fetch, port: 3000 }, (info) => {
+  const server = serve({ fetch: gateway.fetch, port: 3000 }, (info) => {
     console.log(`Gateway listening on http://localhost:${info.port}`);
     console.log("POST /webhooks/slack    — Slack interactive webhooks");
     console.log("POST /webhooks/generic  — Generic JSON webhooks (dev)");
+  });
+
+  gracefulShutdown({
+    servers: [server],
+    onShutdown: (reason) => console.log(`Shutting down (${reason})...`),
   });
 }
 

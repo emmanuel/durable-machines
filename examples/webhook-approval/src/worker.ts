@@ -1,5 +1,5 @@
 import { DBOS } from "@dbos-inc/dbos-sdk";
-import { createDurableMachine, consoleChannel } from "xstate-dbos";
+import { createDurableMachine, consoleChannel, gracefulShutdown } from "xstate-dbos";
 import { approvalMachine } from "./machine.js";
 
 const approvals = createDurableMachine(approvalMachine, {
@@ -13,10 +13,8 @@ async function main() {
   await DBOS.launch();
   console.log("Worker running. Waiting for approval workflows...");
 
-  // Keep process alive
-  process.on("SIGINT", async () => {
-    await DBOS.shutdown();
-    process.exit(0);
+  gracefulShutdown({
+    onShutdown: (reason) => console.log(`Shutting down (${reason})...`),
   });
 }
 

@@ -3,7 +3,7 @@ import type {
   SendPromptParams,
   ResolvePromptParams,
   PromptConfig,
-} from "./types.js";
+} from "../types.js";
 
 /** A prompt that was sent via the console channel. */
 export interface ConsolePromptRecord {

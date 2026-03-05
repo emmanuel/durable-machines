@@ -27,8 +27,14 @@ export {
 } from "./visualization.js";
 
 // Channel adapters
-export { consoleChannel } from "./console-channel.js";
-export type { ConsoleChannel, ConsolePromptRecord } from "./console-channel.js";
+export { consoleChannel } from "./channels/console.js";
+export type { ConsoleChannel, ConsolePromptRecord } from "./channels/console.js";
+export { slackChannel } from "./channels/slack.js";
+export type { SlackChannelOptions, SlackPromptHandle } from "./channels/slack.js";
+export { emailChannel } from "./channels/email.js";
+export type { EmailChannelOptions, EmailPromptHandle, SendEmailParams } from "./channels/email.js";
+export { twilioSmsChannel } from "./channels/twilio-sms.js";
+export type { TwilioSmsChannelOptions, TwilioSmsPromptHandle } from "./channels/twilio-sms.js";
 
 // Types
 export type {

@@ -30,6 +30,8 @@ export { stripeSource } from "./sources/stripe.js";
 export { githubSource } from "./sources/github.js";
 export { linearSource } from "./sources/linear.js";
 export { calcomSource } from "./sources/calcom.js";
+export { twilioSource } from "./sources/twilio.js";
+export { actionLinkSource } from "./sources/action-link.js";
 
 // Source types
 export type { SlackInteractivePayload, SlackAction, SlackView, SlackSlashCommandPayload } from "./sources/slack-types.js";
@@ -37,6 +39,8 @@ export type { StripeWebhookEvent } from "./sources/stripe-types.js";
 export type { GitHubWebhookEvent } from "./sources/github-types.js";
 export type { LinearWebhookEvent } from "./sources/linear-types.js";
 export type { CalcomWebhookEvent, CalcomBookingPayload, CalcomPerson } from "./sources/calcom-types.js";
+export type { TwilioInboundSms } from "./sources/twilio-types.js";
+export type { ActionLinkPayload } from "./sources/action-link-types.js";
 
 // Routers
 export { fieldRouter } from "./routers/field.js";

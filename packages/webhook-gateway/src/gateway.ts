@@ -69,6 +69,7 @@ function registerBinding(
       "x-github-delivery",
       "linear-signature",
       "x-cal-signature-256",
+      "x-twilio-signature",
       "content-type",
     ]) {
       headers[key] = c.req.header(key);

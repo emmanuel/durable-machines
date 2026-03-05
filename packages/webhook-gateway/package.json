@@ -38,6 +38,14 @@
       "types": "./dist/sources/calcom.d.ts",
       "import": "./dist/sources/calcom.js"
     },
+    "./sources/twilio": {
+      "types": "./dist/sources/twilio.d.ts",
+      "import": "./dist/sources/twilio.js"
+    },
+    "./sources/action-link": {
+      "types": "./dist/sources/action-link.d.ts",
+      "import": "./dist/sources/action-link.js"
+    },
     "./routers": {
       "types": "./dist/routers/index.d.ts",
       "import": "./dist/routers/index.js"
@@ -75,6 +83,7 @@
     "github",
     "linear",
     "calcom",
+    "twilio",
     "hono"
   ],
   "repository": {

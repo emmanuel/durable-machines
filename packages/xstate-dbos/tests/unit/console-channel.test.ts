@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { consoleChannel } from "../../src/console-channel.js";
+import { consoleChannel } from "../../src/channels/console.js";
 import type { PromptConfig } from "../../src/types.js";
 
 const samplePrompt: PromptConfig = {

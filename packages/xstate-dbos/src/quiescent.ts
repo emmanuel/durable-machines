@@ -20,9 +20,13 @@ export function quiescent() {
  *
  * Works for both simple and compound state values by checking all
  * active state nodes for the quiescent marker.
+ *
+ * @param _machine - The XState machine definition (reserved for future use)
+ * @param snapshot - The current machine snapshot to check
+ * @returns `true` if any active state node is marked quiescent
  */
 export function isQuiescent(
-  machine: AnyStateMachine,
+  _machine: AnyStateMachine,
   snapshot: AnyMachineSnapshot,
 ): boolean {
   const stateNodes = snapshot._nodes;

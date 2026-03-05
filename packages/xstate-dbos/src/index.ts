@@ -12,15 +12,9 @@ export { validateMachineForDurability, walkStateNodes } from "./validate.js";
 // External client helpers
 export { sendMachineEvent, getMachineState } from "./client.js";
 
-// XState utilities
+// XState utilities (advanced)
 export {
   getActiveInvocation,
-  extractActorImplementations,
-  getSortedAfterDelays,
-  buildAfterEvent,
-  isReentryDelay,
-  resolveTransientTransitions,
-  serializeSnapshot,
   stateValueEquals,
 } from "./xstate-utils.js";
 

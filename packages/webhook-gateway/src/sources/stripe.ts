@@ -8,6 +8,10 @@ const MAX_TIMESTAMP_AGE_S = 5 * 60;
 /**
  * Stripe webhook source.
  * Verifies `stripe-signature` header (format: `t={timestamp},v1={hex}`).
+ *
+ * @param webhookSecret - Stripe webhook endpoint secret (starts with `whsec_`).
+ * @returns A {@link WebhookSource} for Stripe webhook events.
+ * @throws {WebhookVerificationError} On missing header, bad format, stale timestamp, or signature mismatch.
  */
 export function stripeSource(webhookSecret: string): WebhookSource<StripeWebhookEvent> {
   return {

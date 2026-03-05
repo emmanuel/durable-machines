@@ -3,6 +3,8 @@ import type { WebhookSource, RawRequest } from "../types.js";
 /**
  * Generic webhook source with no verification.
  * For development and testing only.
+ *
+ * @returns A {@link WebhookSource} that skips verification and JSON-parses the body.
  */
 export function genericSource<TPayload = unknown>(): WebhookSource<TPayload> {
   return {

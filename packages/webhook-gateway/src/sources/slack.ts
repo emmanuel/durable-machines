@@ -8,6 +8,10 @@ const MAX_TIMESTAMP_AGE_S = 5 * 60; // 5 minutes
 /**
  * Slack interactive webhook source (buttons, modals, etc.).
  * Verifies HMAC-SHA256 signature and rejects replays older than 5 minutes.
+ *
+ * @param signingSecret - Slack app signing secret.
+ * @returns A {@link WebhookSource} for Slack interactive payloads.
+ * @throws {WebhookVerificationError} On missing headers, stale timestamp, or signature mismatch.
  */
 export function slackSource(signingSecret: string): WebhookSource<SlackInteractivePayload> {
   return {

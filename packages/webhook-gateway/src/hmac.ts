@@ -3,6 +3,11 @@ import { WebhookVerificationError } from "./types.js";
 
 /**
  * Compute HMAC hex digest for a payload.
+ *
+ * @param algorithm - Hash algorithm (e.g. `"sha256"`).
+ * @param secret - HMAC secret key.
+ * @param payload - Data to sign.
+ * @returns Hex-encoded HMAC digest.
  */
 export function computeHmac(
   algorithm: string,
@@ -14,7 +19,13 @@ export function computeHmac(
 
 /**
  * Verify an HMAC signature using timing-safe comparison.
- * Throws WebhookVerificationError on mismatch.
+ *
+ * @param algorithm - Hash algorithm (e.g. `"sha256"`).
+ * @param secret - HMAC secret key.
+ * @param payload - Data that was signed.
+ * @param expectedHex - Expected hex digest to compare against.
+ * @param source - Provider name for error diagnostics.
+ * @throws {WebhookVerificationError} On signature mismatch.
  */
 export function verifyHmac(
   algorithm: string,

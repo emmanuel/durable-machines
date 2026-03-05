@@ -6,6 +6,10 @@ import type { GitHubWebhookEvent } from "./github-types.js";
 /**
  * GitHub webhook source.
  * Verifies `x-hub-signature-256` header (format: `sha256={hex}`).
+ *
+ * @param webhookSecret - GitHub webhook secret configured in repository settings.
+ * @returns A {@link WebhookSource} for GitHub webhook events.
+ * @throws {WebhookVerificationError} On missing header or signature mismatch.
  */
 export function githubSource(webhookSecret: string): WebhookSource<GitHubWebhookEvent> {
   return {

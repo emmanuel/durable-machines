@@ -13,19 +13,25 @@ import type { SlackSlashCommandPayload } from "./slack-types.js";
 
 const MAX_TIMESTAMP_AGE_S = 5 * 60;
 
+/** Configuration for a Slack slash command binding. */
 export interface SlashCommandConfig {
   /** Maps subcommand names to XState event types. */
   eventMap: Record<string, string>;
   /** Signing secret for HMAC verification. */
   signingSecret: string;
-  /** Text to respond with immediately (3-second ack). */
+  /** Text to respond with immediately (3-second ack). Defaults to a generic message. */
   ackText?: string;
 }
 
+/** Internal representation of a parsed `/command subcommand workflowId --key value` invocation. */
 interface ParsedSlashCommand {
+  /** First token after the command name. */
   subcommand: string;
+  /** Second token, interpreted as the target workflow ID. */
   workflowId: string;
+  /** Remaining `--key value` pairs. */
   args: Record<string, string>;
+  /** Original Slack form data. */
   raw: SlackSlashCommandPayload;
 }
 
@@ -102,6 +108,11 @@ function slashCommandSource(signingSecret: string): WebhookSource<ParsedSlashCom
 
 /**
  * Creates a complete slash command binding with routing, transform, and status handling.
+ *
+ * @param path - URL path to mount (e.g. `"/slash/deploy"`).
+ * @param config - Slash command configuration (event map, signing secret, ack text).
+ * @param client - Gateway client used for status lookups and event dispatch.
+ * @returns A {@link WebhookBinding} wired with source, router, transform, and `onResponse`.
  */
 export function slashCommandBinding(
   path: string,

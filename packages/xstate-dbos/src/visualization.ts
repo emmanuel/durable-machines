@@ -17,6 +17,9 @@ const META_KEY = "xstate-dbos";
 /**
  * Serializes a machine definition into a flat, JSON-serializable graph
  * suitable for UI rendering or inspection.
+ *
+ * @param machine - The XState machine definition to serialize
+ * @returns A {@link SerializedMachine} containing all state nodes, transitions, and metadata
  */
 export function serializeMachineDefinition(
   machine: AnyStateMachine,
@@ -143,6 +146,9 @@ export function serializeMachineDefinition(
 
 /**
  * Computes how long the machine spent in each state based on transition records.
+ *
+ * @param transitions - Ordered array of {@link TransitionRecord} entries
+ * @returns Array of {@link StateDuration} objects with timing for each state visit
  */
 export function computeStateDurations(
   transitions: TransitionRecord[],
@@ -171,6 +177,9 @@ export function computeStateDurations(
 
 /**
  * Finds the currently executing (incomplete) step, if any.
+ *
+ * @param steps - Array of {@link StepInfo} from the workflow's step history
+ * @returns The in-progress {@link StepInfo}, or `null` if all steps are complete
  */
 export function detectActiveStep(steps: StepInfo[]): StepInfo | null {
   for (let i = steps.length - 1; i >= 0; i--) {
@@ -191,6 +200,10 @@ export function detectActiveStep(steps: StepInfo[]): StepInfo | null {
  * Transition history is stored via `setEvent("xstate.transitions", ...)` as
  * an accumulating array (not `writeStream`) so reads are always non-blocking,
  * even for in-progress workflows.
+ *
+ * @param machine - The XState machine definition
+ * @param workflowId - The DBOS workflow ID of the running instance
+ * @returns A {@link MachineVisualizationState} combining definition, current state, and timing data
  */
 export async function getVisualizationState(
   machine: AnyStateMachine,

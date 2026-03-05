@@ -14,6 +14,7 @@
   "files": [
     "dist"
   ],
+  "sideEffects": false,
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
@@ -34,6 +35,16 @@
     "state-machine",
     "statechart"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/emmanuel/xstate-dbos.git",
+    "directory": "packages/xstate-dbos"
+  },
+  "homepage": "https://github.com/emmanuel/xstate-dbos/tree/main/packages/xstate-dbos",
+  "bugs": {
+    "url": "https://github.com/emmanuel/xstate-dbos/issues"
+  },
+  "author": "Emmanuel Gomez",
   "peerDependencies": {
     "@dbos-inc/dbos-sdk": "^4.0.0",
     "xstate": "^5.0.0"

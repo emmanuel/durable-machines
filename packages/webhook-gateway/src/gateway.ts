@@ -13,6 +13,17 @@ import type {
 /**
  * Creates a Hono app that receives webhooks, verifies/parses/routes/transforms
  * them, and dispatches XState events via DBOSClient.send().
+ *
+ * @param options - Gateway configuration (client, bindings, optional basePath).
+ * @returns A Hono app with POST routes for each binding.
+ *
+ * @example
+ * ```ts
+ * const app = createWebhookGateway({
+ *   client: dbosClient,
+ *   bindings: [{ path: "/stripe", source: stripeSource(secret), router, transform }],
+ * });
+ * ```
  */
 export function createWebhookGateway(options: GatewayOptions): Hono {
   const { client, bindings, basePath = "" } = options;

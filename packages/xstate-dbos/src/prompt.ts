@@ -23,6 +23,9 @@ export function prompt(config: PromptConfig) {
 
 /**
  * Extracts the prompt config from a state node's metadata, if present.
+ *
+ * @param stateNodeMeta - The `.meta` object from a state node
+ * @returns The {@link PromptConfig} if present, or `null` if the state has no prompt
  */
 export function getPromptConfig(
   stateNodeMeta: Record<string, any> | undefined,
@@ -32,6 +35,9 @@ export function getPromptConfig(
 
 /**
  * Returns all event types referenced by a prompt config.
+ *
+ * @param config - The prompt configuration to extract events from
+ * @returns Array of XState event type strings referenced by the prompt
  */
 export function getPromptEvents(config: PromptConfig): string[] {
   switch (config.type) {

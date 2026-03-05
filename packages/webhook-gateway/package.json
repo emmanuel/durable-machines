@@ -1,6 +1,7 @@
 {
   "name": "@xstate-dbos/webhook-gateway",
   "version": "0.1.0",
+  "description": "Webhook gateway for routing external webhooks to durable XState machines",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -8,11 +9,48 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./sources/slack": {
+      "types": "./dist/sources/slack.d.ts",
+      "import": "./dist/sources/slack.js"
+    },
+    "./sources/slack-slash": {
+      "types": "./dist/sources/slack-slash.d.ts",
+      "import": "./dist/sources/slack-slash.js"
+    },
+    "./sources/stripe": {
+      "types": "./dist/sources/stripe.d.ts",
+      "import": "./dist/sources/stripe.js"
+    },
+    "./sources/github": {
+      "types": "./dist/sources/github.d.ts",
+      "import": "./dist/sources/github.js"
+    },
+    "./sources/linear": {
+      "types": "./dist/sources/linear.d.ts",
+      "import": "./dist/sources/linear.js"
+    },
+    "./sources/generic": {
+      "types": "./dist/sources/generic.d.ts",
+      "import": "./dist/sources/generic.js"
+    },
+    "./routers": {
+      "types": "./dist/routers/index.d.ts",
+      "import": "./dist/routers/index.js"
+    },
+    "./transforms": {
+      "types": "./dist/transforms/index.d.ts",
+      "import": "./dist/transforms/index.js"
+    },
+    "./hmac": {
+      "types": "./dist/hmac.d.ts",
+      "import": "./dist/hmac.js"
     }
   },
   "files": [
     "dist"
   ],
+  "sideEffects": false,
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
@@ -22,6 +60,28 @@
   "engines": {
     "node": ">=24"
   },
+  "license": "MIT",
+  "keywords": [
+    "xstate",
+    "dbos",
+    "webhook",
+    "gateway",
+    "slack",
+    "stripe",
+    "github",
+    "linear",
+    "hono"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/emmanuel/xstate-dbos.git",
+    "directory": "packages/webhook-gateway"
+  },
+  "homepage": "https://github.com/emmanuel/xstate-dbos/tree/main/packages/webhook-gateway",
+  "bugs": {
+    "url": "https://github.com/emmanuel/xstate-dbos/issues"
+  },
+  "author": "Emmanuel Gomez",
   "dependencies": {
     "hono": "^4.7.0",
     "@hono/node-server": "^1.14.0"

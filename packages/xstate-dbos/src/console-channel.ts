@@ -29,6 +29,11 @@ export interface ConsoleChannel extends ChannelAdapter {
   readonly prompts: readonly ConsolePromptRecord[];
 }
 
+/**
+ * Creates a console channel adapter that records prompts in memory.
+ *
+ * @returns A {@link ConsoleChannel} adapter for testing and development
+ */
 export function consoleChannel(): ConsoleChannel {
   const prompts: ConsolePromptRecord[] = [];
 

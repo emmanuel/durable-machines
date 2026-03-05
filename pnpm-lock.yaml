@@ -8,6 +8,59 @@ importers:
 
   .: {}
 
+  examples/order-processing:
+    dependencies:
+      '@dbos-inc/dbos-sdk':
+        specifier: ^4.0.0
+        version: 4.9.11
+      xstate:
+        specifier: ^5.19.0
+        version: 5.28.0
+      xstate-dbos:
+        specifier: workspace:*
+        version: link:../../packages/xstate-dbos
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.13
+      tsx:
+        specifier: ^4.19.0
+        version: 4.21.0
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
+  examples/webhook-approval:
+    dependencies:
+      '@dbos-inc/dbos-sdk':
+        specifier: ^4.0.0
+        version: 4.9.11
+      '@hono/node-server':
+        specifier: ^1.14.0
+        version: 1.19.10(hono@4.12.5)
+      '@xstate-dbos/webhook-gateway':
+        specifier: workspace:*
+        version: link:../../packages/webhook-gateway
+      hono:
+        specifier: ^4.7.0
+        version: 4.12.5
+      xstate:
+        specifier: ^5.19.0
+        version: 5.28.0
+      xstate-dbos:
+        specifier: workspace:*
+        version: link:../../packages/xstate-dbos
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.13
+      tsx:
+        specifier: ^4.19.0
+        version: 4.21.0
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
   packages/webhook-gateway:
     dependencies:
       '@hono/node-server':

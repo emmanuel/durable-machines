@@ -7,6 +7,12 @@ const META_KEY = "xstate-dbos";
 /**
  * Walks all state nodes in a machine recursively, yielding
  * the dot-separated path and the state node object.
+ *
+ * @remarks Advanced -- used internally by validation and serialization.
+ *
+ * @param stateNode - The root state node (or any subtree) to walk
+ * @param parentPath - Dot-separated path prefix for the current subtree (default: `""`)
+ * @yields `[path, stateNode]` tuples for every descendant state node
  */
 export function* walkStateNodes(
   stateNode: any,
@@ -30,7 +36,19 @@ export function* walkStateNodes(
  * - Prompt event types match the state's `on` handlers
  * - Machine has an `id`
  *
- * Throws `DurableMachineValidationError` with all collected errors.
+ * @param machine - The XState machine definition to validate
+ * @throws {@link DurableMachineValidationError} with all collected errors if validation fails
+ *
+ * @example
+ * ```ts
+ * import { validateMachineForDurability } from "xstate-dbos";
+ *
+ * try {
+ *   validateMachineForDurability(myMachine);
+ * } catch (err) {
+ *   console.error(err.errors); // string[] of validation issues
+ * }
+ * ```
  */
 export function validateMachineForDurability(machine: AnyStateMachine): void {
   const errors: string[] = [];

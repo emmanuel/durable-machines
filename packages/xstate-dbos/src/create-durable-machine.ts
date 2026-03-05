@@ -19,6 +19,9 @@ const registeredWorkflows = new Map<string, (...args: any[]) => Promise<any>>();
  * **Must be called before `DBOS.launch()`** — DBOS requires all workflow
  * registrations to happen before the runtime starts.
  *
+ * @typeParam T - The XState machine type
+ *
+ * @example
  * ```ts
  * const durable = createDurableMachine(orderMachine);
  * await DBOS.launch();
@@ -43,6 +46,24 @@ export interface DurableMachine<T extends AnyStateMachine = AnyStateMachine> {
   readonly machine: T;
 }
 
+/**
+ * Creates a durable XState machine backed by DBOS workflows.
+ *
+ * Validates the machine definition at registration time and registers
+ * a DBOS workflow for the machine's lifecycle loop.
+ *
+ * @param machine - The XState machine definition to make durable
+ * @param options - Optional configuration for the durable machine (e.g., channel adapters)
+ * @returns A {@link DurableMachine} facade for starting, retrieving, and listing instances
+ * @throws {@link DurableMachineValidationError} if the machine fails durability validation
+ *
+ * @example
+ * ```ts
+ * const durable = createDurableMachine(orderMachine);
+ * await DBOS.launch();
+ * const handle = await durable.start("order-123", { orderId: "123" });
+ * ```
+ */
 export function createDurableMachine<T extends AnyStateMachine>(
   machine: T,
   options?: DurableMachineOptions,

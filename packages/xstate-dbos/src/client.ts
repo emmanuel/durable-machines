@@ -26,6 +26,10 @@ export async function sendMachineEvent(
  * Read the current state of a durable machine from an external process.
  *
  * Returns null if the state hasn't been published yet.
+ *
+ * @param client - A `DBOSClient` instance (needs only a Postgres connection)
+ * @param workflowId - The workflow ID of the durable machine instance
+ * @returns The current {@link DurableStateSnapshot}, or `null` if not yet published
  */
 export async function getMachineState(
   client: DBOSClient,

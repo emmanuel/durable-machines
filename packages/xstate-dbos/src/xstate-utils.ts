@@ -12,6 +12,12 @@ import type { DurableStateSnapshot, InvocationInfo } from "./types.js";
  *
  * Only supports a single invoke per state (the first one). Multi-invoke
  * states are a future consideration.
+ *
+ * @remarks Advanced -- inspects internal XState state node structures.
+ *
+ * @param _machine - The XState machine definition (reserved for future use)
+ * @param snapshot - The current machine snapshot to inspect
+ * @returns An {@link InvocationInfo} for the first active invoke, or `null` if none
  */
 export function getActiveInvocation(
   _machine: AnyStateMachine,
@@ -241,6 +247,17 @@ export function isReentryDelay(
 
 /**
  * Compares two state values for structural equality.
+ *
+ * @param a - First state value (string or nested object)
+ * @param b - Second state value (string or nested object)
+ * @returns `true` if the two state values are structurally equal
+ *
+ * @example
+ * ```ts
+ * stateValueEquals("idle", "idle"); // true
+ * stateValueEquals({ active: "running" }, { active: "running" }); // true
+ * stateValueEquals({ active: "running" }, { active: "paused" }); // false
+ * ```
  */
 export function stateValueEquals(a: unknown, b: unknown): boolean {
   if (a === b) return true;

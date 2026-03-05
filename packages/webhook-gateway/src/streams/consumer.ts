@@ -93,14 +93,9 @@ async function run<TRaw, TItem>(
 
       const items = parse(msg.raw);
       if (items.length === 0) {
-        // Heartbeat or empty message — skip
+        // Heartbeat or empty message — acknowledge but don't count toward checkpoint interval
         await transport.acknowledge(msg);
         latestCursor = msg.cursor;
-        messageCount++;
-        if (messageCount % checkpointInterval === 0) {
-          await checkpoints.save(streamId, latestCursor);
-          metrics?.streamCheckpoints?.inc({ streamId });
-        }
         continue;
       }
 

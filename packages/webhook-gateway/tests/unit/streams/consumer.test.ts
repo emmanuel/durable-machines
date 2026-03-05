@@ -157,6 +157,43 @@ describe("startStreamConsumer", () => {
     expect(client.sends).toHaveLength(1);
   });
 
+  it("heartbeats do not count toward checkpoint interval", async () => {
+    // 3 heartbeats + 1 data message, interval=2
+    // Only the data message should count, so no periodic checkpoint fires (only final)
+    const messages: StreamMessage<string>[] = [
+      { raw: "", cursor: { pos: 0 } },
+      { raw: "", cursor: { pos: 1 } },
+      { raw: "", cursor: { pos: 2 } },
+      { raw: "data", cursor: { pos: 3 } },
+    ];
+    const transport = createStringTransport(messages);
+    const client = createMockClient();
+    const logger = createLogger();
+    const checkpoints = memoryCheckpointStore();
+    const saveSpy = vi.spyOn(checkpoints, "save");
+
+    const binding: StreamBinding<string, string> = {
+      streamId: "hb-ckpt-stream",
+      transport,
+      parse: (raw) => raw === "" ? [] : [raw],
+      router: { route: () => "wf-1" },
+      transform: { transform: (item) => ({ type: item }) },
+    };
+
+    const handle = startStreamConsumer(binding, {
+      client,
+      checkpoints,
+      logger,
+      checkpointInterval: 2,
+    });
+    await handle.stopped;
+
+    // Only 1 data message processed → messageCount=1, never hits interval=2
+    // Only the final checkpoint should fire
+    expect(saveSpy).toHaveBeenCalledTimes(1);
+    expect(saveSpy.mock.calls[0][1]).toEqual({ pos: 3 });
+  });
+
   it("checkpoints after N messages (configurable interval)", async () => {
     const messages: StreamMessage<string>[] = Array.from({ length: 5 }, (_, i) => ({
       raw: `msg-${i}`,

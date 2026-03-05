@@ -254,8 +254,10 @@ async function waitForEventOrTimeout(
 
   const event = await DBOS.recv<AnyEventObject>("xstate.event", timeoutSec);
 
-  // Clear wake-up time
-  if (hasAfter) {
+  // Clear wake-up time only when an external event arrived.
+  // When the timeout fires, the next iteration will either set a new wakeAt
+  // (overwriting this one) or the machine will end.
+  if (hasAfter && event !== null) {
     await DBOS.setEvent("xstate.wakeAt", null);
   }
 

@@ -9,6 +9,10 @@ import type { GatewayMetrics } from "./metrics.js";
 import { createAdminServer } from "./admin.js";
 import { gracefulShutdown, isShuttingDown } from "@xstate-dbos/durable-state-machine";
 import type { WebhookBinding } from "./types.js";
+import type { Logger, StreamBinding } from "./streams/types.js";
+import type { StreamConsumerHandle } from "./streams/consumer.js";
+import { startStreamConsumer } from "./streams/consumer.js";
+import { pgCheckpointStore } from "./streams/checkpoint-store.js";
 
 const gatewayConfigSchema = z.object({
   port: z.coerce.number().int().positive().default(3000),
@@ -30,6 +34,8 @@ export interface GatewayContext {
   metrics: GatewayMetrics;
   gateway: Hono;
   adminServer: Server;
+  checkpointPool?: import("pg").Pool;
+  streamConsumers?: StreamConsumerHandle[];
 }
 
 export interface GatewayHandle {
@@ -58,9 +64,18 @@ export function parseGatewayConfig(
   return result.data;
 }
 
+export interface GatewayContextOptions {
+  bindings: WebhookBinding<any>[];
+  streams?: Array<{
+    binding: StreamBinding<any, any>;
+    checkpointInterval?: number;
+  }>;
+  logger?: Logger;
+}
+
 export async function createGatewayContext(
   config: GatewayConfig,
-  options: { bindings: WebhookBinding<any>[] },
+  options: GatewayContextOptions,
 ): Promise<GatewayContext> {
   const client = await DBOSClient.create({ systemDatabaseUrl: config.dbUrl });
   const metrics = createGatewayMetrics();
@@ -70,7 +85,32 @@ export async function createGatewayContext(
     isReady: () => !isShuttingDown(),
   });
 
-  return { config, client, metrics, gateway, adminServer };
+  const ctx: GatewayContext = { config, client, metrics, gateway, adminServer };
+
+  if (options.streams && options.streams.length > 0) {
+    const { Pool } = await import("pg");
+    const pool = new Pool({
+      connectionString: config.dbUrl,
+      max: Math.max(2, options.streams.length + 1),
+    });
+    ctx.checkpointPool = pool;
+
+    const checkpoints = pgCheckpointStore(pool);
+    await checkpoints.ensureTable();
+
+    const logger = options.logger ?? noopLogger;
+    ctx.streamConsumers = options.streams.map((s) =>
+      startStreamConsumer(s.binding, {
+        client,
+        checkpoints,
+        logger,
+        checkpointInterval: s.checkpointInterval,
+        metrics,
+      }),
+    );
+  }
+
+  return ctx;
 }
 
 export function startGateway(ctx: GatewayContext): GatewayHandle {
@@ -80,10 +120,28 @@ export function startGateway(ctx: GatewayContext): GatewayHandle {
   }) as unknown as Server;
   ctx.adminServer.listen(ctx.config.adminPort);
 
-  const shutdown = gracefulShutdown({
+  const baseShutdown = gracefulShutdown({
     servers: [server, ctx.adminServer],
     timeoutMs: ctx.config.shutdownTimeoutMs,
   });
+
+  const shutdown = async () => {
+    // Stop stream consumers first (abort → final checkpoint → close)
+    if (ctx.streamConsumers) {
+      for (const handle of ctx.streamConsumers) {
+        handle.stop();
+      }
+      await Promise.all(ctx.streamConsumers.map((h) => h.stopped));
+    }
+
+    // Shut down HTTP + admin servers
+    await baseShutdown();
+
+    // End checkpoint pool
+    if (ctx.checkpointPool) {
+      await ctx.checkpointPool.end();
+    }
+  };
 
   return {
     shutdown,
@@ -91,3 +149,10 @@ export function startGateway(ctx: GatewayContext): GatewayHandle {
     adminServer: ctx.adminServer,
   };
 }
+
+const noopLogger: Logger = {
+  info() {},
+  warn() {},
+  error() {},
+  debug() {},
+};

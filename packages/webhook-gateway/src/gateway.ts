@@ -84,6 +84,8 @@ function registerBinding(
       "linear-signature",
       "x-cal-signature-256",
       "x-twilio-signature",
+      "authorization",
+      "x-experience-api-version",
       "content-type",
     ]) {
       headers[key] = c.req.header(key);

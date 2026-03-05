@@ -11,7 +11,7 @@ export type { GatewayMetrics } from "./metrics.js";
 
 // Lifecycle
 export { parseGatewayConfig, createGatewayContext, startGateway } from "./lifecycle.js";
-export type { GatewayConfig, GatewayContext, GatewayHandle } from "./lifecycle.js";
+export type { GatewayConfig, GatewayContext, GatewayContextOptions, GatewayHandle } from "./lifecycle.js";
 
 // Types
 export type {
@@ -22,6 +22,8 @@ export type {
   WebhookTransform,
   WebhookBinding,
   RouteResult,
+  ItemRouter,
+  ItemTransform,
   GatewayClient,
   GatewayOptions,
 } from "./types.js";
@@ -66,6 +68,23 @@ export type {
   XapiResult,
   XapiContext,
 } from "./sources/xapi-types.js";
+
+// Streams
+export type {
+  Logger,
+  StreamTransport,
+  StreamMessage,
+  StreamCursor,
+  StreamBinding,
+  CheckpointStore,
+} from "./streams/types.js";
+export type { StreamConsumerOptions, StreamConsumerHandle } from "./streams/consumer.js";
+export { startStreamConsumer } from "./streams/consumer.js";
+export { sseTransport } from "./streams/sse-transport.js";
+export type { SseTransportOptions } from "./streams/sse-transport.js";
+export { memoryCheckpointStore, pgCheckpointStore } from "./streams/checkpoint-store.js";
+export { xapiStreamBinding } from "./sources/xapi-stream.js";
+export type { XapiStreamBindingConfig } from "./sources/xapi-stream.js";
 
 // Routers
 export { fieldRouter } from "./routers/field.js";

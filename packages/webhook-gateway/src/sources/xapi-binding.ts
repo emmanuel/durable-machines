@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 import type {
   WebhookBinding,
-  WebhookRouter,
-  WebhookTransform,
+  ItemRouter,
+  ItemTransform,
 } from "../types.js";
 import { xapiSource } from "./xapi.js";
 import type { XapiSourceOptions } from "./xapi.js";
-import type { XapiWebhookPayload } from "./xapi-types.js";
+import type { XapiStatement, XapiWebhookPayload } from "./xapi-types.js";
 
 /** Configuration for an xAPI webhook binding. */
 export interface XapiBindingConfig {
@@ -14,28 +14,34 @@ export interface XapiBindingConfig {
   path: string;
   /** xAPI source options (auth, version requirement). */
   source: XapiSourceOptions;
-  /** Determines which workflow(s) receive the event. */
-  router: WebhookRouter<XapiWebhookPayload>;
-  /** Converts the xAPI payload into an XState event. */
-  transform: WebhookTransform<XapiWebhookPayload>;
+  /** Per-statement router — determines which workflow receives each statement. */
+  router: ItemRouter<XapiStatement>;
+  /** Per-statement transform — converts each statement to an XState event. */
+  transform: ItemTransform<XapiStatement>;
 }
 
 /**
- * Creates a complete xAPI webhook binding.
+ * Creates a complete xAPI webhook binding with per-statement fan-out.
+ *
+ * Each statement is individually routed and dispatched, allowing a single POST
+ * containing statements for different workflows to fan out correctly.
  *
  * The `onResponse` handler returns a `200` with a JSON array of statement IDs
  * (per the xAPI spec), generating UUIDs for any statements that lack an `id`.
- * Routing and dispatch proceed fire-and-forget in the background.
+ * Per-statement routing and dispatch proceed fire-and-forget in the background.
  *
  * @param config - Binding configuration.
  * @returns A {@link WebhookBinding} for xAPI statement webhooks.
  */
-export function xapiBinding(config: XapiBindingConfig): WebhookBinding<XapiWebhookPayload> {
+export function xapiBinding(
+  config: XapiBindingConfig,
+): WebhookBinding<XapiWebhookPayload, XapiStatement> {
   const source = xapiSource(config.source);
 
   return {
     path: config.path,
     source,
+    parse: (payload) => payload.statements,
     router: config.router,
     transform: config.transform,
     onResponse(payload, c) {

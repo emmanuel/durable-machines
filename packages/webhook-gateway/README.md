@@ -49,15 +49,18 @@ startGateway(ctx);
 
 ## Architecture
 
-A webhook binding wires four components to a URL path:
+A webhook binding wires five components to a URL path:
 
 ```
 POST /webhooks/stripe
-  → Source (verify HMAC, parse JSON)
-  → Router (extract workflow ID from payload)
-  → Transform (map payload → XState event)
+  → Source (verify HMAC, parse JSON → payload)
+  → Parse (split payload → items[]; default: [payload])
+  → Router (per-item → workflow ID(s))
+  → Transform (per-item → XState event)
   → Dispatch (DBOSClient.send → durable machine)
 ```
+
+Both webhooks and streams use the same item-level `ItemRouter` / `ItemTransform` interfaces. A webhook binding without `parse` wraps the payload as a single-item array, so simple bindings work unchanged. When `parse` is provided, multi-item payloads (e.g. xAPI statement batches) fan out per-item.
 
 Each component is a small, replaceable interface. Mix and match built-in implementations or write your own.
 
@@ -118,10 +121,10 @@ Routers determine which workflow(s) receive the event.
 ### Custom routers
 
 ```typescript
-interface WebhookRouter<TPayload> {
-  route(payload: TPayload): RouteResult | Promise<RouteResult>;
+interface ItemRouter<TItem> {
+  route(item: TItem): RouteResult | Promise<RouteResult>;
 }
-type RouteResult = string | string[] | null;  // workflow ID(s), or null for no match
+type RouteResult = string | string[] | null;  // workflow ID(s), or null to skip
 ```
 
 ## Transforms
@@ -135,8 +138,8 @@ Transforms map provider payloads to XState events.
 ### Custom transforms
 
 ```typescript
-interface WebhookTransform<TPayload> {
-  transform(payload: TPayload): XStateEvent;
+interface ItemTransform<TItem> {
+  transform(item: TItem): XStateEvent;
 }
 ```
 
@@ -145,16 +148,19 @@ interface WebhookTransform<TPayload> {
 A binding wires source + router + transform to a URL path:
 
 ```typescript
-interface WebhookBinding<TPayload> {
+interface WebhookBinding<TPayload = unknown, TItem = TPayload> {
   path: string;
   source: WebhookSource<TPayload>;
-  router: WebhookRouter<TPayload>;
-  transform: WebhookTransform<TPayload>;
+  parse?: (payload: TPayload) => TItem[];   // default: [payload]
+  router: ItemRouter<TItem>;
+  transform: ItemTransform<TItem>;
   onResponse?: (payload: TPayload, c: Context) => Response | null;  // optional inline ack
 }
 ```
 
-The optional `onResponse` hook lets sources like Slack slash commands send an immediate acknowledgment while dispatching the event in the background.
+When `parse` is omitted, the payload is wrapped as `[payload]` and routed/transformed as a single item. When provided, each item is routed and dispatched independently (fan-out).
+
+The optional `onResponse` hook lets bindings send an immediate response (e.g. Slack 3-second ack, xAPI statement IDs) while item dispatch proceeds fire-and-forget in the background.
 
 ## Admin server
 

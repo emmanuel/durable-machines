@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import { xapiBinding } from "../../../src/sources/xapi-binding.js";
 import { createMockClient } from "../../helpers/mock-client.js";
 import { createWebhookGateway } from "../../../src/gateway.js";
-import type { XapiWebhookPayload } from "../../../src/sources/xapi-types.js";
 
 describe("xapiBinding", () => {
   const client = createMockClient();
@@ -11,15 +10,14 @@ describe("xapiBinding", () => {
     path: "/webhooks/xapi",
     source: {},
     router: {
-      route(payload: XapiWebhookPayload) {
-        const reg = payload.statements[0]?.context?.registration;
-        return reg ?? null;
+      route(statement) {
+        return statement.context?.registration ?? null;
       },
     },
     transform: {
-      transform(payload: XapiWebhookPayload) {
-        const verb = payload.statements[0]?.verb.id.split("/").pop() ?? "unknown";
-        return { type: `xapi.${verb}`, statements: payload.statements };
+      transform(statement) {
+        const verb = statement.verb.id.split("/").pop() ?? "unknown";
+        return { type: `xapi.${verb}`, statement };
       },
     },
   });
@@ -80,15 +78,24 @@ describe("xapiBinding", () => {
     );
   });
 
-  it("dispatches event in background", async () => {
+  it("dispatches per-statement in background", async () => {
     client.reset();
-    const body = JSON.stringify({
-      id: "stmt-ccc",
-      actor: { mbox: "mailto:a@example.com" },
-      verb: { id: "http://adlnet.gov/expapi/verbs/completed" },
-      object: { id: "http://example.com/activity/1" },
-      context: { registration: "wf-300" },
-    });
+    const body = JSON.stringify([
+      {
+        id: "stmt-1",
+        actor: { mbox: "mailto:a@example.com" },
+        verb: { id: "http://adlnet.gov/expapi/verbs/completed" },
+        object: { id: "http://example.com/activity/1" },
+        context: { registration: "wf-aaa" },
+      },
+      {
+        id: "stmt-2",
+        actor: { mbox: "mailto:b@example.com" },
+        verb: { id: "http://adlnet.gov/expapi/verbs/attempted" },
+        object: { id: "http://example.com/activity/2" },
+        context: { registration: "wf-bbb" },
+      },
+    ]);
 
     await app.request("/webhooks/xapi", {
       method: "POST",
@@ -98,8 +105,45 @@ describe("xapiBinding", () => {
 
     // Fire-and-forget completes async
     await new Promise((r) => setTimeout(r, 10));
-    expect(client.sends).toHaveLength(1);
-    expect(client.sends[0].workflowId).toBe("wf-300");
+    expect(client.sends).toHaveLength(2);
+    expect(client.sends[0].workflowId).toBe("wf-aaa");
     expect(client.sends[0].message).toMatchObject({ type: "xapi.completed" });
+    expect(client.sends[1].workflowId).toBe("wf-bbb");
+    expect(client.sends[1].message).toMatchObject({ type: "xapi.attempted" });
+  });
+
+  it("skips statements with no routable target", async () => {
+    client.reset();
+    const body = JSON.stringify([
+      {
+        id: "stmt-routable",
+        actor: { mbox: "mailto:a@example.com" },
+        verb: { id: "http://adlnet.gov/expapi/verbs/completed" },
+        object: { id: "http://example.com/activity/1" },
+        context: { registration: "wf-target" },
+      },
+      {
+        id: "stmt-no-reg",
+        actor: { mbox: "mailto:b@example.com" },
+        verb: { id: "http://adlnet.gov/expapi/verbs/attempted" },
+        object: { id: "http://example.com/activity/2" },
+        // no context.registration
+      },
+    ]);
+
+    const res = await app.request("/webhooks/xapi", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body,
+    });
+
+    expect(res.status).toBe(200);
+    const ids = await res.json();
+    expect(ids).toEqual(["stmt-routable", "stmt-no-reg"]);
+
+    await new Promise((r) => setTimeout(r, 10));
+    // Only the routable statement was dispatched
+    expect(client.sends).toHaveLength(1);
+    expect(client.sends[0].workflowId).toBe("wf-target");
   });
 });

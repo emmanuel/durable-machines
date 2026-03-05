@@ -3,8 +3,8 @@ import { WebhookVerificationError } from "../types.js";
 import type {
   WebhookSource,
   WebhookBinding,
-  WebhookRouter,
-  WebhookTransform,
+  ItemRouter,
+  ItemTransform,
   XStateEvent,
   RawRequest,
   GatewayClient,
@@ -121,7 +121,7 @@ export function slashCommandBinding(
 ): WebhookBinding<ParsedSlashCommand> {
   const source = slashCommandSource(config.signingSecret);
 
-  const router: WebhookRouter<ParsedSlashCommand> = {
+  const router: ItemRouter<ParsedSlashCommand> = {
     route(payload: ParsedSlashCommand) {
       if (payload.subcommand === "status") {
         return null; // Handled inline via onResponse
@@ -130,7 +130,7 @@ export function slashCommandBinding(
     },
   };
 
-  const transform: WebhookTransform<ParsedSlashCommand> = {
+  const transform: ItemTransform<ParsedSlashCommand> = {
     transform(payload: ParsedSlashCommand): XStateEvent {
       const eventType = config.eventMap[payload.subcommand];
       if (!eventType) {

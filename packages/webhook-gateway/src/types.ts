@@ -28,28 +28,36 @@ export interface WebhookSource<TPayload> {
 /** Determines target workflow ID(s) from a parsed payload. */
 export type RouteResult = string | string[] | null;
 
-/** Resolves a parsed payload to one or more target workflow IDs. */
-export interface WebhookRouter<TPayload> {
-  /** Returns workflow ID(s) to dispatch to, or `null` if no target is found. */
-  route(payload: TPayload): RouteResult | Promise<RouteResult>;
+/** Routes a single item to one or more workflow IDs. */
+export interface ItemRouter<TItem> {
+  /** Returns workflow ID(s) to dispatch to, or `null` to skip this item. */
+  route(item: TItem): RouteResult | Promise<RouteResult>;
 }
 
-/** Maps a parsed payload to an XState event. */
-export interface WebhookTransform<TPayload> {
-  /** Converts a provider-specific payload into an XState-compatible event. */
-  transform(payload: TPayload): XStateEvent;
+/** Transforms a single item into an XState event. */
+export interface ItemTransform<TItem> {
+  /** Converts a single item into an XState-compatible event. */
+  transform(item: TItem): XStateEvent;
 }
+
+/** @deprecated Use {@link ItemRouter} instead. */
+export type WebhookRouter<TPayload> = ItemRouter<TPayload>;
+
+/** @deprecated Use {@link ItemTransform} instead. */
+export type WebhookTransform<TPayload> = ItemTransform<TPayload>;
 
 /** Wires a source, router, and transform to a URL path. */
-export interface WebhookBinding<TPayload = unknown> {
+export interface WebhookBinding<TPayload = unknown, TItem = TPayload> {
   /** URL path this binding is mounted on (e.g. `"/webhooks/stripe"`). */
   path: string;
   /** Verifies and parses incoming requests for this provider. */
   source: WebhookSource<TPayload>;
+  /** Splits a parsed payload into individual items. Defaults to `[payload]` when omitted. */
+  parse?: (payload: TPayload) => TItem[];
   /** Determines which workflow(s) receive the event. */
-  router: WebhookRouter<TPayload>;
-  /** Converts the parsed payload into an XState event. */
-  transform: WebhookTransform<TPayload>;
+  router: ItemRouter<TItem>;
+  /** Converts each item into an XState event. */
+  transform: ItemTransform<TItem>;
   /** Optional hook to send an inline response (e.g. Slack slash command ack). */
   onResponse?: (payload: TPayload, c: Context) => Response | Promise<Response> | null;
 }

@@ -57,6 +57,10 @@
     "./hmac": {
       "types": "./dist/hmac.d.ts",
       "import": "./dist/hmac.js"
+    },
+    "./streams": {
+      "types": "./dist/streams/types.d.ts",
+      "import": "./dist/streams/types.js"
     }
   },
   "files": [
@@ -85,7 +89,10 @@
     "linear",
     "calcom",
     "twilio",
-    "hono"
+    "hono",
+    "xapi",
+    "sse",
+    "stream"
   ],
   "repository": {
     "type": "git",
@@ -105,11 +112,17 @@
     "zod": "^4.0.0"
   },
   "peerDependencies": {
-    "@dbos-inc/dbos-sdk": "^4.0.0"
+    "@dbos-inc/dbos-sdk": "^4.0.0",
+    "pg": "^8.0.0"
+  },
+  "peerDependenciesMeta": {
+    "pg": { "optional": true }
   },
   "devDependencies": {
     "@dbos-inc/dbos-sdk": "^4.0.0",
     "@types/node": "^22.0.0",
+    "@types/pg": "^8.0.0",
+    "pg": "^8.0.0",
     "typescript": "^5.7.0",
     "vitest": "^4.0.18",
     "tsx": "^4.19.0"

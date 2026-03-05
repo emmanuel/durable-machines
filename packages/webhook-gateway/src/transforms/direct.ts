@@ -1,10 +1,10 @@
-import type { WebhookTransform, XStateEvent } from "../types.js";
+import type { ItemTransform, XStateEvent } from "../types.js";
 
 /**
  * Extracts an XState event directly from the payload using the provided function.
  *
  * @param extractFn - Maps the provider payload to an XState event.
- * @returns A {@link WebhookTransform} that delegates to `extractFn`.
+ * @returns An {@link ItemTransform} that delegates to `extractFn`.
  *
  * @example
  * ```ts
@@ -16,7 +16,7 @@ import type { WebhookTransform, XStateEvent } from "../types.js";
  */
 export function directTransform<TPayload>(
   extractFn: (payload: TPayload) => XStateEvent,
-): WebhookTransform<TPayload> {
+): ItemTransform<TPayload> {
   return {
     transform(payload: TPayload): XStateEvent {
       return extractFn(payload);

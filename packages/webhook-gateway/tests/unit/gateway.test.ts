@@ -160,6 +160,108 @@ describe("createWebhookGateway", () => {
 
     expect(res.status).toBe(404);
   });
+
+  it("returns 422 when parse returns empty array", async () => {
+    const emptyApp = createWebhookGateway({
+      client,
+      bindings: [
+        {
+          path: "/webhooks/empty",
+          source: genericSource(),
+          parse: () => [],
+          router: { route: () => "wf-1" },
+          transform: { transform: () => ({ type: "NOOP" }) },
+        },
+      ],
+    });
+
+    const res = await emptyApp.request("/webhooks/empty", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+
+    expect(res.status).toBe(422);
+    const json = await res.json() as any;
+    expect(json.error).toContain("No target workflow");
+    expect(client.sends).toHaveLength(0);
+  });
+
+  it("fires and forgets item dispatch when onResponse is set", async () => {
+    const onResponseApp = createWebhookGateway({
+      client,
+      bindings: [
+        {
+          path: "/webhooks/ack",
+          source: genericSource(),
+          parse: (p: { items: Array<{ id: string; wfId: string }> }) => p.items,
+          router: { route: (item: { id: string; wfId: string }) => item.wfId },
+          transform: { transform: (item: { id: string; wfId: string }) => ({ type: "ACK", id: item.id }) },
+          onResponse(_payload, c) {
+            return c.json({ acked: true });
+          },
+        },
+      ],
+    });
+
+    const body = JSON.stringify({
+      items: [
+        { id: "x", wfId: "wf-1" },
+        { id: "y", wfId: "wf-2" },
+      ],
+    });
+    const res = await onResponseApp.request("/webhooks/ack", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body,
+    });
+
+    expect(res.status).toBe(200);
+    const json = await res.json() as any;
+    expect(json.acked).toBe(true);
+
+    // Fire-and-forget completes async
+    await new Promise((r) => setTimeout(r, 10));
+    expect(client.sends).toHaveLength(2);
+    expect(client.sends.map((s) => s.workflowId)).toEqual(["wf-1", "wf-2"]);
+  });
+
+  it("dispatches per-item via parse fan-out", async () => {
+    interface Batch {
+      items: Array<{ id: string; wfId: string }>;
+    }
+    const parseApp = createWebhookGateway({
+      client,
+      bindings: [
+        {
+          path: "/webhooks/batch",
+          source: genericSource(),
+          parse: (payload: Batch) => payload.items,
+          router: { route: (item: { id: string; wfId: string }) => item.wfId },
+          transform: { transform: (item: { id: string; wfId: string }) => ({ type: "ITEM", id: item.id }) },
+        },
+      ],
+    });
+
+    const body = JSON.stringify({
+      items: [
+        { id: "a", wfId: "wf-1" },
+        { id: "b", wfId: "wf-2" },
+        { id: "c", wfId: "wf-1" },
+      ],
+    });
+    const res = await parseApp.request("/webhooks/batch", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body,
+    });
+
+    expect(res.status).toBe(200);
+    const json = await res.json() as any;
+    expect(json.dispatched).toBe(3);
+    expect(client.sends).toHaveLength(3);
+    expect(client.sends.map((s) => s.workflowId)).toEqual(["wf-1", "wf-2", "wf-1"]);
+  });
 });
 
 describe("createWebhookGateway with metrics", () => {
@@ -183,7 +285,40 @@ describe("createWebhookGateway with metrics", () => {
       labelNames: ["path"] as const,
       registers: [registry],
     });
-    return { registry, webhooksReceived, webhooksDispatched, webhookDuration };
+    const streamEventsReceived = new Counter({
+      name: "stream_events_received_total",
+      help: "Stream events received",
+      labelNames: ["streamId"] as const,
+      registers: [registry],
+    });
+    const streamItemsDispatched = new Counter({
+      name: "stream_items_dispatched_total",
+      help: "Stream items dispatched",
+      labelNames: ["streamId"] as const,
+      registers: [registry],
+    });
+    const streamReconnections = new Counter({
+      name: "stream_reconnections_total",
+      help: "Stream reconnections",
+      labelNames: ["streamId"] as const,
+      registers: [registry],
+    });
+    const streamCheckpoints = new Counter({
+      name: "stream_checkpoints_total",
+      help: "Stream checkpoints",
+      labelNames: ["streamId"] as const,
+      registers: [registry],
+    });
+    return {
+      registry,
+      webhooksReceived,
+      webhooksDispatched,
+      webhookDuration,
+      streamEventsReceived,
+      streamItemsDispatched,
+      streamReconnections,
+      streamCheckpoints,
+    };
   }
 
   it("increments received and dispatched on successful dispatch", async () => {

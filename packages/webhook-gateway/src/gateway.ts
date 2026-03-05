@@ -6,8 +6,12 @@ import {
 } from "./types.js";
 import type {
   GatewayOptions,
+  GatewayClient,
   WebhookBinding,
   RawRequest,
+  RouteResult,
+  ItemRouter,
+  ItemTransform,
 } from "./types.js";
 
 /**
@@ -60,10 +64,42 @@ export function createWebhookGateway(options: GatewayOptions): Hono {
   return app;
 }
 
+/** Normalize a RouteResult to an array of workflow IDs (empty array for null/undefined). */
+function normalizeRouteResult(result: RouteResult): string[] {
+  if (result == null) return [];
+  return Array.isArray(result) ? result : [result];
+}
+
+/** Dispatch items through the router/transform pipeline, returning total dispatched count. */
+async function dispatchItems<TItem>(
+  items: TItem[],
+  router: ItemRouter<TItem>,
+  transform: ItemTransform<TItem>,
+  client: GatewayClient,
+): Promise<number> {
+  let dispatched = 0;
+  const sends: Promise<void>[] = [];
+
+  for (const item of items) {
+    const routeResult = await router.route(item);
+    const ids = normalizeRouteResult(routeResult);
+    if (ids.length === 0) continue;
+
+    const event = transform.transform(item);
+    for (const id of ids) {
+      sends.push(client.send(id, event, "xstate.event"));
+      dispatched++;
+    }
+  }
+
+  await Promise.all(sends);
+  return dispatched;
+}
+
 function registerBinding(
   app: Hono,
-  binding: WebhookBinding<any>,
-  client: GatewayOptions["client"],
+  binding: WebhookBinding<any, any>,
+  client: GatewayClient,
   basePath: string,
   metrics?: GatewayOptions["metrics"],
 ): void {
@@ -96,41 +132,33 @@ function registerBinding(
     // Verify
     await binding.source.verify(rawReq);
 
-    // Parse
+    // Parse payload from raw request
     const payload = await binding.source.parse(rawReq);
 
-    // Check for inline response handler (e.g., slash command ack)
+    // Split payload into items (default: wrap payload as single item)
+    const items = binding.parse ? binding.parse(payload) : [payload];
+
+    // Check for inline response handler (e.g., slash command ack, xAPI statement IDs)
     if (binding.onResponse) {
       const response = await binding.onResponse(payload, c);
       if (response) {
-        // Route and dispatch in background if applicable
-        const routeResult = await binding.router.route(payload);
-        if (routeResult !== null) {
-          const event = binding.transform.transform(payload);
-          const ids = Array.isArray(routeResult) ? routeResult : [routeResult];
-          // Fire and forget — don't block the ack response
-          Promise.all(ids.map((id) => client.send(id, event, "xstate.event"))).catch(() => {
-            // Swallow errors — webhook already acked
-          });
-        }
+        // Item-level dispatch, fire-and-forget
+        dispatchItems(items, binding.router, binding.transform, client).catch(() => {
+          // Swallow errors — webhook already acked
+        });
         return response;
       }
     }
 
-    // Route
-    const routeResult = await binding.router.route(payload);
-    if (routeResult == null) {
+    // Item-level dispatch
+    const dispatched = await dispatchItems(items, binding.router, binding.transform, client);
+
+    if (dispatched === 0) {
       throw new WebhookRoutingError("No target workflow found");
     }
 
-    // Transform
-    const event = binding.transform.transform(payload);
+    metrics?.webhooksDispatched.inc({ path }, dispatched);
 
-    // Dispatch
-    const ids = Array.isArray(routeResult) ? routeResult : [routeResult];
-    await Promise.all(ids.map((id) => client.send(id, event, "xstate.event")));
-    metrics?.webhooksDispatched.inc({ path }, ids.length);
-
-    return c.json({ ok: true, dispatched: ids.length });
+    return c.json({ ok: true, dispatched });
   });
 }

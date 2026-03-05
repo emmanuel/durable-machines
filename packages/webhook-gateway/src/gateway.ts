@@ -68,6 +68,7 @@ function registerBinding(
       "x-github-event",
       "x-github-delivery",
       "linear-signature",
+      "x-cal-signature-256",
       "content-type",
     ]) {
       headers[key] = c.req.header(key);

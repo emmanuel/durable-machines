@@ -1,0 +1,63 @@
+{
+  "name": "@xstate-dbos/worker",
+  "version": "0.1.0",
+  "description": "Worker process lifecycle for durable XState machines",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:watch": "vitest"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "license": "MIT",
+  "keywords": [
+    "xstate",
+    "dbos",
+    "worker",
+    "lifecycle",
+    "durable",
+    "state-machine"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/emmanuel/xstate-dbos.git",
+    "directory": "packages/worker"
+  },
+  "homepage": "https://github.com/emmanuel/xstate-dbos/tree/main/packages/worker",
+  "bugs": {
+    "url": "https://github.com/emmanuel/xstate-dbos/issues"
+  },
+  "author": "Emmanuel Gomez",
+  "dependencies": {
+    "prom-client": "^15.1.0",
+    "zod": "^4.0.0"
+  },
+  "peerDependencies": {
+    "@dbos-inc/dbos-sdk": "^4.0.0",
+    "@xstate-dbos/durable-state-machine": "workspace:*"
+  },
+  "devDependencies": {
+    "@dbos-inc/dbos-sdk": "^4.0.0",
+    "@xstate-dbos/durable-state-machine": "workspace:*",
+    "@types/node": "^24",
+    "typescript": "^5.7.0",
+    "vitest": "^4.0.18",
+    "xstate": "^5.19.0"
+  }
+}

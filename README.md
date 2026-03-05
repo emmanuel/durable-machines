@@ -10,7 +10,7 @@ XState defines the *shape* of workflow logic: states, transitions, guards, actio
 
 - **Durable execution** — a process crash during a 24-hour wait resumes exactly where it left off
 - **Exactly-once side effects** — invoked actors run as DBOS steps with deterministic replay
-- **Scale to zero** — quiescent states use `DBOS.recv()`, consuming zero CPU while waiting
+- **Scale to zero** — durable states use `DBOS.recv()`, consuming zero CPU while waiting
 - **No custom persistence** — DBOS step replay handles all recovery; no event-store or snapshot table
 - **Standard XState** — your machine definition is a plain XState v5 machine; nothing proprietary
 
@@ -27,7 +27,7 @@ Requires Node >= 24, XState >= 5, and DBOS SDK >= 4.
 ```typescript
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import { setup, fromPromise, assign } from "xstate";
-import { createDurableMachine, quiescent } from "xstate-dbos";
+import { createDurableMachine, durableState } from "xstate-dbos";
 
 // 1. Define a standard XState machine
 const orderMachine = setup({
@@ -50,7 +50,7 @@ const orderMachine = setup({
   context: ({ input }) => ({ orderId: input.orderId, total: input.total }),
   states: {
     pending: {
-      ...quiescent(), // marks this state as a durable wait point
+      ...durableState(), // marks this state as a durable wait point
       on: { PAY: "processing", CANCEL: "cancelled" },
     },
     processing: {
@@ -93,19 +93,19 @@ Every non-final atomic state in a durable machine must be exactly one of:
 
 | Kind | Marker | DBOS primitive | Purpose |
 |------|--------|----------------|---------|
-| **Quiescent** | `quiescent()` | `DBOS.recv()` | Wait for external events |
+| **Durable** | `durableState()` | `DBOS.recv()` | Wait for external events |
 | **Invoking** | `invoke: { src }` | `DBOS.runStep()` | Run a side effect exactly once |
 | **Transient** | `always: [...]` | `machine.transition()` | Route immediately via guards |
 
 This is validated at registration time — if a state doesn't fit one of these categories, `createDurableMachine()` throws before your app starts.
 
-### Quiescent states
+### Durable states
 
-Spread `quiescent()` into any state that should durably wait for external input:
+Spread `durableState()` into any state that should durably wait for external input:
 
 ```typescript
 pending: {
-  ...quiescent(),
+  ...durableState(),
   on: { PAY: "processing", CANCEL: "cancelled" },
 },
 ```
@@ -114,7 +114,7 @@ The marker tells the workflow loop to call `DBOS.recv()` and wait. The process c
 
 ### Prompts
 
-Prompts are metadata on quiescent states describing what to present to a human. The machine doesn't know *how* the prompt is delivered (Slack, email, UI) — it only declares *what* to ask:
+Prompts are metadata on durable states describing what to present to a human. The machine doesn't know *how* the prompt is delivered (Slack, email, UI) — it only declares *what* to ask:
 
 ```typescript
 awaitingApproval: {
@@ -138,7 +138,7 @@ XState `after` delays work as durable timeouts. The shortest delay becomes the `
 
 ```typescript
 waitingForResponse: {
-  ...quiescent(),
+  ...durableState(),
   on: { RESPOND: "processing" },
   after: { 86400000: "escalated" }, // 24 hours
 },
@@ -151,7 +151,7 @@ Multiple delays are supported — the workflow fires them in order. Self-targeti
 Channel adapters decouple prompt rendering from the state machine. The machine declares *what* to ask; the adapter decides *how* to deliver it (Slack, email, webhook, etc.).
 
 ```typescript
-import { createDurableMachine, consoleChannel } from "xstate-dbos";
+import { createDurableMachine, durableState, consoleChannel } from "xstate-dbos";
 
 const channel = consoleChannel();
 const durable = createDurableMachine(machine, { channels: [channel] });
@@ -191,7 +191,7 @@ Registers an XState machine as a DBOS workflow. **Must be called before `DBOS.la
 
 Options:
 
-- **`maxWaitSeconds`** — max seconds to wait for events in quiescent states (default: 86400)
+- **`maxWaitSeconds`** — max seconds to wait for events in durable states (default: 86400)
 - **`stepRetryPolicy`** — retry policy for invoke steps
 - **`channels`** — channel adapters for prompt delivery
 - **`enableTransitionStream`** — when `true`, records every state transition with timestamps for visualization (default: `false`)
@@ -214,8 +214,8 @@ Returned by `start()` and `get()`:
 
 ### Markers
 
-- **`quiescent()`** — marks a state as a durable wait point
-- **`prompt(config)`** — marks a state as a prompt (implies quiescent)
+- **`durableState()`** — marks a state as a durable wait point
+- **`prompt(config)`** — marks a state as a prompt (implies durable)
 
 ### Channel adapters
 
@@ -231,7 +231,7 @@ Returned by `start()` and `get()`:
 ### Utilities
 
 - **`validateMachineForDurability(machine)`** — validate without registering
-- **`isQuiescent(machine, snapshot)`** — check if current state is quiescent
+- **`isDurableState(machine, snapshot)`** — check if current state is a durable state
 - **`getPromptConfig(meta)`** — extract prompt config from state metadata
 - **`getPromptEvents(config)`** — extract event types from a prompt config
 - **`sendMachineEvent(client, workflowId, event)`** — send event via external client
@@ -269,7 +269,7 @@ This library is under active development. The core workflow engine is functional
 ### Implemented
 
 - Core type system and error hierarchy
-- `quiescent()` and `prompt()` state markers with four prompt types (`choice`, `confirm`, `text_input`, `form`)
+- `durableState()` and `prompt()` state markers with four prompt types (`choice`, `confirm`, `text_input`, `form`)
 - Machine validation at registration time
 - XState utility functions (invocation extraction, delay handling, transient resolution, snapshot serialization)
 - DBOS workflow loop with invoke execution, event reception, and `after` timeout handling

@@ -217,8 +217,8 @@ export interface SerializedStateNode {
   path: string;
   /** The XState state node type. */
   type: "atomic" | "compound" | "parallel" | "final" | "history";
-  /** `true` if this state is marked as quiescent (the workflow loop will pause and wait for external input). */
-  quiescent?: boolean;
+  /** `true` if this state is marked as durable (the workflow loop will pause and wait for external input). */
+  durable?: boolean;
   /** The prompt configuration attached to this state, if any. */
   prompt?: PromptConfig;
   /** Invoked actors declared on this state node. */

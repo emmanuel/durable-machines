@@ -32,10 +32,10 @@ export function serializeMachineDefinition(
       type: stateNode.type,
     };
 
-    // Quiescent marker
+    // Durable marker
     const meta: Record<string, any> | undefined = stateNode.meta;
-    if (meta?.[META_KEY]?.quiescent === true) {
-      node.quiescent = true;
+    if (meta?.[META_KEY]?.durable === true) {
+      node.durable = true;
     }
 
     // Prompt config

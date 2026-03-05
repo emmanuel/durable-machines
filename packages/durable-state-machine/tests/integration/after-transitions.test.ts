@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import { setup, assign } from "xstate";
-import { createDurableMachine, quiescent } from "../../src/index.js";
+import { createDurableMachine, durableState } from "../../src/index.js";
 
 const SYSTEM_DB_URL =
   process.env.DBOS_SYSTEM_DATABASE_URL ??
@@ -22,7 +22,7 @@ const singleDelayMachine = setup({
   context: { timedOut: false },
   states: {
     waiting: {
-      ...quiescent(),
+      ...durableState(),
       on: { RESPOND: "responded" },
       after: {
         1000: {
@@ -49,7 +49,7 @@ const raceEventMachine = setup({
   context: { winner: "none" },
   states: {
     waiting: {
-      ...quiescent(),
+      ...durableState(),
       on: {
         RESPOND: {
           target: "responded",
@@ -82,7 +82,7 @@ const multiDelayMachine = setup({
   context: { reminders: 0 },
   states: {
     waiting: {
-      ...quiescent(),
+      ...durableState(),
       on: { RESPOND: "responded" },
       after: {
         1000: {
@@ -109,7 +109,7 @@ const selfTargetMachine = setup({
   context: { ticks: 0 },
   states: {
     ticking: {
-      ...quiescent(),
+      ...durableState(),
       on: { STOP: "stopped" },
       after: {
         1000: {
@@ -139,7 +139,7 @@ const namedDelayMachine = setup({
   context: { expired: false },
   states: {
     waiting: {
-      ...quiescent(),
+      ...durableState(),
       on: { RESPOND: "responded" },
       after: {
         shortTimeout: {

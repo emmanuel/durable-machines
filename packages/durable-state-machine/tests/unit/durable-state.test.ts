@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { setup, fromPromise, createMachine, initialTransition, transition } from "xstate";
-import { quiescent, isQuiescent } from "../../src/quiescent.js";
+import { durableState, isDurableState } from "../../src/durable-state.js";
 
-describe("isQuiescent()", () => {
+describe("isDurableState()", () => {
   const machine = setup({
     types: {
       events: {} as { type: "GO" } | { type: "NEXT" },
@@ -15,7 +15,7 @@ describe("isQuiescent()", () => {
     initial: "waiting",
     states: {
       waiting: {
-        ...quiescent(),
+        ...durableState(),
         on: { GO: "working" },
       },
       working: {
@@ -25,38 +25,38 @@ describe("isQuiescent()", () => {
         },
       },
       afterWork: {
-        ...quiescent(),
+        ...durableState(),
         on: { NEXT: "done" },
       },
       done: { type: "final" },
     },
   });
 
-  it("returns true for a quiescent state", () => {
+  it("returns true for a durable state", () => {
     const [snapshot] = initialTransition(machine);
     expect(snapshot.value).toBe("waiting");
-    expect(isQuiescent(machine, snapshot)).toBe(true);
+    expect(isDurableState(machine, snapshot)).toBe(true);
   });
 
   it("returns false for an invoking state", () => {
     const [snapshot] = initialTransition(machine);
     const [next] = transition(machine, snapshot, { type: "GO" });
     expect(next.value).toBe("working");
-    expect(isQuiescent(machine, next)).toBe(false);
+    expect(isDurableState(machine, next)).toBe(false);
   });
 
-  it("returns true for a different quiescent state", () => {
-    // Build a simple machine where we can reach the second quiescent state
+  it("returns true for a different durable state", () => {
+    // Build a simple machine where we can reach the second durable state
     const m = createMachine({
-      id: "twoQ",
+      id: "twoD",
       initial: "first",
       states: {
         first: {
-          ...quiescent(),
+          ...durableState(),
           on: { NEXT: "second" },
         },
         second: {
-          ...quiescent(),
+          ...durableState(),
           on: { DONE: "end" },
         },
         end: { type: "final" },
@@ -64,10 +64,10 @@ describe("isQuiescent()", () => {
     });
 
     const [s0] = initialTransition(m);
-    expect(isQuiescent(m, s0)).toBe(true);
+    expect(isDurableState(m, s0)).toBe(true);
 
     const [s1] = transition(m, s0, { type: "NEXT" });
     expect(s1.value).toBe("second");
-    expect(isQuiescent(m, s1)).toBe(true);
+    expect(isDurableState(m, s1)).toBe(true);
   });
 });

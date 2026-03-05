@@ -3,7 +3,7 @@ import { initialTransition, transition } from "xstate";
 import type { AnyStateMachine, AnyMachineSnapshot, AnyEventObject } from "xstate";
 import type { DurableMachineOptions, ChannelAdapter, PromptConfig, TransitionRecord } from "./types.js";
 import { DurableMachineError } from "./types.js";
-import { isQuiescent } from "./quiescent.js";
+import { isDurableState } from "./durable-state.js";
 import { getPromptConfig } from "./prompt.js";
 import {
   getActiveInvocation,
@@ -53,22 +53,30 @@ export function createMachineLoop(
     let firedDelays = new Set<number>();
     let prevStateValue = snapshot.value;
 
+    // Helper: persist state + transitions at boundary points
+    async function persistSnapshot() {
+      await DBOS.setEvent("xstate.state", serializeSnapshot(snapshot));
+      if (enableTransitionStream) {
+        await DBOS.setEvent("xstate.transitions", transitions);
+      }
+    }
+
+    // Helper: record a transition in-memory (flushed at boundaries)
+    async function recordTransition(from: import("xstate").StateValue, to: import("xstate").StateValue) {
+      if (enableTransitionStream) {
+        const ts = await DBOS.now();
+        transitions.push({ from, to, ts });
+      }
+    }
+
     while (snapshot.status !== "done") {
       // 1. Resolve transient transitions (always/eventless)
       snapshot = resolveTransientTransitions(machine, snapshot);
       if (snapshot.status === "done") break;
 
-      // Reset firedDelays when state changes (e.g. transient transitions)
+      // Track transient state changes (accumulated in-memory, flushed at boundary)
       if (!stateValueEquals(snapshot.value, prevStateValue)) {
-        if (enableTransitionStream) {
-          const transientTs = await DBOS.now();
-          transitions.push({
-            from: prevStateValue,
-            to: snapshot.value,
-            ts: transientTs,
-          });
-          await DBOS.setEvent("xstate.transitions", transitions);
-        }
+        await recordTransition(prevStateValue, snapshot.value);
         firedDelays = new Set<number>();
         prevStateValue = snapshot.value;
       }
@@ -77,8 +85,17 @@ export function createMachineLoop(
       const invocation = getActiveInvocation(machine, snapshot);
 
       if (invocation) {
+        // Persist before invocation (crash recovery needs pre-invocation state)
+        await persistSnapshot();
         snapshot = await executeInvocation(machine, snapshot, invocation, actorImpls, options);
-      } else if (isQuiescent(machine, snapshot)) {
+        // Persist after invocation returns
+        if (!stateValueEquals(snapshot.value, prevStateValue)) {
+          await recordTransition(prevStateValue, snapshot.value);
+          firedDelays = new Set<number>();
+          prevStateValue = snapshot.value;
+        }
+        await persistSnapshot();
+      } else if (isDurableState(machine, snapshot)) {
         // Send prompt before waiting (if channels configured and state has a prompt)
         const promptConfig = getSnapshotPromptConfig(snapshot);
         let promptHandles: unknown[] | null = null;
@@ -101,6 +118,9 @@ export function createMachineLoop(
             { name: `prompt:${JSON.stringify(snapshot.value)}` },
           );
         }
+
+        // Persist before recv (durable wait boundary — observers read state while parked)
+        await persistSnapshot();
 
         const prevValue = snapshot.value;
         const result = await waitForEventOrTimeout(machine, snapshot, firedDelays, options);
@@ -130,31 +150,22 @@ export function createMachineLoop(
         }
       } else {
         throw new DurableMachineError(
-          `State "${JSON.stringify(snapshot.value)}" is not quiescent, ` +
+          `State "${JSON.stringify(snapshot.value)}" is not a durable state, ` +
             `has no invocation, and has no transient transition. ` +
             `This should have been caught by validation.`,
         );
       }
 
-      // Reset firedDelays when state changes after a step
+      // Track state changes after a step (accumulated in-memory)
       if (!stateValueEquals(snapshot.value, prevStateValue)) {
-        // Emit transition record (opt-in)
-        if (enableTransitionStream) {
-          const transitionTs = await DBOS.now();
-          transitions.push({
-            from: prevStateValue,
-            to: snapshot.value,
-            ts: transitionTs,
-          });
-          await DBOS.setEvent("xstate.transitions", transitions);
-        }
+        await recordTransition(prevStateValue, snapshot.value);
         firedDelays = new Set<number>();
         prevStateValue = snapshot.value;
       }
-
-      // 3. Publish updated state
-      await DBOS.setEvent("xstate.state", serializeSnapshot(snapshot));
     }
+
+    // Persist at loop exit (final state)
+    await persistSnapshot();
 
     return snapshot.context as Record<string, unknown>;
   };
@@ -215,7 +226,7 @@ interface WaitResult {
 }
 
 /**
- * Waits for an external event or timeout in a quiescent state.
+ * Waits for an external event or timeout in a durable state.
  *
  * Uses DBOS.recv() with the shortest unfired `after` delay as timeout,
  * implementing the race between external events and delayed transitions.

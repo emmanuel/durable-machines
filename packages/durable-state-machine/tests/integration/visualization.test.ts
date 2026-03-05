@@ -3,7 +3,7 @@ import { DBOS } from "@dbos-inc/dbos-sdk";
 import { setup, fromPromise, assign } from "xstate";
 import {
   createDurableMachine,
-  quiescent,
+  durableState,
   getVisualizationState,
 } from "../../src/index.js";
 
@@ -33,7 +33,7 @@ function makeVizMachine(id: string) {
     context: ({ input }) => ({ orderId: input.orderId, total: input.total }),
     states: {
       pending: {
-        ...quiescent(),
+        ...durableState(),
         on: { PAY: "processing", CANCEL: "cancelled" },
       },
       processing: {
@@ -119,7 +119,7 @@ describe("getVisualizationState()", () => {
     // Definition
     expect(viz.definition.id).toBe("vizOrder");
     expect(viz.definition.initial).toBe("pending");
-    expect(viz.definition.states["pending"].quiescent).toBe(true);
+    expect(viz.definition.states["pending"].durable).toBe(true);
 
     // Current state (workflow is done, last published state)
     expect(viz.currentState).not.toBeNull();
@@ -158,8 +158,8 @@ describe("getVisualizationState()", () => {
     expect(viz.stateDurations).toEqual([]);
   });
 
-  it("shows current state and no active sleep for a quiescent machine", async () => {
-    const id = `viz-quiescent-${Date.now()}`;
+  it("shows current state and no active sleep for a durable machine", async () => {
+    const id = `viz-durable-${Date.now()}`;
     const handle = await durable.start(id, { orderId: "v3", total: 20 });
 
     await waitForState(handle, "pending");

@@ -3,13 +3,13 @@ import type { PromptConfig } from "./types.js";
 const META_KEY = "xstate-dbos";
 
 /**
- * Marks a quiescent state with a prompt — metadata describing what to
+ * Marks a durable state with a prompt — metadata describing what to
  * show the user while the machine waits for input.
  *
- * Spread into a state definition alongside `quiescent()`:
+ * Spread into a state definition alongside `durableState()`:
  * ```ts
  * waitingForApproval: {
- *   ...quiescent(),
+ *   ...durableState(),
  *   ...prompt({ type: "choice", text: "Approve?", options: [...] }),
  *   on: { APPROVE: "approved", REJECT: "rejected" },
  * }
@@ -17,7 +17,7 @@ const META_KEY = "xstate-dbos";
  */
 export function prompt(config: PromptConfig) {
   return {
-    meta: { [META_KEY]: { quiescent: true, prompt: config } },
+    meta: { [META_KEY]: { durable: true, prompt: config } },
   } as const;
 }
 

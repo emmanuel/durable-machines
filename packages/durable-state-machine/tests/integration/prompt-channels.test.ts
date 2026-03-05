@@ -221,7 +221,7 @@ async function waitForState(
 // ─── Tests ─────────────────────────────────────────────────────────────────
 
 describe("prompt & channel adapters", () => {
-  it("sends a prompt to the channel when entering a quiescent state", async () => {
+  it("sends a prompt to the channel when entering a durable state", async () => {
     const id = `prompt-send-${Date.now()}`;
     const handle = await durableApproval.start(id, {});
 
@@ -286,7 +286,7 @@ describe("prompt & channel adapters", () => {
 
     expect(result).toMatchObject({ step: 3 });
 
-    // Should have at least 2 prompts (one per quiescent state)
+    // Should have at least 2 prompts (one per durable state)
     const myPrompts = multiStepChannel.prompts.filter((p) => p.workflowId === id);
     expect(myPrompts.length).toBeGreaterThanOrEqual(2);
   });

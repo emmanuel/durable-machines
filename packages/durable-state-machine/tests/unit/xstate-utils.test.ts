@@ -6,7 +6,7 @@ import {
   initialTransition,
   transition,
 } from "xstate";
-import { quiescent } from "../../src/quiescent.js";
+import { durableState } from "../../src/durable-state.js";
 import {
   getActiveInvocation,
   getSortedAfterDelays,
@@ -49,7 +49,7 @@ const orderMachine = setup({
   }),
   states: {
     pending: {
-      ...quiescent(),
+      ...durableState(),
       on: { PAY: "processing", CANCEL: "cancelled" },
     },
     processing: {
@@ -66,7 +66,7 @@ const orderMachine = setup({
       },
     },
     paid: {
-      ...quiescent(),
+      ...durableState(),
       on: { SHIP: "shipping" },
       after: { 86400000: "escalated" },
     },
@@ -95,7 +95,7 @@ const multiDelayMachine = setup({
   initial: "waiting",
   states: {
     waiting: {
-      ...quiescent(),
+      ...durableState(),
       on: { RESPOND: "done" },
       after: {
         5000: { target: "waiting", actions: [] }, // 5s reminder, stay
@@ -107,7 +107,7 @@ const multiDelayMachine = setup({
   },
 });
 
-// Machine with a quiescent state that has always transitions (guard-gated)
+// Machine with a durable state that has always transitions (guard-gated)
 const conditionalResolveMachine = setup({
   types: {
     context: {} as { autoApprove: boolean },
@@ -123,7 +123,7 @@ const conditionalResolveMachine = setup({
   context: ({ input }) => ({ autoApprove: input.autoApprove }),
   states: {
     review: {
-      ...quiescent(),
+      ...durableState(),
       always: [{ guard: "shouldAutoApprove", target: "approved" }],
       on: { APPROVE: "approved" },
     },
@@ -141,7 +141,7 @@ const reentryDelayMachine = setup({
   initial: "waiting",
   states: {
     waiting: {
-      ...quiescent(),
+      ...durableState(),
       on: { RESPOND: "done" },
       after: {
         5000: { target: "waiting", reenter: true },
@@ -167,7 +167,7 @@ const namedDelayMachine = setup({
   initial: "waiting",
   states: {
     waiting: {
-      ...quiescent(),
+      ...durableState(),
       on: { RESPOND: "done" },
       after: {
         shortTimeout: "reminded",
@@ -183,7 +183,7 @@ const namedDelayMachine = setup({
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
 describe("getActiveInvocation()", () => {
-  it("returns null for a quiescent state", () => {
+  it("returns null for a durable state", () => {
     const [snapshot] = initialTransition(orderMachine, {
       orderId: "1",
       total: 50,

@@ -1,5 +1,5 @@
 import { setup } from "xstate";
-import { quiescent, prompt } from "@xstate-dbos/durable-state-machine";
+import { durableState, prompt } from "@xstate-dbos/durable-state-machine";
 
 export const approvalMachine = setup({
   types: {
@@ -12,7 +12,7 @@ export const approvalMachine = setup({
   context: ({ input }) => input,
   states: {
     pending_review: {
-      ...quiescent(),
+      ...durableState(),
       ...prompt({
         type: "choice",
         text: ({ context }) =>

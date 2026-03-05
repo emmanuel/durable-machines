@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import { setup, fromPromise, assign } from "xstate";
-import { createDurableMachine, quiescent } from "../../src/index.js";
+import { createDurableMachine, durableState } from "../../src/index.js";
 
 const SYSTEM_DB_URL =
   process.env.DBOS_SYSTEM_DATABASE_URL ??
@@ -38,7 +38,7 @@ const orderMachine = setup({
   context: ({ input }) => ({ orderId: input.orderId, total: input.total }),
   states: {
     pending: {
-      ...quiescent(),
+      ...durableState(),
       on: { PAY: "processing", CANCEL: "cancelled" },
     },
     processing: {
@@ -55,7 +55,7 @@ const orderMachine = setup({
       },
     },
     paid: {
-      ...quiescent(),
+      ...durableState(),
       on: { SHIP: "shipping" },
     },
     shipping: {
@@ -121,7 +121,7 @@ async function waitForState(
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
 describe("lifecycle", () => {
-  it("starts a machine and reaches initial quiescent state", async () => {
+  it("starts a machine and reaches initial durable state", async () => {
     const id = `lifecycle-init-${Date.now()}`;
     const handle = await durable.start(id, { orderId: "o1", total: 50 });
 
@@ -133,7 +133,7 @@ describe("lifecycle", () => {
     expect(state!.context).toMatchObject({ orderId: "o1", total: 50 });
   });
 
-  it("sends an event and transitions through invoke to next quiescent state", async () => {
+  it("sends an event and transitions through invoke to next durable state", async () => {
     const id = `lifecycle-pay-${Date.now()}`;
     const handle = await durable.start(id, { orderId: "o2", total: 99.99 });
 

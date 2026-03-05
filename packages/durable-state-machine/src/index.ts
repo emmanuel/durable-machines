@@ -3,7 +3,7 @@ export { createDurableMachine } from "./create-durable-machine.js";
 export type { DurableMachine } from "./create-durable-machine.js";
 
 // Core markers
-export { quiescent, isQuiescent } from "./quiescent.js";
+export { durableState, isDurableState } from "./durable-state.js";
 export { prompt, getPromptConfig, getPromptEvents } from "./prompt.js";
 
 // Validation

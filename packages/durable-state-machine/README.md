@@ -15,7 +15,7 @@ Requires Node >= 24, XState >= 5, and DBOS SDK >= 4.
 ```typescript
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import { setup, fromPromise, assign } from "xstate";
-import { createDurableMachine, quiescent } from "@xstate-dbos/durable-state-machine";
+import { createDurableMachine, durableState } from "@xstate-dbos/durable-state-machine";
 
 const orderMachine = setup({
   types: {
@@ -34,7 +34,7 @@ const orderMachine = setup({
   context: ({ input }) => ({ orderId: input.orderId, total: input.total }),
   states: {
     pending: {
-      ...quiescent(),
+      ...durableState(),
       on: { PAY: "processing", CANCEL: "cancelled" },
     },
     processing: {
@@ -73,19 +73,19 @@ Every non-final atomic state must be exactly one of:
 
 | Kind | Marker | DBOS primitive | Purpose |
 |------|--------|----------------|---------|
-| Quiescent | `quiescent()` | `DBOS.recv()` | Wait for external events |
+| Durable | `durableState()` | `DBOS.recv()` | Wait for external events |
 | Invoking | `invoke: { src }` | `DBOS.runStep()` | Run a side effect exactly once |
 | Transient | `always: [...]` | `machine.transition()` | Route immediately via guards |
 
 This is validated at registration time — `createDurableMachine()` throws a `DurableMachineValidationError` if a state doesn't fit one of these categories.
 
-### Quiescent states
+### Durable states
 
-Spread `quiescent()` into any state that should durably wait for external input:
+Spread `durableState()` into any state that should durably wait for external input:
 
 ```typescript
 pending: {
-  ...quiescent(),
+  ...durableState(),
   on: { PAY: "processing", CANCEL: "cancelled" },
 },
 ```
@@ -94,7 +94,7 @@ The workflow loop calls `DBOS.recv()` and waits. The process can shut down, rest
 
 ### Prompts
 
-Prompts are metadata on quiescent states describing what to present to a human. The machine declares *what* to ask; channel adapters decide *how* to deliver it:
+Prompts are metadata on durable states describing what to present to a human. The machine declares *what* to ask; channel adapters decide *how* to deliver it:
 
 ```typescript
 awaitingApproval: {
@@ -118,7 +118,7 @@ XState `after` delays work as durable timeouts. The shortest delay becomes the `
 
 ```typescript
 waitingForResponse: {
-  ...quiescent(),
+  ...durableState(),
   on: { RESPOND: "processing" },
   after: { 86400000: "escalated" }, // 24 hours
 },
@@ -181,7 +181,7 @@ Options:
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `maxWaitSeconds` | `number` | `300` | Max seconds to wait for events in quiescent states |
+| `maxWaitSeconds` | `number` | `300` | Max seconds to wait for events in durable states |
 | `stepRetryPolicy` | `StepRetryPolicy` | `{ maxAttempts: 3 }` | Retry policy for invoke steps |
 | `channels` | `ChannelAdapter[]` | `[]` | Channel adapters for prompt delivery |
 | `enableTransitionStream` | `boolean` | `false` | Record every transition with timestamps for visualization |
@@ -204,9 +204,9 @@ Returned by `start()` and `get()`:
 
 ### Markers
 
-- `quiescent()` — marks a state as a durable wait point
-- `prompt(config)` — marks a state as a prompt (implies quiescent)
-- `isQuiescent(machine, snapshot)` — check if the current state is quiescent
+- `durableState()` — marks a state as a durable wait point
+- `prompt(config)` — marks a state as a prompt (implies durable)
+- `isDurableState(machine, snapshot)` — check if the current state is a durable state
 - `getPromptConfig(meta)` — extract prompt config from state metadata
 - `getPromptEvents(config)` — extract event types from a prompt config
 

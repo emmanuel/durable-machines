@@ -1,19 +1,19 @@
 import { describe, it, expect } from "vitest";
 import { setup, fromPromise, createMachine } from "xstate";
-import { quiescent } from "../../src/quiescent.js";
+import { durableState } from "../../src/durable-state.js";
 import { prompt } from "../../src/prompt.js";
 import { validateMachineForDurability } from "../../src/validate.js";
 import { DurableMachineValidationError } from "../../src/types.js";
 
 describe("validateMachineForDurability()", () => {
   describe("valid machines", () => {
-    it("passes for a machine with quiescent and final states", () => {
+    it("passes for a machine with durable and final states", () => {
       const machine = createMachine({
         id: "simple",
         initial: "waiting",
         states: {
           waiting: {
-            ...quiescent(),
+            ...durableState(),
             on: { GO: "done" },
           },
           done: { type: "final" },
@@ -61,11 +61,11 @@ describe("validateMachineForDurability()", () => {
             ],
           },
           ready: {
-            ...quiescent(),
+            ...durableState(),
             on: { DONE: "finished" },
           },
           notReady: {
-            ...quiescent(),
+            ...durableState(),
             on: { RETRY: "checking" },
           },
           finished: { type: "final" },
@@ -75,7 +75,7 @@ describe("validateMachineForDurability()", () => {
       expect(() => validateMachineForDurability(machine)).not.toThrow();
     });
 
-    it("passes for a machine with prompt (which implies quiescent) + matching on handlers", () => {
+    it("passes for a machine with prompt (which implies durable) + matching on handlers", () => {
       const machine = createMachine({
         id: "prompted",
         initial: "waiting",
@@ -99,17 +99,17 @@ describe("validateMachineForDurability()", () => {
         },
       });
 
-      // prompt() includes quiescent: true in its meta, so this should pass
+      // prompt() includes durable: true in its meta, so this should pass
       expect(() => validateMachineForDurability(machine)).not.toThrow();
     });
 
-    it("passes when both quiescent() and prompt() are spread (prompt wins, includes quiescent)", () => {
+    it("passes when both durableState() and prompt() are spread (prompt wins, includes durable)", () => {
       const machine = createMachine({
         id: "both",
         initial: "waiting",
         states: {
           waiting: {
-            ...quiescent(),
+            ...durableState(),
             ...prompt({
               type: "confirm",
               text: "Continue?",
@@ -126,7 +126,7 @@ describe("validateMachineForDurability()", () => {
       expect(() => validateMachineForDurability(machine)).not.toThrow();
     });
 
-    it("passes for a mixed machine with quiescent, invoke, and always states", () => {
+    it("passes for a mixed machine with durable, invoke, and always states", () => {
       const machine = setup({
         actors: {
           process: fromPromise(async () => "done"),
@@ -139,7 +139,7 @@ describe("validateMachineForDurability()", () => {
         initial: "pending",
         states: {
           pending: {
-            ...quiescent(),
+            ...durableState(),
             on: { START: "validating" },
           },
           validating: {
@@ -172,7 +172,7 @@ describe("validateMachineForDurability()", () => {
         initial: "waiting",
         states: {
           waiting: {
-            ...quiescent(),
+            ...durableState(),
             on: { GO: "done" },
           },
           done: { type: "final" },
@@ -190,7 +190,7 @@ describe("validateMachineForDurability()", () => {
       }
     });
 
-    it("rejects a state with no invoke, no always, and no quiescent marker", () => {
+    it("rejects a state with no invoke, no always, and no durable marker", () => {
       const machine = createMachine({
         id: "bad",
         initial: "stuck",
@@ -211,11 +211,11 @@ describe("validateMachineForDurability()", () => {
         const err = e as DurableMachineValidationError;
         expect(err.errors).toHaveLength(1);
         expect(err.errors[0]).toContain("stuck");
-        expect(err.errors[0]).toContain("not quiescent");
+        expect(err.errors[0]).toContain("not durableState");
       }
     });
 
-    it("rejects a state with both invoke and quiescent", () => {
+    it("rejects a state with both invoke and durableState", () => {
       const machine = setup({
         actors: {
           doWork: fromPromise(async () => "result"),
@@ -225,7 +225,7 @@ describe("validateMachineForDurability()", () => {
         initial: "broken",
         states: {
           broken: {
-            ...quiescent(),
+            ...durableState(),
             invoke: {
               src: "doWork",
               onDone: "done",
@@ -242,11 +242,11 @@ describe("validateMachineForDurability()", () => {
         validateMachineForDurability(machine);
       } catch (e) {
         const err = e as DurableMachineValidationError;
-        expect(err.errors.some((e) => e.includes("both invoke and quiescent"))).toBe(true);
+        expect(err.errors.some((e) => e.includes("both invoke and durableState"))).toBe(true);
       }
     });
 
-    it("rejects a prompt on an invoke state (prompt implies quiescent, conflicts with invoke)", () => {
+    it("rejects a prompt on an invoke state (prompt implies durable, conflicts with invoke)", () => {
       const machine = setup({
         actors: {
           doWork: fromPromise(async () => "result"),
@@ -270,7 +270,7 @@ describe("validateMachineForDurability()", () => {
         },
       });
 
-      // prompt() includes quiescent: true, so this triggers "both invoke and quiescent"
+      // prompt() includes durable: true, so this triggers "both invoke and durableState"
       expect(() => validateMachineForDurability(machine)).toThrow(
         DurableMachineValidationError,
       );
@@ -278,7 +278,7 @@ describe("validateMachineForDurability()", () => {
         validateMachineForDurability(machine);
       } catch (e) {
         const err = e as DurableMachineValidationError;
-        expect(err.errors.some((e) => e.includes("both invoke and quiescent"))).toBe(true);
+        expect(err.errors.some((e) => e.includes("both invoke and durableState"))).toBe(true);
       }
     });
 
@@ -288,7 +288,7 @@ describe("validateMachineForDurability()", () => {
         initial: "waiting",
         states: {
           waiting: {
-            ...quiescent(),
+            ...durableState(),
             ...prompt({
               type: "choice",
               text: "Choose",
@@ -323,7 +323,7 @@ describe("validateMachineForDurability()", () => {
         initial: "a",
         states: {
           a: {
-            // No quiescent, no invoke, no always
+            // No durable, no invoke, no always
             on: { GO: "b" },
           },
           b: {

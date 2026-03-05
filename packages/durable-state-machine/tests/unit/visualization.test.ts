@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { setup, fromPromise, createMachine } from "xstate";
-import { quiescent } from "../../src/quiescent.js";
+import { durableState } from "../../src/durable-state.js";
 import { prompt } from "../../src/prompt.js";
 import {
   serializeMachineDefinition,
@@ -16,7 +16,7 @@ const simpleMachine = createMachine({
   initial: "waiting",
   states: {
     waiting: {
-      ...quiescent(),
+      ...durableState(),
       on: { GO: "done" },
     },
     done: { type: "final" },
@@ -42,7 +42,7 @@ const orderMachine = setup({
   context: ({ input }) => ({ orderId: input.orderId, total: input.total }),
   states: {
     pending: {
-      ...quiescent(),
+      ...durableState(),
       on: { PAY: "processing", CANCEL: "cancelled" },
     },
     processing: {
@@ -54,7 +54,7 @@ const orderMachine = setup({
       },
     },
     paid: {
-      ...quiescent(),
+      ...durableState(),
       on: { SHIP: "shipped" },
       after: { 86400000: "escalated" },
     },
@@ -93,7 +93,7 @@ const compoundMachine = createMachine({
       initial: "childA",
       states: {
         childA: {
-          ...quiescent(),
+          ...durableState(),
           on: { NEXT: "childB" },
         },
         childB: { type: "final" },
@@ -119,11 +119,11 @@ const alwaysMachine = setup({
       ],
     },
     ready: {
-      ...quiescent(),
+      ...durableState(),
       on: { DONE: "finished" },
     },
     notReady: {
-      ...quiescent(),
+      ...durableState(),
       on: { RETRY: "checking" },
     },
     finished: { type: "final" },
@@ -139,7 +139,7 @@ const multiDelayMachine = setup({
   initial: "waiting",
   states: {
     waiting: {
-      ...quiescent(),
+      ...durableState(),
       on: { RESPOND: "done" },
       after: {
         5000: { target: "waiting", reenter: true },
@@ -159,7 +159,7 @@ const parallelMachine = createMachine({
       initial: "idle",
       states: {
         idle: {
-          ...quiescent(),
+          ...durableState(),
           on: { A: "active" },
         },
         active: { type: "final" },
@@ -169,7 +169,7 @@ const parallelMachine = createMachine({
       initial: "idle",
       states: {
         idle: {
-          ...quiescent(),
+          ...durableState(),
           on: { B: "active" },
         },
         active: { type: "final" },
@@ -190,18 +190,18 @@ describe("serializeMachineDefinition()", () => {
     expect(def.states["done"].type).toBe("final");
   });
 
-  it("marks quiescent states", () => {
+  it("marks durable states", () => {
     const def = serializeMachineDefinition(orderMachine);
-    expect(def.states["pending"].quiescent).toBe(true);
-    expect(def.states["paid"].quiescent).toBe(true);
-    expect(def.states["processing"].quiescent).toBeUndefined();
-    expect(def.states["cancelled"].quiescent).toBeUndefined();
+    expect(def.states["pending"].durable).toBe(true);
+    expect(def.states["paid"].durable).toBe(true);
+    expect(def.states["processing"].durable).toBeUndefined();
+    expect(def.states["cancelled"].durable).toBeUndefined();
   });
 
   it("includes prompt config", () => {
     const def = serializeMachineDefinition(promptMachine);
     const waiting = def.states["waiting"];
-    expect(waiting.quiescent).toBe(true);
+    expect(waiting.durable).toBe(true);
     expect(waiting.prompt).toBeDefined();
     expect(waiting.prompt!.type).toBe("choice");
     expect((waiting.prompt as any).options).toHaveLength(2);

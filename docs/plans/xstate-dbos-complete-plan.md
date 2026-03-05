@@ -11,7 +11,7 @@
 2. [Design Principles](#2-design-principles)
 3. [Key Decisions](#3-key-decisions)
 4. [Architecture](#4-architecture)
-5. [The `quiescent()` Marker](#5-the-quiescent-marker)
+5. [The `durableState()` Marker](#5-the-durablestate-marker)
 6. [The Workflow Loop](#6-the-workflow-loop)
 7. [XState `after` Transition Mapping](#7-xstate-after-transition-mapping)
 8. [Public API](#8-public-api)
@@ -39,15 +39,15 @@ The two are complementary at a deep level: XState's clean separation of pure log
 
 ```ts
 import { setup, assign, fromPromise } from "xstate";
-import { createDurableMachine, quiescent } from "xstate-dbos";
+import { createDurableMachine, durableState } from "xstate-dbos";
 
 const orderMachine = setup({ /* normal XState setup */ }).createMachine({
   id: "order",
   initial: "pending",
   states: {
-    pending:    { ...quiescent(), on: { PAY: "processing" } },
+    pending:    { ...durableState(), on: { PAY: "processing" } },
     processing: { invoke: { src: "processPayment", onDone: "paid" } },
-    paid:       { ...quiescent(), on: { SHIP: "shipping" }, after: { 86400000: "escalated" } },
+    paid:       { ...durableState(), on: { SHIP: "shipping" }, after: { 86400000: "escalated" } },
     shipping:   { invoke: { src: "shipOrder", onDone: "delivered" } },
     delivered:  { type: "final" },
     escalated:  { type: "final" },
@@ -69,7 +69,7 @@ The `paid` state has a 24-hour durable timeout. If the process crashes at hour 1
 
 2. **XState in pure functional mode.** We use `machine.getInitialSnapshot()` and `machine.transition(snapshot, event)`, never `createActor`. The machine definition is a pure data structure; DBOS provides the execution semantics.
 
-3. **User-marked quiescent states.** The developer explicitly annotates which states are durable wait points. This is both a control mechanism ("here is where you may park") and documentation ("these are my system's durable boundaries").
+3. **User-marked durable states.** The developer explicitly annotates which states are durable wait points. This is both a control mechanism ("here is where you may park") and documentation ("these are my system's durable boundaries").
 
 4. **Zero custom persistence.** No custom snapshot table, no custom audit log. DBOS's native step replay handles recovery. `DBOS.listWorkflowSteps()` provides inspectability. `DBOS.setEvent()` publishes current state for external consumers.
 
@@ -91,7 +91,7 @@ These were established across multiple design sessions:
 | XState execution mode | Pure functional (`machine.transition`) | Deterministic replay for DBOS recovery |
 | State persistence | None — DBOS step replay reconstructs state | Simpler, less code, leverages DBOS |
 | Audit log | `DBOS.listWorkflowSteps()` | No custom table needed |
-| Quiescent detection | User-marked via `quiescent()` | Explicit, documentable, avoids fragile auto-detection |
+| Durable state detection | User-marked via `durableState()` | Explicit, documentable, avoids fragile auto-detection |
 | Composability (v0.1) | Flat only (single machine per workflow) | Nested durable actors deferred to v0.2 |
 | Testing | Pure function tests + DBOS integration tests | No custom InMemoryBackend needed |
 | Scaling | KEDA with Postgres triggers | Natural fit — scaling signal is pending work in Postgres |
@@ -125,9 +125,9 @@ The original design (session 1) used a snapshot-primary architecture with 7 modu
 │                     User Code                           │
 │  const machine = setup({...}).createMachine({           │
 │    states: {                                            │
-│      pending:    { ...quiescent(), ...prompt({...}) }   │
+│      pending:    { ...durableState(), ...prompt({...}) }   │
 │      processing: { invoke: { src: "processPayment" } }  │
-│      paid:       { ...quiescent(), after: { ... } }     │
+│      paid:       { ...durableState(), after: { ... } }     │
 │    }                                                    │
 │  })                                                     │
 │  const durable = createDurableMachine(machine, {        │
@@ -149,7 +149,7 @@ The original design (session 1) used a snapshot-primary architecture with 7 modu
 │  while (status !== "done"):                             │
 │    resolve transient transitions (always/eventless)     │
 │    if invocation → DBOS.runStep(executor)               │
-│    elif quiescent:                                      │
+│    elif durableState:                                      │
 │      if prompt → DBOS.runStep(channel.sendPrompt)       │
 │      DBOS.recv(topic, timeout) ← waits for event       │
 │      if prompt → DBOS.runStep(channel.resolvePrompt)    │
@@ -214,22 +214,22 @@ The key insight: the machine loop is deterministic because all non-determinism i
 
 ---
 
-## 5. The `quiescent()` Marker
+## 5. The `durableState()` Marker
 
-A quiescent state is one where the machine has no immediate work to do and is waiting for external input — an event, a signal, or a timeout.
+A durable state is one where the machine has no immediate work to do and is waiting for external input — an event, a signal, or a timeout.
 
 ### Implementation
 
 ```ts
-// src/quiescent.ts
+// src/durable-state.ts
 
-export function quiescent() {
-  return { meta: { "xstate-dbos": { quiescent: true } } } as const;
+export function durableState() {
+  return { meta: { "xstate-dbos": { durable: true } } } as const;
 }
 
-export function isQuiescent(machine: AnyStateMachine, snapshot: AnyMachineSnapshot): boolean {
+export function isDurableState(machine: AnyStateMachine, snapshot: AnyMachineSnapshot): boolean {
   const stateNodes = machine.getStateNodeByPath(snapshot.value);
-  return stateNodes.some(node => node.meta?.["xstate-dbos"]?.quiescent === true);
+  return stateNodes.some(node => node.meta?.["xstate-dbos"]?.durable === true);
 }
 ```
 
@@ -241,13 +241,13 @@ Every non-final state must be exactly one of:
 
 | Classification | How Detected | Loop Behavior |
 |----------------|--------------|---------------|
-| **Quiescent** | `quiescent()` marker in meta | `DBOS.recv()` — wait for event or timeout |
+| **Durable** | `durableState()` marker in meta | `DBOS.recv()` — wait for event or timeout |
 | **Invoking** | Has `invoke` in state config | `DBOS.runStep()` — execute the service |
 | **Transient** | Has `always` transition | `machine.transition()` — resolve immediately |
 
 If a state is none of these, `createDurableMachine` throws a validation error at registration time. Fail fast, not at runtime.
 
-Quiescent states can optionally carry a `prompt()` — metadata describing what to show the user while the machine waits (see [§15 Prompts & Channels](#15-prompts--channels)). The prompt is rendered by a channel adapter (Slack, email, etc.) when the loop enters the quiescent state, and resolved when the loop exits it.
+Durable states can optionally carry a `prompt()` — metadata describing what to show the user while the machine waits (see [§15 Prompts & Channels](#15-prompts--channels)). The prompt is rendered by a channel adapter (Slack, email, etc.) when the loop enters the durable state, and resolved when the loop exits it.
 
 ### Usage Example
 
@@ -273,7 +273,7 @@ const orderMachine = setup({
   context: ({ input }) => ({ orderId: input.orderId, total: input.total }),
   states: {
     pending: {
-      ...quiescent(),          // QUIESCENT: waits for PAY or CANCEL
+      ...durableState(),          // QUIESCENT: waits for PAY or CANCEL
       on: { PAY: "processing", CANCEL: "cancelled" },
     },
     processing: {               // INVOKING: runs processPayment
@@ -288,7 +288,7 @@ const orderMachine = setup({
       },
     },
     paid: {
-      ...quiescent(),          // QUIESCENT: waits for SHIP, with 24h timeout
+      ...durableState(),          // QUIESCENT: waits for SHIP, with 24h timeout
       on: { SHIP: "shipping" },
       after: { 86400000: "escalated" },
     },
@@ -339,11 +339,11 @@ async function createMachineLoop(machine: AnyStateMachine, options: DurableMachi
 
       if (invocation) {
         snapshot = await executeInvocation(machine, snapshot, invocation, actorImpls);
-      } else if (isQuiescent(machine, snapshot)) {
+      } else if (isDurableState(machine, snapshot)) {
         snapshot = await waitForEventOrTimeout(machine, snapshot, options);
       } else {
         throw new DurableMachineError(
-          `State "${JSON.stringify(snapshot.value)}" is not quiescent, ` +
+          `State "${JSON.stringify(snapshot.value)}" is not a durable state, ` +
           `has no invocation, and has no transient transition.`
         );
       }
@@ -386,7 +386,7 @@ async function executeInvocation(
 }
 ```
 
-### `waitForEventOrTimeout` — quiescent state handling
+### `waitForEventOrTimeout` — durable state handling
 
 ```ts
 async function waitForEventOrTimeout(
@@ -433,7 +433,7 @@ XState's `after` transitions are race conditions: the delay competes with regula
 ### Simple case — one delay, no competing events
 
 ```ts
-// states: { idle: { ...quiescent(), after: { 5000: "timeout" } } }
+// states: { idle: { ...durableState(), after: { 5000: "timeout" } } }
 const event = await DBOS.recv("xstate.event", 5);
 // null → after fires, transition to "timeout"
 ```
@@ -443,7 +443,7 @@ const event = await DBOS.recv("xstate.event", 5);
 ```ts
 // states: {
 //   paid: {
-//     ...quiescent(),
+//     ...durableState(),
 //     on: { SHIP: "shipping" },
 //     after: { 86400000: "escalated" }
 //   }
@@ -462,7 +462,7 @@ This is a 24-hour durable wait. Process crash at hour 12, restart at hour 13 →
 
 ```ts
 paid: {
-  ...quiescent(),
+  ...durableState(),
   after: {
     5000:  { actions: "sendReminder" },  // 5s: reminder, stay in "paid"
     30000: "timeout",                     // 30s: hard transition
@@ -1053,7 +1053,7 @@ Without prompts, every human interaction point requires two states:
 ```ts
 // Verbose and Slack-specific
 sendingApprovalRequest: { invoke: { src: "sendSlackMessage", onDone: "waiting" } },
-waitingForApproval: { ...quiescent(), on: { APPROVE: "approved", REJECT: "rejected" } },
+waitingForApproval: { ...durableState(), on: { APPROVE: "approved", REJECT: "rejected" } },
 ```
 
 The Slack API calls are buried in `fromPromise` actors. The machine is coupled to a specific channel. Every interaction point doubles the state count.
@@ -1062,13 +1062,13 @@ The Slack API calls are buried in `fromPromise` actors. The machine is coupled t
 
 The machine declares *what* it needs from the human. A channel adapter decides *how* to render it.
 
-**The `prompt()` helper** — sets XState metadata, just like `quiescent()`:
+**The `prompt()` helper** — sets XState metadata, just like `durableState()`:
 
 ```ts
-import { prompt, quiescent } from "xstate-dbos";
+import { prompt, durableState } from "xstate-dbos";
 
 waitingForApproval: {
-  ...quiescent(),
+  ...durableState(),
   ...prompt({
     type: "choice",
     text: ({ context }) =>
@@ -1139,10 +1139,10 @@ interface ChannelAdapter {
 
 ### Integration with the Workflow Loop
 
-The channel adapter runs inside the loop as a DBOS step. When the machine enters a quiescent state with a prompt, the loop sends the prompt before entering `recv`. When the machine leaves the state, the loop resolves the prompt:
+The channel adapter runs inside the loop as a DBOS step. When the machine enters a durable state with a prompt, the loop sends the prompt before entering `recv`. When the machine leaves the state, the loop resolves the prompt:
 
 ```ts
-// In the quiescent branch of the loop:
+// In the durable state branch of the loop:
 const promptConfig = getPromptConfig(machine, snapshot);
 
 if (promptConfig && channels.length > 0) {
@@ -1189,7 +1189,7 @@ The prompt is sent to all configured channels. First response from any channel w
 `validateMachineForDurability` checks prompt/event consistency:
 
 - Every event in the prompt's options must have a matching `on` handler
-- States with prompts must be marked `quiescent()`
+- States with prompts must be marked `durableState()`
 - Mismatches fail at registration time, not when a user clicks a dead button
 
 ### Full Example
@@ -1200,7 +1200,7 @@ const orderMachine = setup({ /* actors */ }).createMachine({
   initial: "pendingApproval",
   states: {
     pendingApproval: {
-      ...quiescent(),
+      ...durableState(),
       ...prompt({
         type: "choice",
         text: ({ context }) =>
@@ -1221,7 +1221,7 @@ const orderMachine = setup({ /* actors */ }).createMachine({
     processing: { invoke: { src: "processPayment", onDone: "paid", onError: "paymentFailed" } },
 
     paid: {
-      ...quiescent(),
+      ...durableState(),
       ...prompt({
         type: "confirm",
         text: ({ context }) => `Order #${context.orderId} paid. Ready to ship?`,
@@ -1307,14 +1307,14 @@ All XState utilities tested against real machine definitions in pure functional 
 
 - `getActiveInvocation` returns the correct actor for an invoking state
 - `getSortedAfterDelays` returns delays in ascending order
-- `resolveTransientTransitions` follows `always` chains to quiescent/invoking states
+- `resolveTransientTransitions` follows `always` chains to durable/invoking states
 - `buildAfterEvent` produces events that `machine.transition` accepts
-- `isQuiescent` correctly identifies marked states
+- `isDurableState` correctly identifies marked states
 
 ### Validation Tests
 
 - Machines with unmarked non-final states → validation error
-- States with both invoke and `quiescent()` → validation error
+- States with both invoke and `durableState()` → validation error
 - Missing actor implementations → validation error
 - Valid machines pass cleanly
 
@@ -1333,14 +1333,14 @@ function validateMachineForDurability(machine: AnyStateMachine): void {
 
     const hasInvoke = stateNode.invoke?.length > 0;
     const hasAlways = stateNode.always?.length > 0;
-    const markedQuiescent = stateNode.meta?.["xstate-dbos"]?.quiescent === true;
+    const markedDurable = stateNode.meta?.["xstate-dbos"]?.durable === true;
     const promptConfig = stateNode.meta?.["xstate-dbos"]?.prompt;
 
-    if (!hasInvoke && !hasAlways && !markedQuiescent) {
-      errors.push(`State "${path}" has no invoke, no always, and is not quiescent().`);
+    if (!hasInvoke && !hasAlways && !markedDurable) {
+      errors.push(`State "${path}" has no invoke, no always, and is not durableState().`);
     }
-    if (hasInvoke && markedQuiescent) {
-      errors.push(`State "${path}" has both invoke and quiescent(). Remove quiescent().`);
+    if (hasInvoke && markedDurable) {
+      errors.push(`State "${path}" has both invoke and durableState(). Remove durableState().`);
     }
     if (hasInvoke) {
       for (const inv of stateNode.invoke) {
@@ -1352,8 +1352,8 @@ function validateMachineForDurability(machine: AnyStateMachine): void {
 
     // Prompt validation
     if (promptConfig) {
-      if (!markedQuiescent) {
-        errors.push(`State "${path}" has a prompt but is not quiescent(). Prompts only work on wait states.`);
+      if (!markedDurable) {
+        errors.push(`State "${path}" has a prompt but is not durableState(). Prompts only work on wait states.`);
       }
       const handledEvents = new Set(Object.keys(stateNode.on ?? {}));
       for (const eventType of getPromptEvents(promptConfig)) {
@@ -1380,7 +1380,7 @@ xstate-dbos/
 │   ├── index.ts                    # public exports
 │   ├── create-durable-machine.ts   # createDurableMachine() entry point
 │   ├── machine-loop.ts             # the DBOS workflow function + helpers
-│   ├── quiescent.ts                # quiescent() marker + isQuiescent()
+│   ├── durable-state.ts             # durableState() marker + isDurableState()
 │   ├── prompt.ts                   # prompt() helper + PromptConfig types
 │   ├── validate.ts                 # validateMachineForDurability()
 │   ├── xstate-utils.ts             # getActiveInvocation, getSortedAfterDelays,
@@ -1418,7 +1418,7 @@ xstate-dbos/
 │   ├── unit/
 │   │   ├── machine-logic.test.ts   # pure XState transition tests
 │   │   ├── validate.test.ts        # validation error cases (incl. prompt/event mismatch)
-│   │   ├── quiescent.test.ts       # marker detection
+│   │   ├── durable-state.test.ts    # marker detection
 │   │   ├── prompt.test.ts          # prompt metadata extraction
 │   │   └── xstate-utils.test.ts    # utility function tests
 │   └── integration/
@@ -1434,7 +1434,7 @@ xstate-dbos/
 
 | Component | Lines |
 |-----------|-------|
-| Core library (loop, quiescent, validate, utils) | ~300 |
+| Core library (loop, durable-state, validate, utils) | ~300 |
 | Public API (createDurableMachine, handle) | ~100 |
 | Prompt helper + types | ~80 |
 | Channel adapters (Slack, email, console) | ~250 |
@@ -1450,16 +1450,16 @@ xstate-dbos/
 
 ## 19. Implementation Phases
 
-### Phase 1: Core Types + Quiescent Marker + Validation
+### Phase 1: Core Types + Durable State Marker + Validation
 *Estimated: 0.5 days*
 
-- `quiescent()` function and `isQuiescent()` predicate
+- `durableState()` function and `isDurableState()` predicate
 - `prompt()` function and `getPromptConfig()` predicate
 - `validateMachineForDurability()` with all error cases (including prompt/event mismatch)
 - All shared types (`DurableStateSnapshot`, `InvocationInfo`, `PromptConfig`, etc.)
 - Unit tests for validation
 
-**Testable outcome:** Can define a machine with quiescent markers and prompts, validate it without any DBOS dependency.
+**Testable outcome:** Can define a machine with durable state markers and prompts, validate it without any DBOS dependency.
 
 ### Phase 2: XState Utility Functions
 *Estimated: 1 day*
@@ -1502,7 +1502,7 @@ xstate-dbos/
 - Console channel adapter (for dev/testing)
 - Prompt/event validation at registration time
 
-**Testable outcome:** Machine with prompt enters quiescent state → Slack message sent → button click → machine transitions → Slack message updated. Console adapter tested without external dependencies.
+**Testable outcome:** Machine with prompt enters durable state → Slack message sent → button click → machine transitions → Slack message updated. Console adapter tested without external dependencies.
 
 ### Phase 6: Visualization + Inspectability
 *Estimated: 1 day*
@@ -1528,7 +1528,7 @@ xstate-dbos/
 
 | Phase | Days |
 |-------|------|
-| Phase 1: Types + quiescent + prompt + validation | 0.5 |
+| Phase 1: Types + durableState + prompt + validation | 0.5 |
 | Phase 2: XState utilities | 1 |
 | Phase 3: Workflow loop + public API | 2 |
 | Phase 4: After transition edge cases | 1 |
@@ -1555,9 +1555,9 @@ xstate-dbos/
 
 ### Events arriving during invoke execution
 
-**Risk:** If `processPayment` takes 5 seconds and `CANCEL` arrives during that window, the cancel event sits in the DBOS recv queue. The machine sees it only on the next quiescent wait — *after* payment completes.
+**Risk:** If `processPayment` takes 5 seconds and `CANCEL` arrives during that window, the cancel event sits in the DBOS recv queue. The machine sees it only on the next durable wait — *after* payment completes.
 
-**Mitigation:** This is correct behavior for a durable workflow. Document explicitly. For cancellation-during-invoke semantics, split the state into a pre-invoke quiescent state.
+**Mitigation:** This is correct behavior for a durable workflow. Document explicitly. For cancellation-during-invoke semantics, split the state into a pre-invoke durable state.
 
 ### Context serialization
 
@@ -1605,11 +1605,11 @@ Knative Serving's scaling model (based on HTTP request concurrency) is fundament
 
 **Rejected in favor of:** KEDA, which scales on arbitrary Postgres queries — the correct signal for "pending durable work."
 
-### Auto-Detection of Quiescent States
+### Auto-Detection of Durable States
 
 Analyzing the machine definition to infer which states are wait points (no invoke, no always transition, has `on` handlers).
 
-**Rejected because:** Fragile and opaque. The user marking `quiescent()` is explicit documentation, prevents surprises, and gives the library a clear contract to validate against. It's also only a few characters per state.
+**Rejected because:** Fragile and opaque. The user marking `durableState()` is explicit documentation, prevents surprises, and gives the library a clear contract to validate against. It's also only a few characters per state.
 
 ### DBOS Conductor for Multi-Replica Recovery
 

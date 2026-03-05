@@ -30,9 +30,9 @@ export function* walkStateNodes(
  * Validates that a machine definition is compatible with durable execution.
  *
  * Checks:
- * - Every non-final state is quiescent, invoking, or transient
- * - States do not have both `invoke` and `quiescent()`
- * - Prompts are only on quiescent states
+ * - Every non-final state is durable, invoking, or transient
+ * - States do not have both `invoke` and `durableState()`
+ * - Prompts are only on durable states
  * - Prompt event types match the state's `on` handlers
  * - Machine has an `id`
  *
@@ -76,31 +76,31 @@ export function validateMachineForDurability(machine: AnyStateMachine): void {
     const alwaysList: any[] = stateNode.always ?? [];
     const hasAlways = alwaysList.length > 0;
     const meta: Record<string, any> | undefined = stateNode.meta;
-    const markedQuiescent: boolean = meta?.[META_KEY]?.quiescent === true;
+    const markedDurable: boolean = meta?.[META_KEY]?.durable === true;
     const promptConfig = getPromptConfig(meta);
 
-    // A non-final atomic state must be one of: quiescent, invoking, or transient
-    if (!hasInvoke && !hasAlways && !markedQuiescent) {
+    // A non-final atomic state must be one of: durable, invoking, or transient
+    if (!hasInvoke && !hasAlways && !markedDurable) {
       errors.push(
-        `State "${path}" has no invoke, no always, and is not quiescent(). ` +
-          `Every non-final state must be exactly one of: quiescent (waiting for events), ` +
+        `State "${path}" has no invoke, no always, and is not durableState(). ` +
+          `Every non-final state must be exactly one of: durable (waiting for events), ` +
           `invoking (running an actor), or transient (always transition).`,
       );
     }
 
-    // Cannot be both invoking and quiescent
-    if (hasInvoke && markedQuiescent) {
+    // Cannot be both invoking and durable
+    if (hasInvoke && markedDurable) {
       errors.push(
-        `State "${path}" has both invoke and quiescent(). ` +
-          `Remove quiescent() — invoke states are handled automatically.`,
+        `State "${path}" has both invoke and durableState(). ` +
+          `Remove durableState() — invoke states are handled automatically.`,
       );
     }
 
-    // Prompt requires quiescent
-    if (promptConfig && !markedQuiescent) {
+    // Prompt requires durable
+    if (promptConfig && !markedDurable) {
       errors.push(
-        `State "${path}" has a prompt but is not quiescent(). ` +
-          `Prompts only work on quiescent wait states.`,
+        `State "${path}" has a prompt but is not durableState(). ` +
+          `Prompts only work on durable wait states.`,
       );
     }
 

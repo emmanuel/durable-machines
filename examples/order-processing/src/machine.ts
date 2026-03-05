@@ -1,5 +1,5 @@
 import { setup, fromPromise } from "xstate";
-import { quiescent, prompt } from "@xstate-dbos/durable-state-machine";
+import { durableState, prompt } from "@xstate-dbos/durable-state-machine";
 
 /**
  * Order processing state machine.
@@ -95,7 +95,7 @@ export const orderMachine = setup({
     },
 
     awaiting_payment: {
-      ...quiescent(),
+      ...durableState(),
       after: {
         30_000: { target: "expired" },
       },
@@ -135,7 +135,7 @@ export const orderMachine = setup({
     },
 
     paid: {
-      ...quiescent(),
+      ...durableState(),
       on: {
         SHIP: { target: "shipped" },
       },

@@ -1,6 +1,18 @@
 // Gateway
 export { createWebhookGateway } from "./gateway.js";
 
+// Admin server
+export { createAdminServer } from "./admin.js";
+export type { AdminServerOptions } from "./admin.js";
+
+// Metrics
+export { createGatewayMetrics } from "./metrics.js";
+export type { GatewayMetrics } from "./metrics.js";
+
+// Lifecycle
+export { parseGatewayConfig, createGatewayContext, startGateway } from "./lifecycle.js";
+export type { GatewayConfig, GatewayContext, GatewayHandle } from "./lifecycle.js";
+
 // Types
 export type {
   XStateEvent,

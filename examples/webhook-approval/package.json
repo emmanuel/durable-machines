@@ -10,12 +10,11 @@
     "start-workflow": "tsx src/start-workflow.ts"
   },
   "dependencies": {
-    "xstate-dbos": "workspace:*",
+    "@xstate-dbos/durable-state-machine": "workspace:*",
     "@xstate-dbos/webhook-gateway": "workspace:*",
+    "@xstate-dbos/worker": "workspace:*",
     "@dbos-inc/dbos-sdk": "^4.0.0",
-    "xstate": "^5.19.0",
-    "hono": "^4.7.0",
-    "@hono/node-server": "^1.14.0"
+    "xstate": "^5.19.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

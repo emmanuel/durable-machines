@@ -1,5 +1,5 @@
 {
-  "name": "xstate-dbos",
+  "name": "@xstate-dbos/durable-state-machine",
   "version": "0.1.0",
   "description": "Durable XState v5 state machines powered by DBOS Transact",
   "type": "module",
@@ -38,9 +38,9 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/emmanuel/xstate-dbos.git",
-    "directory": "packages/xstate-dbos"
+    "directory": "packages/durable-state-machine"
   },
-  "homepage": "https://github.com/emmanuel/xstate-dbos/tree/main/packages/xstate-dbos",
+  "homepage": "https://github.com/emmanuel/xstate-dbos/tree/main/packages/durable-state-machine",
   "bugs": {
     "url": "https://github.com/emmanuel/xstate-dbos/issues"
   },

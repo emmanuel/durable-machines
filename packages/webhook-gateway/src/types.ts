@@ -1,4 +1,5 @@
 import type { Context } from "hono";
+import type { GatewayMetrics } from "./metrics.js";
 
 /** Minimal XState event — no dependency on xstate package. */
 export interface XStateEvent {
@@ -69,6 +70,8 @@ export interface GatewayOptions {
   bindings: WebhookBinding<any>[];
   /** Optional base path prefix for all bindings (e.g. `"/api"`). */
   basePath?: string;
+  /** Optional metrics instance for Prometheus instrumentation. */
+  metrics?: GatewayMetrics;
 }
 
 /**

@@ -26,7 +26,7 @@ import type {
  * ```
  */
 export function createWebhookGateway(options: GatewayOptions): Hono {
-  const { client, bindings, basePath = "" } = options;
+  const { client, bindings, basePath = "", metrics } = options;
   const app = new Hono();
 
   // Global error handler
@@ -40,8 +40,21 @@ export function createWebhookGateway(options: GatewayOptions): Hono {
     return c.json({ error: "Internal server error" }, 500);
   });
 
+  // Metrics middleware
+  if (metrics) {
+    app.use("*", async (c, next) => {
+      const start = performance.now();
+      await next();
+      const durationSec = (performance.now() - start) / 1000;
+      const path = c.req.path;
+      const status = String(c.res.status);
+      metrics.webhooksReceived.inc({ path, status });
+      metrics.webhookDuration.observe({ path }, durationSec);
+    });
+  }
+
   for (const binding of bindings) {
-    registerBinding(app, binding, client, basePath);
+    registerBinding(app, binding, client, basePath, metrics);
   }
 
   return app;
@@ -52,6 +65,7 @@ function registerBinding(
   binding: WebhookBinding<any>,
   client: GatewayOptions["client"],
   basePath: string,
+  metrics?: GatewayOptions["metrics"],
 ): void {
   const path = `${basePath}${binding.path}`;
 
@@ -113,6 +127,7 @@ function registerBinding(
     // Dispatch
     const ids = Array.isArray(routeResult) ? routeResult : [routeResult];
     await Promise.all(ids.map((id) => client.send(id, event, "xstate.event")));
+    metrics?.webhooksDispatched.inc({ path }, ids.length);
 
     return c.json({ ok: true, dispatched: ids.length });
   });

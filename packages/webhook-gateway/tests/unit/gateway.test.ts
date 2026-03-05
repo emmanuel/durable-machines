@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
+import { Registry, Counter, Histogram } from "prom-client";
 import { createWebhookGateway } from "../../src/gateway.js";
 import { genericSource } from "../../src/sources/generic.js";
 import { fieldRouter } from "../../src/routers/field.js";
@@ -6,6 +7,7 @@ import { directTransform } from "../../src/transforms/direct.js";
 import { createMockClient } from "../helpers/mock-client.js";
 import { WebhookVerificationError } from "../../src/types.js";
 import type { WebhookSource, RawRequest } from "../../src/types.js";
+import type { GatewayMetrics } from "../../src/metrics.js";
 
 describe("createWebhookGateway", () => {
   const client = createMockClient();
@@ -157,5 +159,110 @@ describe("createWebhookGateway", () => {
     });
 
     expect(res.status).toBe(404);
+  });
+});
+
+describe("createWebhookGateway with metrics", () => {
+  function createTestMetrics(): GatewayMetrics {
+    const registry = new Registry();
+    const webhooksReceived = new Counter({
+      name: "webhook_gateway_received_total",
+      help: "Total webhooks received",
+      labelNames: ["path", "status"] as const,
+      registers: [registry],
+    });
+    const webhooksDispatched = new Counter({
+      name: "webhook_gateway_dispatched_total",
+      help: "Total webhooks dispatched",
+      labelNames: ["path"] as const,
+      registers: [registry],
+    });
+    const webhookDuration = new Histogram({
+      name: "webhook_gateway_duration_seconds",
+      help: "Webhook duration",
+      labelNames: ["path"] as const,
+      registers: [registry],
+    });
+    return { registry, webhooksReceived, webhooksDispatched, webhookDuration };
+  }
+
+  it("increments received and dispatched on successful dispatch", async () => {
+    const client = createMockClient();
+    const metrics = createTestMetrics();
+
+    const app = createWebhookGateway({
+      client,
+      metrics,
+      bindings: [
+        {
+          path: "/webhooks/test",
+          source: genericSource(),
+          router: fieldRouter((p: any) => p.workflowId),
+          transform: directTransform((p: any) => ({ type: p.event ?? "TEST" })),
+        },
+      ],
+    });
+
+    const body = JSON.stringify({ workflowId: "wf-1", event: "APPROVE" });
+    await app.request("/webhooks/test", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body,
+    });
+
+    const received = await metrics.registry.getSingleMetricAsString(
+      "webhook_gateway_received_total",
+    );
+    expect(received).toContain('path="/webhooks/test"');
+    expect(received).toContain('status="200"');
+
+    const dispatched = await metrics.registry.getSingleMetricAsString(
+      "webhook_gateway_dispatched_total",
+    );
+    expect(dispatched).toContain('path="/webhooks/test"');
+  });
+
+  it("increments received with error status on verification failure", async () => {
+    const client = createMockClient();
+    const metrics = createTestMetrics();
+
+    const failSource: WebhookSource<unknown> = {
+      async verify() {
+        throw new WebhookVerificationError("Bad sig", "test");
+      },
+      async parse(req: RawRequest) {
+        return JSON.parse(req.body);
+      },
+    };
+
+    const app = createWebhookGateway({
+      client,
+      metrics,
+      bindings: [
+        {
+          path: "/webhooks/fail",
+          source: failSource,
+          router: fieldRouter(() => "wf-1"),
+          transform: directTransform(() => ({ type: "TEST" })),
+        },
+      ],
+    });
+
+    await app.request("/webhooks/fail", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+
+    const received = await metrics.registry.getSingleMetricAsString(
+      "webhook_gateway_received_total",
+    );
+    expect(received).toContain('status="401"');
+
+    // dispatched should NOT be incremented
+    const dispatched = await metrics.registry.getSingleMetricAsString(
+      "webhook_gateway_dispatched_total",
+    );
+    expect(dispatched).not.toContain('path="/webhooks/fail"');
   });
 });

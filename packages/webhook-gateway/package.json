@@ -65,6 +65,7 @@
   "sideEffects": false,
   "scripts": {
     "build": "tsc",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:unit": "vitest run --project unit",
     "test:watch": "vitest"
@@ -98,7 +99,10 @@
   "author": "Emmanuel Gomez",
   "dependencies": {
     "hono": "^4.7.0",
-    "@hono/node-server": "^1.14.0"
+    "@hono/node-server": "^1.14.0",
+    "@xstate-dbos/durable-state-machine": "workspace:*",
+    "prom-client": "^15.1.0",
+    "zod": "^4.0.0"
   },
   "peerDependencies": {
     "@dbos-inc/dbos-sdk": "^4.0.0"

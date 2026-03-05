@@ -1,5 +1,5 @@
 import { setup } from "xstate";
-import { quiescent, prompt } from "xstate-dbos";
+import { quiescent, prompt } from "@xstate-dbos/durable-state-machine";
 
 export const approvalMachine = setup({
   types: {

@@ -1,4 +1,4 @@
-import { consoleChannel } from "@xstate-durable/machine";
+import { consoleChannel } from "@xstate-durable/durable-machine";
 import { parseWorkerConfig, createWorkerContext, startWorker } from "@xstate-durable/worker";
 import { approvalMachine } from "./machine.js";
 

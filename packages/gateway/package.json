@@ -107,7 +107,7 @@
   "dependencies": {
     "hono": "^4.7.0",
     "@hono/node-server": "^1.14.0",
-    "@xstate-durable/machine": "workspace:*",
+    "@xstate-durable/durable-machine": "workspace:*",
     "prom-client": "^15.1.0",
     "zod": "^4.0.0"
   },

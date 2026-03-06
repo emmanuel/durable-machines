@@ -10,7 +10,7 @@
     "start-workflow": "tsx src/start-workflow.ts"
   },
   "dependencies": {
-    "@xstate-durable/machine": "workspace:*",
+    "@xstate-durable/durable-machine": "workspace:*",
     "@xstate-durable/gateway": "workspace:*",
     "@xstate-durable/worker": "workspace:*",
     "@dbos-inc/dbos-sdk": "^4.0.0",

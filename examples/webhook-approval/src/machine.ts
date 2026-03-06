@@ -1,5 +1,5 @@
 import { setup } from "xstate";
-import { durableState, prompt } from "@xstate-durable/machine";
+import { durableState, prompt } from "@xstate-durable/durable-machine";
 
 export const approvalMachine = setup({
   types: {

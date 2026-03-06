@@ -50,11 +50,11 @@
   },
   "peerDependencies": {
     "@dbos-inc/dbos-sdk": "^4.0.0",
-    "@xstate-durable/machine": "workspace:*"
+    "@xstate-durable/durable-machine": "workspace:*"
   },
   "devDependencies": {
     "@dbos-inc/dbos-sdk": "^4.0.0",
-    "@xstate-durable/machine": "workspace:*",
+    "@xstate-durable/durable-machine": "workspace:*",
     "@types/node": "^24",
     "typescript": "^5.7.0",
     "vitest": "^4.0.18",

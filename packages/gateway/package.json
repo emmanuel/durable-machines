@@ -1,0 +1,130 @@
+{
+  "name": "@xstate-durable/gateway",
+  "version": "0.1.0",
+  "description": "Webhook gateway for routing external webhooks to durable XState machines",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./sources/slack": {
+      "types": "./dist/sources/slack.d.ts",
+      "import": "./dist/sources/slack.js"
+    },
+    "./sources/slack-slash": {
+      "types": "./dist/sources/slack-slash.d.ts",
+      "import": "./dist/sources/slack-slash.js"
+    },
+    "./sources/stripe": {
+      "types": "./dist/sources/stripe.d.ts",
+      "import": "./dist/sources/stripe.js"
+    },
+    "./sources/github": {
+      "types": "./dist/sources/github.d.ts",
+      "import": "./dist/sources/github.js"
+    },
+    "./sources/linear": {
+      "types": "./dist/sources/linear.d.ts",
+      "import": "./dist/sources/linear.js"
+    },
+    "./sources/generic": {
+      "types": "./dist/sources/generic.d.ts",
+      "import": "./dist/sources/generic.js"
+    },
+    "./sources/calcom": {
+      "types": "./dist/sources/calcom.d.ts",
+      "import": "./dist/sources/calcom.js"
+    },
+    "./sources/twilio": {
+      "types": "./dist/sources/twilio.d.ts",
+      "import": "./dist/sources/twilio.js"
+    },
+    "./sources/action-link": {
+      "types": "./dist/sources/action-link.d.ts",
+      "import": "./dist/sources/action-link.js"
+    },
+    "./routers": {
+      "types": "./dist/routers/index.d.ts",
+      "import": "./dist/routers/index.js"
+    },
+    "./transforms": {
+      "types": "./dist/transforms/index.d.ts",
+      "import": "./dist/transforms/index.js"
+    },
+    "./hmac": {
+      "types": "./dist/hmac.d.ts",
+      "import": "./dist/hmac.js"
+    },
+    "./streams": {
+      "types": "./dist/streams/types.d.ts",
+      "import": "./dist/streams/types.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:watch": "vitest"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "license": "MIT",
+  "keywords": [
+    "xstate",
+    "dbos",
+    "webhook",
+    "gateway",
+    "slack",
+    "stripe",
+    "github",
+    "linear",
+    "calcom",
+    "twilio",
+    "hono",
+    "xapi",
+    "sse",
+    "stream"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/emmanuel/xstate-dbos.git",
+    "directory": "packages/gateway"
+  },
+  "homepage": "https://github.com/emmanuel/xstate-dbos/tree/main/packages/gateway",
+  "bugs": {
+    "url": "https://github.com/emmanuel/xstate-dbos/issues"
+  },
+  "author": "Emmanuel Gomez",
+  "dependencies": {
+    "hono": "^4.7.0",
+    "@hono/node-server": "^1.14.0",
+    "@xstate-durable/machine": "workspace:*",
+    "prom-client": "^15.1.0",
+    "zod": "^4.0.0"
+  },
+  "peerDependencies": {
+    "@dbos-inc/dbos-sdk": "^4.0.0",
+    "pg": "^8.0.0"
+  },
+  "peerDependenciesMeta": {
+    "pg": { "optional": true }
+  },
+  "devDependencies": {
+    "@dbos-inc/dbos-sdk": "^4.0.0",
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.0.0",
+    "pg": "^8.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.0.18",
+    "tsx": "^4.19.0"
+  }
+}

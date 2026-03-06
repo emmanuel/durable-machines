@@ -6,11 +6,11 @@ import {
   createDurableMachine,
   gracefulShutdown,
   isShuttingDown,
-} from "@xstate-dbos/durable-state-machine";
+} from "@xstate-durable/machine/dbos";
 import type {
   DurableMachine,
   DurableMachineOptions,
-} from "@xstate-dbos/durable-state-machine";
+} from "@xstate-durable/machine";
 import { createAdminServer } from "./admin.js";
 import { createWorkerMetrics } from "./metrics.js";
 import type { WorkerMetrics } from "./metrics.js";

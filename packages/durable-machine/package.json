@@ -1,7 +1,7 @@
 {
-  "name": "@xstate-durable/worker",
+  "name": "@xstate-durable/machine",
   "version": "0.1.0",
-  "description": "Worker process lifecycle for durable XState machines",
+  "description": "Durable XState v5 state machines with pluggable backends",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -9,6 +9,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./dbos": {
+      "types": "./dist/dbos/index.d.ts",
+      "import": "./dist/dbos/index.js"
+    },
+    "./pg": {
+      "types": "./dist/pg/index.d.ts",
+      "import": "./dist/pg/index.js"
     }
   },
   "files": [
@@ -20,6 +28,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
     "test:watch": "vitest"
   },
   "engines": {
@@ -28,33 +37,35 @@
   "license": "MIT",
   "keywords": [
     "xstate",
-    "dbos",
-    "worker",
-    "lifecycle",
     "durable",
-    "state-machine"
+    "workflow",
+    "state-machine",
+    "statechart",
+    "dbos",
+    "postgres"
   ],
   "repository": {
     "type": "git",
     "url": "https://github.com/emmanuel/xstate-dbos.git",
-    "directory": "packages/worker"
+    "directory": "packages/durable-machine"
   },
-  "homepage": "https://github.com/emmanuel/xstate-dbos/tree/main/packages/worker",
+  "homepage": "https://github.com/emmanuel/xstate-dbos/tree/main/packages/durable-machine",
   "bugs": {
     "url": "https://github.com/emmanuel/xstate-dbos/issues"
   },
   "author": "Emmanuel Gomez",
-  "dependencies": {
-    "prom-client": "^15.1.0",
-    "zod": "^4.0.0"
-  },
   "peerDependencies": {
-    "@dbos-inc/dbos-sdk": "^4.0.0",
-    "@xstate-durable/machine": "workspace:*"
+    "xstate": "^5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@dbos-inc/dbos-sdk": { "optional": true },
+    "pg": { "optional": true }
+  },
+  "optionalDependencies": {
+    "@dbos-inc/dbos-sdk": "^4.0.0"
   },
   "devDependencies": {
     "@dbos-inc/dbos-sdk": "^4.0.0",
-    "@xstate-durable/machine": "workspace:*",
     "@types/node": "^24",
     "typescript": "^5.7.0",
     "vitest": "^4.0.18",

@@ -1,5 +1,5 @@
 import { setup, fromPromise } from "xstate";
-import { durableState, prompt } from "@xstate-dbos/durable-state-machine";
+import { durableState, prompt } from "@xstate-durable/machine";
 
 /**
  * Order processing state machine.

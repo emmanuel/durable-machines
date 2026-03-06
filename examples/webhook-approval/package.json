@@ -1,5 +1,5 @@
 {
-  "name": "@xstate-dbos/example-webhook-approval",
+  "name": "@xstate-durable/example-webhook-approval",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -10,9 +10,9 @@
     "start-workflow": "tsx src/start-workflow.ts"
   },
   "dependencies": {
-    "@xstate-dbos/durable-state-machine": "workspace:*",
-    "@xstate-dbos/webhook-gateway": "workspace:*",
-    "@xstate-dbos/worker": "workspace:*",
+    "@xstate-durable/machine": "workspace:*",
+    "@xstate-durable/gateway": "workspace:*",
+    "@xstate-durable/worker": "workspace:*",
     "@dbos-inc/dbos-sdk": "^4.0.0",
     "xstate": "^5.19.0"
   },

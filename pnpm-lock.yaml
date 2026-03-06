@@ -13,9 +13,9 @@ importers:
       '@dbos-inc/dbos-sdk':
         specifier: ^4.0.0
         version: 4.9.11
-      '@xstate-dbos/durable-state-machine':
+      '@xstate-durable/machine':
         specifier: workspace:*
-        version: link:../../packages/durable-state-machine
+        version: link:../../packages/durable-machine
       xstate:
         specifier: ^5.19.0
         version: 5.28.0
@@ -35,13 +35,13 @@ importers:
       '@dbos-inc/dbos-sdk':
         specifier: ^4.0.0
         version: 4.9.11
-      '@xstate-dbos/durable-state-machine':
+      '@xstate-durable/gateway':
         specifier: workspace:*
-        version: link:../../packages/durable-state-machine
-      '@xstate-dbos/webhook-gateway':
+        version: link:../../packages/gateway
+      '@xstate-durable/machine':
         specifier: workspace:*
-        version: link:../../packages/webhook-gateway
-      '@xstate-dbos/worker':
+        version: link:../../packages/durable-machine
+      '@xstate-durable/worker':
         specifier: workspace:*
         version: link:../../packages/worker
       xstate:
@@ -58,11 +58,8 @@ importers:
         specifier: ^5.7.0
         version: 5.9.3
 
-  packages/durable-state-machine:
+  packages/durable-machine:
     devDependencies:
-      '@dbos-inc/dbos-sdk':
-        specifier: ^4.0.0
-        version: 4.9.11
       '@types/node':
         specifier: ^24
         version: 24.11.0
@@ -75,15 +72,19 @@ importers:
       xstate:
         specifier: ^5.19.0
         version: 5.28.0
+    optionalDependencies:
+      '@dbos-inc/dbos-sdk':
+        specifier: ^4.0.0
+        version: 4.9.11
 
-  packages/webhook-gateway:
+  packages/gateway:
     dependencies:
       '@hono/node-server':
         specifier: ^1.14.0
         version: 1.19.10(hono@4.12.5)
-      '@xstate-dbos/durable-state-machine':
+      '@xstate-durable/machine':
         specifier: workspace:*
-        version: link:../durable-state-machine
+        version: link:../durable-machine
       hono:
         specifier: ^4.7.0
         version: 4.12.5
@@ -131,9 +132,9 @@ importers:
       '@types/node':
         specifier: ^24
         version: 24.11.0
-      '@xstate-dbos/durable-state-machine':
+      '@xstate-durable/machine':
         specifier: workspace:*
-        version: link:../durable-state-machine
+        version: link:../durable-machine
       typescript:
         specifier: ^5.7.0
         version: 5.9.3

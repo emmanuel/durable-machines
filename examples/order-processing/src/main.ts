@@ -1,5 +1,5 @@
 import { DBOS } from "@dbos-inc/dbos-sdk";
-import { createDurableMachine } from "@xstate-dbos/durable-state-machine";
+import { createDurableMachine } from "@xstate-durable/machine/dbos";
 import { orderMachine } from "./machine.js";
 import { logChannel } from "./channel.js";
 

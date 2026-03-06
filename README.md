@@ -1,8 +1,8 @@
-# xstate-dbos
+# durable-xstate
 
 Durable XState v5 state machines powered by [DBOS Transact](https://docs.dbos.dev/).
 
-Write standard XState statecharts. `xstate-dbos` runs them as durable workflows backed by Postgres — surviving crashes, restarts, and long-term waits without custom persistence code.
+Write standard XState statecharts. `durable-xstate` runs them as durable workflows backed by Postgres — surviving crashes, restarts, and long-term waits without custom persistence code.
 
 ## Why
 
@@ -17,7 +17,7 @@ XState defines the *shape* of workflow logic: states, transitions, guards, actio
 ## Install
 
 ```bash
-npm install xstate-dbos xstate @dbos-inc/dbos-sdk
+npm install @durable-xstate/durable-machine xstate @dbos-inc/dbos-sdk
 ```
 
 Requires Node >= 24, XState >= 5, and DBOS SDK >= 4.
@@ -27,7 +27,7 @@ Requires Node >= 24, XState >= 5, and DBOS SDK >= 4.
 ```typescript
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import { setup, fromPromise, assign } from "xstate";
-import { createDurableMachine, durableState } from "xstate-dbos";
+import { createDurableMachine, durableState } from "@durable-xstate/durable-machine";
 
 // 1. Define a standard XState machine
 const orderMachine = setup({
@@ -151,7 +151,7 @@ Multiple delays are supported — the workflow fires them in order. Self-targeti
 Channel adapters decouple prompt rendering from the state machine. The machine declares *what* to ask; the adapter decides *how* to deliver it (Slack, email, webhook, etc.).
 
 ```typescript
-import { createDurableMachine, durableState, consoleChannel } from "xstate-dbos";
+import { createDurableMachine, durableState, consoleChannel } from "@durable-xstate/durable-machine";
 
 const channel = consoleChannel();
 const durable = createDurableMachine(machine, { channels: [channel] });
@@ -174,7 +174,7 @@ Send events and read state from outside the DBOS runtime — only needs a Postgr
 
 ```typescript
 import { DBOSClient } from "@dbos-inc/dbos-sdk";
-import { sendMachineEvent, getMachineState } from "xstate-dbos";
+import { sendMachineEvent, getMachineState } from "@durable-xstate/durable-machine";
 
 const client = new DBOSClient("postgresql://...");
 await client.connect();

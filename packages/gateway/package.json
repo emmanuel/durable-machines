@@ -1,5 +1,5 @@
 {
-  "name": "@xstate-durable/gateway",
+  "name": "@durable-xstate/gateway",
   "version": "0.1.0",
   "description": "Webhook gateway for routing external webhooks to durable XState machines",
   "type": "module",
@@ -107,7 +107,7 @@
   "dependencies": {
     "hono": "^4.7.0",
     "@hono/node-server": "^1.14.0",
-    "@xstate-durable/durable-machine": "workspace:*",
+    "@durable-xstate/durable-machine": "workspace:*",
     "prom-client": "^15.1.0",
     "zod": "^4.0.0"
   },

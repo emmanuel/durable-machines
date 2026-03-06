@@ -1,5 +1,5 @@
-import { consoleChannel } from "@xstate-durable/durable-machine";
-import { parseWorkerConfig, createWorkerContext, startWorker } from "@xstate-durable/worker";
+import { consoleChannel } from "@durable-xstate/durable-machine";
+import { parseWorkerConfig, createWorkerContext, startWorker } from "@durable-xstate/worker";
 import { approvalMachine } from "./machine.js";
 
 const config = parseWorkerConfig();

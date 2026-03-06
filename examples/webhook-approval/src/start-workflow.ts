@@ -1,5 +1,5 @@
-import { consoleChannel } from "@xstate-durable/durable-machine";
-import { parseWorkerConfig, createWorkerContext } from "@xstate-durable/worker";
+import { consoleChannel } from "@durable-xstate/durable-machine";
+import { parseWorkerConfig, createWorkerContext } from "@durable-xstate/worker";
 import { approvalMachine } from "./machine.js";
 
 const requestId = process.argv[2] || `req-${Date.now()}`;

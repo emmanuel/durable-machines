@@ -6,8 +6,8 @@ import {
   genericSource,
   fieldRouter,
   directTransform,
-} from "@xstate-durable/gateway";
-import type { SlackInteractivePayload } from "@xstate-durable/gateway";
+} from "@durable-xstate/gateway";
+import type { SlackInteractivePayload } from "@durable-xstate/gateway";
 
 interface GenericPayload {
   workflowId?: string;

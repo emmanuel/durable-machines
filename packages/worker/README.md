@@ -1,20 +1,20 @@
-# @xstate-dbos/worker
+# @durable-xstate/worker
 
 Worker process lifecycle for durable XState machines. Handles configuration, machine registration, DBOS launch, admin server, graceful shutdown, and Prometheus metrics in a structured three-phase startup.
 
 ## Install
 
 ```bash
-npm install @xstate-dbos/worker
+npm install @durable-xstate/worker
 ```
 
-Peer dependencies: `@dbos-inc/dbos-sdk`, `@xstate-dbos/durable-state-machine`.
+Peer dependencies: `@dbos-inc/dbos-sdk`, `@durable-xstate/durable-machine`.
 
 ## Usage
 
 ```typescript
-import { parseWorkerConfig, createWorkerContext, startWorker } from "@xstate-dbos/worker";
-import { consoleChannel } from "@xstate-dbos/durable-state-machine";
+import { parseWorkerConfig, createWorkerContext, startWorker } from "@durable-xstate/worker";
+import { consoleChannel } from "@durable-xstate/durable-machine";
 import { orderMachine } from "./machines/order.js";
 
 // 1. Parse config from environment
@@ -70,7 +70,7 @@ Default process metrics (CPU, memory, event loop) are also collected via `prom-c
 To create metrics independently (e.g., for testing or custom setups):
 
 ```typescript
-import { createWorkerMetrics } from "@xstate-dbos/worker";
+import { createWorkerMetrics } from "@durable-xstate/worker";
 
 const metrics = createWorkerMetrics();        // creates its own Registry
 const metrics = createWorkerMetrics(registry); // uses an existing Registry

@@ -1,4 +1,4 @@
-# @xstate-dbos/webhook-gateway
+# @durable-xstate/gateway
 
 Webhook gateway for routing external webhooks to durable XState machines. Receives HTTP webhooks from providers (Slack, Stripe, GitHub, Linear, Cal.com, Twilio, etc.), verifies signatures, routes to target workflow(s), and dispatches XState events via `DBOSClient`.
 
@@ -7,7 +7,7 @@ Built on [Hono](https://hono.dev/) for the webhook HTTP layer and a plain `node:
 ## Install
 
 ```bash
-npm install @xstate-dbos/webhook-gateway
+npm install @durable-xstate/gateway
 ```
 
 Peer dependency: `@dbos-inc/dbos-sdk`.
@@ -22,8 +22,8 @@ import {
   stripeSource,
   fieldRouter,
   directTransform,
-} from "@xstate-dbos/webhook-gateway";
-import type { StripeWebhookEvent } from "@xstate-dbos/webhook-gateway";
+} from "@durable-xstate/gateway";
+import type { StripeWebhookEvent } from "@durable-xstate/gateway";
 
 // 1. Parse config from environment
 const config = parseGatewayConfig();
@@ -187,7 +187,7 @@ Default process metrics (CPU, memory, event loop) are also collected.
 To create metrics independently:
 
 ```typescript
-import { createGatewayMetrics } from "@xstate-dbos/webhook-gateway";
+import { createGatewayMetrics } from "@durable-xstate/gateway";
 
 const metrics = createGatewayMetrics();         // creates its own Registry
 const metrics = createGatewayMetrics(registry);  // uses an existing Registry
@@ -198,7 +198,7 @@ const metrics = createGatewayMetrics(registry);  // uses an existing Registry
 Low-level helpers for building custom sources:
 
 ```typescript
-import { computeHmac, verifyHmac } from "@xstate-dbos/webhook-gateway";
+import { computeHmac, verifyHmac } from "@durable-xstate/gateway";
 
 const hex = computeHmac("sha256", secret, body);
 verifyHmac("sha256", secret, body, expectedHex, "my-provider");  // throws on mismatch

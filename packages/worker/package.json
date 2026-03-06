@@ -1,5 +1,5 @@
 {
-  "name": "@xstate-durable/worker",
+  "name": "@durable-xstate/worker",
   "version": "0.1.0",
   "description": "Worker process lifecycle for durable XState machines",
   "type": "module",
@@ -50,11 +50,11 @@
   },
   "peerDependencies": {
     "@dbos-inc/dbos-sdk": "^4.0.0",
-    "@xstate-durable/durable-machine": "workspace:*"
+    "@durable-xstate/durable-machine": "workspace:*"
   },
   "devDependencies": {
     "@dbos-inc/dbos-sdk": "^4.0.0",
-    "@xstate-durable/durable-machine": "workspace:*",
+    "@durable-xstate/durable-machine": "workspace:*",
     "@types/node": "^24",
     "typescript": "^5.7.0",
     "vitest": "^4.0.18",

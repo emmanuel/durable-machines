@@ -7,7 +7,7 @@ import { createWebhookGateway } from "./gateway.js";
 import { createGatewayMetrics } from "./metrics.js";
 import type { GatewayMetrics } from "./metrics.js";
 import { createAdminServer } from "./admin.js";
-import { gracefulShutdown, isShuttingDown } from "@xstate-durable/durable-machine/dbos";
+import { gracefulShutdown, isShuttingDown } from "@durable-xstate/durable-machine/dbos";
 import type { WebhookBinding } from "./types.js";
 import type { Logger, StreamBinding } from "./streams/types.js";
 import type { StreamConsumerHandle } from "./streams/consumer.js";

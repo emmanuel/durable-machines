@@ -1,5 +1,5 @@
 {
-  "name": "@xstate-durable/durable-machine",
+  "name": "@durable-xstate/durable-machine",
   "version": "0.1.0",
   "description": "Durable XState v5 state machines with pluggable backends",
   "type": "module",

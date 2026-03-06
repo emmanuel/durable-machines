@@ -1,5 +1,5 @@
 {
-  "name": "xstate-dbos-monorepo",
+  "name": "durable-xstate-monorepo",
   "private": true,
   "type": "module",
   "engines": {

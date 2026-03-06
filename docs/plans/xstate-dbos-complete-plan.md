@@ -1,4 +1,4 @@
-# `xstate-dbos` — Complete Design & Implementation Plan
+# `durable-xstate` — Complete Design & Implementation Plan
 
 > Durable XState v5 state machines powered by DBOS Transact.
 > Write standard XState machines. Mark your wait points. Get durability for free.
@@ -39,7 +39,7 @@ The two are complementary at a deep level: XState's clean separation of pure log
 
 ```ts
 import { setup, assign, fromPromise } from "xstate";
-import { createDurableMachine, durableState } from "xstate-dbos";
+import { createDurableMachine, durableState } from "@durable-xstate/durable-machine";
 
 const orderMachine = setup({ /* normal XState setup */ }).createMachine({
   id: "order",
@@ -224,12 +224,12 @@ A durable state is one where the machine has no immediate work to do and is wait
 // src/durable-state.ts
 
 export function durableState() {
-  return { meta: { "xstate-dbos": { durable: true } } } as const;
+  return { meta: { "xstate-durable": { durable: true } } } as const;
 }
 
 export function isDurableState(machine: AnyStateMachine, snapshot: AnyMachineSnapshot): boolean {
   const stateNodes = machine.getStateNodeByPath(snapshot.value);
-  return stateNodes.some(node => node.meta?.["xstate-dbos"]?.durable === true);
+  return stateNodes.some(node => node.meta?.["xstate-durable"]?.durable === true);
 }
 ```
 
@@ -703,10 +703,10 @@ Two things mean a pod needs to be running:
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
-  name: xstate-dbos-machines
+  name: durable-xstate-machines
 spec:
   scaleTargetRef:
-    name: xstate-dbos-worker
+    name: durable-xstate-worker
   minReplicaCount: 0
   maxReplicaCount: 10
   pollingInterval: 15
@@ -823,7 +823,7 @@ Two background loops per executor:
 
 ```sql
 WITH reaper_lock AS (
-  SELECT pg_try_advisory_xact_lock(hashtext('xstate-dbos-reaper')) AS acquired
+  SELECT pg_try_advisory_xact_lock(hashtext('durable-xstate-reaper')) AS acquired
 ),
 dead AS (
   DELETE FROM xstate_dbos_executors
@@ -1065,7 +1065,7 @@ The machine declares *what* it needs from the human. A channel adapter decides *
 **The `prompt()` helper** — sets XState metadata, just like `durableState()`:
 
 ```ts
-import { prompt, durableState } from "xstate-dbos";
+import { prompt, durableState } from "@durable-xstate/durable-machine";
 
 waitingForApproval: {
   ...durableState(),
@@ -1333,8 +1333,8 @@ function validateMachineForDurability(machine: AnyStateMachine): void {
 
     const hasInvoke = stateNode.invoke?.length > 0;
     const hasAlways = stateNode.always?.length > 0;
-    const markedDurable = stateNode.meta?.["xstate-dbos"]?.durable === true;
-    const promptConfig = stateNode.meta?.["xstate-dbos"]?.prompt;
+    const markedDurable = stateNode.meta?.["xstate-durable"]?.durable === true;
+    const promptConfig = stateNode.meta?.["xstate-durable"]?.prompt;
 
     if (!hasInvoke && !hasAlways && !markedDurable) {
       errors.push(`State "${path}" has no invoke, no always, and is not durableState().`);
@@ -1375,7 +1375,7 @@ function validateMachineForDurability(machine: AnyStateMachine): void {
 ## 18. File Structure
 
 ```
-xstate-dbos/
+durable-xstate/
 ├── src/
 │   ├── index.ts                    # public exports
 │   ├── create-durable-machine.ts   # createDurableMachine() entry point

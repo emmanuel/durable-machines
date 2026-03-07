@@ -12,6 +12,7 @@ import type {
   RouteResult,
   ItemRouter,
   ItemTransform,
+  XStateEvent,
 } from "./types.js";
 
 /**
@@ -77,8 +78,7 @@ async function dispatchItems<TItem>(
   transform: ItemTransform<TItem>,
   client: GatewayClient,
 ): Promise<number> {
-  let dispatched = 0;
-  const sends: Promise<void>[] = [];
+  const batch: Array<{ workflowId: string; message: XStateEvent; topic: string }> = [];
 
   for (const item of items) {
     const routeResult = await router.route(item);
@@ -87,13 +87,14 @@ async function dispatchItems<TItem>(
 
     const event = transform.transform(item);
     for (const id of ids) {
-      sends.push(client.send(id, event, "xstate.event"));
-      dispatched++;
+      batch.push({ workflowId: id, message: event, topic: "xstate.event" });
     }
   }
 
-  await Promise.all(sends);
-  return dispatched;
+  if (batch.length === 0) return 0;
+
+  await client.sendBatch(batch);
+  return batch.length;
 }
 
 function registerBinding(

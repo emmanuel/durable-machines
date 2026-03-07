@@ -1,6 +1,6 @@
 # Plan: Batch Send API for Multi-Target Dispatch
 
-## Status: Future (blocked on DBOS SDK capabilities)
+## Status: Done
 
 ## Problem
 

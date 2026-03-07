@@ -44,7 +44,7 @@ describe("pgCheckpointStore", () => {
       queries,
       query: vi.fn(async (text: string, values?: unknown[]) => {
         queries.push({ text, values });
-        return { rows: [] };
+        return { rows: [] as Record<string, unknown>[] };
       }),
     };
   }

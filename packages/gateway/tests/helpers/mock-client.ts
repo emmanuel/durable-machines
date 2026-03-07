@@ -22,6 +22,11 @@ export function createMockClient(): MockClient {
     async send(workflowId: string, message: unknown, topic: string): Promise<void> {
       sends.push({ workflowId, message, topic });
     },
+    async sendBatch(messages: Array<{ workflowId: string; message: unknown; topic: string }>): Promise<void> {
+      for (const { workflowId, message, topic } of messages) {
+        sends.push({ workflowId, message, topic });
+      }
+    },
     async getEvent<T>(workflowId: string, key: string, _timeoutSeconds?: number): Promise<T | null> {
       const stubKey = `${workflowId}:${key}`;
       return (eventStubs.get(stubKey) as T) ?? null;

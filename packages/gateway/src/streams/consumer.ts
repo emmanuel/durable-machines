@@ -99,6 +99,8 @@ async function run<TRaw, TItem>(
         continue;
       }
 
+      const batch: Array<{ workflowId: string; message: { type: string; [key: string]: unknown }; topic: string }> = [];
+
       for (const item of items) {
         const routeResult = await router.route(item);
         const ids = normalizeRouteResult(routeResult);
@@ -106,18 +108,37 @@ async function run<TRaw, TItem>(
 
         const event = transform.transform(item);
         for (const workflowId of ids) {
-          try {
-            await client.send(workflowId, event, "xstate.event");
-            metrics?.streamItemsDispatched?.inc({ streamId });
-          } catch (err: unknown) {
-            logger.error(
-              {
-                streamId,
-                workflowId,
-                err: err instanceof Error ? err.message : String(err),
-              },
-              "Failed to dispatch item, continuing",
-            );
+          batch.push({ workflowId, message: event, topic: "xstate.event" });
+        }
+      }
+
+      if (batch.length > 0) {
+        try {
+          await client.sendBatch(batch);
+          metrics?.streamItemsDispatched?.inc({ streamId }, batch.length);
+        } catch (err: unknown) {
+          logger.error(
+            {
+              streamId,
+              err: err instanceof Error ? err.message : String(err),
+            },
+            "Failed to dispatch batch, falling back to individual sends",
+          );
+          // Sequential fallback with per-item error handling
+          for (const { workflowId, message, topic } of batch) {
+            try {
+              await client.send(workflowId, message, topic);
+              metrics?.streamItemsDispatched?.inc({ streamId });
+            } catch (sendErr: unknown) {
+              logger.error(
+                {
+                  streamId,
+                  workflowId,
+                  err: sendErr instanceof Error ? sendErr.message : String(sendErr),
+                },
+                "Failed to dispatch item, continuing",
+              );
+            }
           }
         }
       }

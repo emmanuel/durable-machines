@@ -23,6 +23,22 @@ export async function sendMachineEvent(
 }
 
 /**
+ * Sends a batch of events to machine instances via individual `client.send()` calls.
+ *
+ * This is a fallback until DBOS adds native batch support.
+ */
+export async function sendMachineEventBatch(
+  client: DBOSClient,
+  events: Array<{ workflowId: string; event: AnyEventObject }>,
+): Promise<void> {
+  await Promise.all(
+    events.map(({ workflowId, event }) =>
+      client.send(workflowId, event, "xstate.event"),
+    ),
+  );
+}
+
+/**
  * Read the current state of a durable machine from an external process.
  *
  * Returns null if the state hasn't been published yet.

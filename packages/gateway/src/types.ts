@@ -66,6 +66,8 @@ export interface WebhookBinding<TPayload = unknown, TItem = TPayload> {
 export interface GatewayClient {
   /** Sends a message to a running workflow on the given topic. */
   send<T>(workflowId: string, message: T, topic: string): Promise<void>;
+  /** Sends a batch of messages in a single operation. */
+  sendBatch<T>(messages: Array<{ workflowId: string; message: T; topic: string }>): Promise<void>;
   /** Retrieves a named event from a workflow, with optional timeout. */
   getEvent<T>(workflowId: string, key: string, timeoutSeconds?: number): Promise<T | null>;
 }

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import pg from "pg";
 import { createStore } from "../../src/pg/store.js";
 import type { PgStore } from "../../src/pg/store.js";
+import { sendMachineEvent, sendMachineEventBatch } from "../../src/pg/client.js";
 
 const TEST_DB_URL =
   process.env.PG_TEST_DATABASE_URL ??
@@ -14,7 +15,6 @@ describe("PgStore", () => {
   beforeAll(async () => {
     pool = new pg.Pool({ connectionString: TEST_DB_URL });
     store = createStore({ pool, useListenNotify: false });
-    await store.ensureSchema();
   });
 
   afterAll(async () => {
@@ -218,5 +218,54 @@ describe("PgStore", () => {
     await store.ensureSchema();
     await store.ensureSchema();
     // No error = success
+  });
+
+  // ── sendMachineEventBatch (pg/client.ts) ─────────────────────────────
+
+  describe("sendMachineEventBatch", () => {
+    it("inserts multiple events in a single call", async () => {
+      await store.createInstance("batch-1", "m1", "idle", {}, null);
+      await store.createInstance("batch-2", "m1", "idle", {}, null);
+
+      await sendMachineEventBatch(pool, [
+        { workflowId: "batch-1", event: { type: "A" } },
+        { workflowId: "batch-2", event: { type: "B" } },
+        { workflowId: "batch-1", event: { type: "C" } },
+      ]);
+
+      const { rows } = await pool.query(
+        `SELECT instance_id, topic, payload FROM machine_messages
+         WHERE instance_id IN ('batch-1', 'batch-2') ORDER BY instance_id, payload->>'type'`,
+      );
+      expect(rows).toHaveLength(3);
+      expect(rows[0]).toMatchObject({ instance_id: "batch-1", topic: "event", payload: { type: "A" } });
+      expect(rows[1]).toMatchObject({ instance_id: "batch-1", topic: "event", payload: { type: "C" } });
+      expect(rows[2]).toMatchObject({ instance_id: "batch-2", topic: "event", payload: { type: "B" } });
+    });
+
+    it("is a no-op for empty array", async () => {
+      const { rows: before } = await pool.query("SELECT count(*) FROM machine_messages");
+      await sendMachineEventBatch(pool, []);
+      const { rows: after } = await pool.query("SELECT count(*) FROM machine_messages");
+      expect(after[0].count).toBe(before[0].count);
+    });
+
+    it("produces same rows as individual sendMachineEvent calls", async () => {
+      await store.createInstance("cmp-1", "m1", "idle", {}, null);
+
+      await sendMachineEvent(pool, "cmp-1", { type: "X" });
+      await sendMachineEvent(pool, "cmp-1", { type: "Y" });
+
+      await sendMachineEventBatch(pool, [
+        { workflowId: "cmp-1", event: { type: "Z" } },
+      ]);
+
+      const { rows } = await pool.query(
+        `SELECT topic, payload FROM machine_messages
+         WHERE instance_id = 'cmp-1' ORDER BY payload->>'type'`,
+      );
+      expect(rows).toHaveLength(3);
+      expect(rows.every((r: any) => r.topic === "event")).toBe(true);
+    });
   });
 });

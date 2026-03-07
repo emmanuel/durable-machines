@@ -8,7 +8,7 @@ import { createGatewayMetrics } from "./metrics.js";
 import type { GatewayMetrics } from "./metrics.js";
 import { createAdminServer } from "./admin.js";
 import { gracefulShutdown, isShuttingDown } from "@durable-xstate/durable-machine/dbos";
-import type { WebhookBinding } from "./types.js";
+import type { GatewayClient, WebhookBinding } from "./types.js";
 import type { Logger, StreamBinding } from "./streams/types.js";
 import type { StreamConsumerHandle } from "./streams/consumer.js";
 import { startStreamConsumer } from "./streams/consumer.js";
@@ -30,7 +30,8 @@ export interface GatewayConfig {
 
 export interface GatewayContext {
   config: GatewayConfig;
-  client: Awaited<ReturnType<typeof DBOSClient.create>>;
+  client: GatewayClient;
+  dbosClient: Awaited<ReturnType<typeof DBOSClient.create>>;
   metrics: GatewayMetrics;
   gateway: Hono;
   adminServer: Server;
@@ -77,7 +78,14 @@ export async function createGatewayContext(
   config: GatewayConfig,
   options: GatewayContextOptions,
 ): Promise<GatewayContext> {
-  const client = await DBOSClient.create({ systemDatabaseUrl: config.dbUrl });
+  const dbosClient = await DBOSClient.create({ systemDatabaseUrl: config.dbUrl });
+  const client: GatewayClient = {
+    send: (workflowId, message, topic) => dbosClient.send(workflowId, message, topic),
+    sendBatch: (messages) => Promise.all(
+      messages.map((m) => dbosClient.send(m.workflowId, m.message, m.topic)),
+    ).then(() => {}),
+    getEvent: (workflowId, key, timeoutSeconds) => dbosClient.getEvent(workflowId, key, timeoutSeconds),
+  };
   const metrics = createGatewayMetrics();
   const gateway = createWebhookGateway({ client, bindings: options.bindings, metrics });
   const adminServer = createAdminServer({
@@ -85,7 +93,7 @@ export async function createGatewayContext(
     isReady: () => !isShuttingDown(),
   });
 
-  const ctx: GatewayContext = { config, client, metrics, gateway, adminServer };
+  const ctx: GatewayContext = { config, client, dbosClient, metrics, gateway, adminServer };
 
   if (options.streams && options.streams.length > 0) {
     const { Pool } = await import("pg");

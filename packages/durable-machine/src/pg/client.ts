@@ -20,6 +20,36 @@ export async function sendMachineEvent(
 }
 
 /**
+ * Sends a batch of events to machine instances via a single multi-row INSERT.
+ * The NOTIFY trigger fires per-row automatically.
+ */
+export async function sendMachineEventBatch(
+  pool: Pool,
+  events: Array<{ workflowId: string; event: AnyEventObject }>,
+): Promise<void> {
+  if (events.length === 0) return;
+
+  const now = Date.now();
+  const instanceIds: string[] = [];
+  const topics: string[] = [];
+  const payloads: string[] = [];
+  const timestamps: number[] = [];
+
+  for (const { workflowId, event } of events) {
+    instanceIds.push(workflowId);
+    topics.push("event");
+    payloads.push(JSON.stringify(event));
+    timestamps.push(now);
+  }
+
+  await pool.query(
+    `INSERT INTO machine_messages (instance_id, topic, payload, created_at)
+     SELECT * FROM UNNEST($1::text[], $2::text[], $3::jsonb[], $4::bigint[])`,
+    [instanceIds, topics, payloads, timestamps],
+  );
+}
+
+/**
  * Reads the current state of a machine instance directly from Postgres.
  */
 export async function getMachineState(

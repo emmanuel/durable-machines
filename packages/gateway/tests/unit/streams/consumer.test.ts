@@ -54,6 +54,11 @@ function createMockClient() {
     async send(workflowId: string, message: unknown, topic: string) {
       sends.push({ workflowId, message, topic });
     },
+    async sendBatch(messages: Array<{ workflowId: string; message: unknown; topic: string }>) {
+      for (const { workflowId, message, topic } of messages) {
+        sends.push({ workflowId, message, topic });
+      }
+    },
     async getEvent() { return null; },
   };
 }
@@ -267,6 +272,9 @@ describe("startStreamConsumer", () => {
       async send(workflowId: string, message: unknown, topic: string) {
         if (workflowId === "wf-fail") throw new Error("dispatch failed");
         failingClient.sends.push({ workflowId, message, topic });
+      },
+      async sendBatch() {
+        throw new Error("batch dispatch failed");
       },
       async getEvent() { return null; },
     };

@@ -7,6 +7,11 @@ const client: GatewayClient = {
   async send(workflowId, message, topic) {
     console.log(`[send] ${workflowId} <- ${JSON.stringify(message)} (topic: ${topic})`);
   },
+  async sendBatch(messages) {
+    for (const { workflowId, message, topic } of messages) {
+      console.log(`[send] ${workflowId} <- ${JSON.stringify(message)} (topic: ${topic})`);
+    }
+  },
   async getEvent(_workflowId, _key, _timeout) {
     return null;
   },

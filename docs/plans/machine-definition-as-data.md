@@ -1,6 +1,6 @@
 # Plan: Machine Definition as Data
 
-## Status: Planned
+## Status: Done
 
 Prerequisite: none (works with existing `createDurableMachine()`). Enhanced by first-class
 effects plan (effect declarations in JSON definitions). Does not require any backend changes

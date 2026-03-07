@@ -38,6 +38,9 @@ export type { EmailChannelOptions, EmailPromptHandle, SendEmailParams } from "./
 export { twilioSmsChannel } from "./channels/twilio-sms.js";
 export type { TwilioSmsChannelOptions, TwilioSmsPromptHandle } from "./channels/twilio-sms.js";
 
+// Definition (machine-as-data)
+export * from "./definition/index.js";
+
 // Types
 export type {
   AppContext,

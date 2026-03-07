@@ -11,7 +11,7 @@ import { DurableMachineError } from "../types.js";
 import { validateMachineForDurability } from "../validate.js";
 import { createStore } from "./store.js";
 import type { PgStore, MachineRow } from "./store.js";
-import { processStartup, processEvent, processTimeout } from "./event-processor.js";
+import { processStartup, processEvent, processTimeout as processTimeoutInternal } from "./event-processor.js";
 import type { EventProcessorOptions } from "./event-processor.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -20,8 +20,21 @@ export interface PgDurableMachineOptions extends DurableMachineOptions {
   pool: Pool;
   schema?: string;
   useListenNotify?: boolean;
-  wakePollingIntervalMs?: number;
   store?: PgStore;
+}
+
+/**
+ * Extended durable machine interface for the PG backend. Exposes internal
+ * processing methods used by the worker context's listener fan-out and
+ * wake poller. The public `DurableMachine` type does not expose these.
+ */
+export interface PgDurableMachine<T extends AnyStateMachine = AnyStateMachine>
+  extends DurableMachine<T>
+{
+  /** Process queued messages for an instance (called by listener fan-out). */
+  consumeAndProcess(instanceId: string): Promise<void>;
+  /** Process a timed-out instance (called by wake poller). */
+  processTimeout(instanceId: string): Promise<void>;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -47,7 +60,7 @@ function rowToStatus(row: MachineRow): DurableMachineStatus {
 export function createDurableMachine<T extends AnyStateMachine>(
   machine: T,
   options: PgDurableMachineOptions,
-): DurableMachine<T> {
+): PgDurableMachine<T> {
   // Validate at registration time
   validateMachineForDurability(machine);
 
@@ -63,37 +76,6 @@ export function createDurableMachine<T extends AnyStateMachine>(
     options,
     enableTransitionStream: options.enableTransitionStream ?? false,
   };
-
-  const wakePollingIntervalMs = options.wakePollingIntervalMs ?? 5000;
-  let wakePoller: ReturnType<typeof setInterval> | null = null;
-  let initialized = false;
-
-  // ── Lazy initialization ─────────────────────────────────────────────────
-
-  async function ensureInitialized(): Promise<void> {
-    if (initialized) return;
-    await store.ensureSchema();
-
-    // Start LISTEN/NOTIFY for event-driven processing
-    await store.startListening(async (instanceId, topic) => {
-      if (topic !== "event") return;
-      // When notified, consume the message and process it
-      try {
-        await consumeAndProcessMessages(instanceId);
-      } catch {
-        // Errors are retried on next notification or poll
-      }
-    });
-
-    // Start timeout poller
-    wakePoller = setInterval(() => {
-      void pollTimeouts();
-    }, wakePollingIntervalMs);
-    // Don't hold the process open
-    if (wakePoller.unref) wakePoller.unref();
-
-    initialized = true;
-  }
 
   // ── Message Consumer ────────────────────────────────────────────────────
 
@@ -113,32 +95,6 @@ export function createDurableMachine<T extends AnyStateMachine>(
       await client.query("ROLLBACK").catch(() => {});
     } finally {
       client.release();
-    }
-  }
-
-  // ── Timeout Poller ──────────────────────────────────────────────────────
-
-  async function pollTimeouts(): Promise<void> {
-    try {
-      const pool = (store as any)._pool;
-      const now = Date.now();
-      const { rows } = await pool.query(
-        `SELECT id FROM machine_instances
-         WHERE wake_at <= $1 AND status = 'running' AND machine_name = $2
-         ORDER BY wake_at ASC
-         LIMIT 10`,
-        [now, machine.id],
-      );
-
-      for (const row of rows) {
-        try {
-          await processTimeout(deps, row.id);
-        } catch {
-          // Individual timeout failures don't stop the poller
-        }
-      }
-    } catch {
-      // Poll errors are silently ignored — next poll will retry
     }
   }
 
@@ -198,7 +154,7 @@ export function createDurableMachine<T extends AnyStateMachine>(
     };
   }
 
-  // ── DurableMachine Interface ────────────────────────────────────────────
+  // ── PgDurableMachine Interface ────────────────────────────────────────────
 
   return {
     machine,
@@ -207,7 +163,6 @@ export function createDurableMachine<T extends AnyStateMachine>(
       workflowId: string,
       input: Record<string, unknown>,
     ): Promise<DurableMachineHandle> {
-      await ensureInitialized();
       try {
         await processStartup(deps, workflowId, input);
       } catch (err: any) {
@@ -229,12 +184,19 @@ export function createDurableMachine<T extends AnyStateMachine>(
     async list(
       filter?: { status?: string },
     ): Promise<DurableMachineStatus[]> {
-      await ensureInitialized();
       const rows = await store.listInstances({
         machineName: machine.id,
         ...filter,
       });
       return rows.map(rowToStatus);
+    },
+
+    async consumeAndProcess(instanceId: string): Promise<void> {
+      await consumeAndProcessMessages(instanceId);
+    },
+
+    async processTimeout(instanceId: string): Promise<void> {
+      await processTimeoutInternal(deps, instanceId);
     },
   };
 }

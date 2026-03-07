@@ -24,6 +24,10 @@ export {
   detectActiveStep,
 } from "./visualization.js";
 
+// App context
+export { createAppContext } from "./app-context.js";
+export type { AppContextBackend } from "./app-context.js";
+
 // Channel adapters
 export { consoleChannel } from "./channels/console.js";
 export type { ConsoleChannel, ConsolePromptRecord } from "./channels/console.js";
@@ -36,6 +40,9 @@ export type { TwilioSmsChannelOptions, TwilioSmsPromptHandle } from "./channels/
 
 // Types
 export type {
+  AppContext,
+  AppContextOptions,
+  WorkerAppContext,
   DurableMachine,
   SerializedMachine,
   SerializedStateNode,

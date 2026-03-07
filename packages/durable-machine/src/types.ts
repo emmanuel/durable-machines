@@ -1,3 +1,4 @@
+import type { Server } from "node:http";
 import type { StateValue, AnyEventObject, AnyStateMachine } from "xstate";
 
 // ─── Durable State ──────────────────────────────────────────────────────────
@@ -307,6 +308,41 @@ export interface MachineVisualizationState {
   activeStep: StepInfo | null;
   /** If the machine is sleeping (e.g. an `after` delay), the epoch timestamp when it will wake. Otherwise `null`. */
   activeSleep: { wakeAt: number } | null;
+}
+
+// ─── App Context ────────────────────────────────────────────────────────────
+
+/** Options passed to {@link AppContext.start}. */
+export interface AppContextOptions {
+  /** HTTP servers to drain during shutdown. */
+  servers?: Server[];
+  /** Max milliseconds to wait for drain before forcing exit. @defaultValue `30_000` */
+  timeoutMs?: number;
+  /** Signals that trigger graceful shutdown. @defaultValue `["SIGTERM", "SIGINT"]` */
+  signals?: NodeJS.Signals[];
+  /** Whether to handle uncaughtException / unhandledRejection. @defaultValue `true` */
+  handleExceptions?: boolean;
+  /** Called when shutdown begins (for logging). */
+  onShutdown?: (reason: string) => void;
+}
+
+/** Process lifecycle context: start, shutdown, signal handling, server draining. */
+export interface AppContext {
+  /** Start the backend and wire signal handlers. */
+  start(options?: AppContextOptions): Promise<void>;
+  /** Trigger graceful shutdown. */
+  shutdown(reason?: string): Promise<void>;
+  /** Returns `true` if shutdown has been initiated. */
+  isShuttingDown(): boolean;
+}
+
+/** Extends {@link AppContext} with machine registration for worker processes. */
+export interface WorkerAppContext extends AppContext {
+  /** Register a machine and return a DAO handle. */
+  register<T extends AnyStateMachine>(
+    machine: T,
+    options?: DurableMachineOptions,
+  ): DurableMachine<T>;
 }
 
 // ─── Options ────────────────────────────────────────────────────────────────

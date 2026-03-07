@@ -40,8 +40,11 @@ CREATE TABLE IF NOT EXISTS machine_messages (
 CREATE INDEX IF NOT EXISTS idx_mm_pending ON machine_messages (instance_id, topic) WHERE consumed = false;
 
 CREATE OR REPLACE FUNCTION machine_messages_notify() RETURNS trigger AS $$
+DECLARE
+  m_name TEXT;
 BEGIN
-  PERFORM pg_notify('machine_event', NEW.instance_id || '::' || NEW.topic);
+  SELECT machine_name INTO m_name FROM machine_instances WHERE id = NEW.instance_id;
+  PERFORM pg_notify('machine_event', m_name || '::' || NEW.instance_id || '::' || NEW.topic);
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -159,7 +162,7 @@ export interface PgStore {
 
   // LISTEN/NOTIFY
   startListening(
-    callback: (instanceId: string, topic: string) => void,
+    callback: (machineName: string, instanceId: string, topic: string) => void,
   ): Promise<void>;
   stopListening(): Promise<void>;
 
@@ -455,8 +458,9 @@ export function createStore(options: PgStoreOptions): PgStore {
 
   // ── LISTEN/NOTIFY ─────────────────────────────────────────────────────
 
-  let listenCallback: ((instanceId: string, topic: string) => void) | null =
-    null;
+  let listenCallback:
+    | ((machineName: string, instanceId: string, topic: string) => void)
+    | null = null;
 
   async function connectListener(): Promise<void> {
     if (stopped || !useListenNotify) return;
@@ -476,8 +480,8 @@ export function createStore(options: PgStoreOptions): PgStore {
 
       client.on("notification", (msg: any) => {
         if (msg.channel === "machine_event" && msg.payload && listenCallback) {
-          const [instanceId, topic] = msg.payload.split("::");
-          listenCallback(instanceId, topic ?? "event");
+          const [machineName, instanceId, topic] = msg.payload.split("::");
+          listenCallback(machineName, instanceId, topic ?? "event");
         }
       });
 
@@ -506,7 +510,7 @@ export function createStore(options: PgStoreOptions): PgStore {
   }
 
   async function startListening(
-    callback: (instanceId: string, topic: string) => void,
+    callback: (machineName: string, instanceId: string, topic: string) => void,
   ): Promise<void> {
     listenCallback = callback;
     if (useListenNotify) {

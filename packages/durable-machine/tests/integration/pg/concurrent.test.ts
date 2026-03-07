@@ -86,7 +86,6 @@ describe("concurrent access [pg]", () => {
       pool,
       store,
       useListenNotify: false,
-      wakePollingIntervalMs: 500,
     });
 
     const handle = await durable.start(`concurrent-${Date.now()}`, {});

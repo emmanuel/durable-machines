@@ -1,6 +1,6 @@
 # Plan: Direct Postgres Persistence (Replace DBOS Runtime)
 
-## Status: Future
+## Status: Done
 
 Not blocked. This is a performance and architectural improvement to pursue when
 the current DBOS-based approach hits scaling limits (many parked machines, slow

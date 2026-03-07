@@ -1,0 +1,558 @@
+import type { Pool, PoolClient, Client as PgClient } from "pg";
+import type { StateValue } from "xstate";
+import type { StepInfo, TransitionRecord } from "../types.js";
+
+const SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS machine_instances (
+  id              TEXT PRIMARY KEY,
+  machine_name    TEXT NOT NULL,
+  state_value     JSONB NOT NULL,
+  context         JSONB NOT NULL,
+  status          TEXT NOT NULL DEFAULT 'running',
+  fired_delays    JSONB NOT NULL DEFAULT '[]',
+  wake_at         BIGINT,
+  input           JSONB,
+  created_at      BIGINT NOT NULL,
+  updated_at      BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_mi_status ON machine_instances (status);
+CREATE INDEX IF NOT EXISTS idx_mi_wake ON machine_instances (wake_at) WHERE wake_at IS NOT NULL AND status = 'running';
+CREATE INDEX IF NOT EXISTS idx_mi_name ON machine_instances (machine_name);
+
+CREATE TABLE IF NOT EXISTS invoke_results (
+  instance_id     TEXT NOT NULL REFERENCES machine_instances(id) ON DELETE CASCADE,
+  step_key        TEXT NOT NULL,
+  output          JSONB,
+  error           JSONB,
+  started_at      BIGINT,
+  completed_at    BIGINT,
+  PRIMARY KEY (instance_id, step_key)
+);
+
+CREATE TABLE IF NOT EXISTS machine_messages (
+  id              TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
+  instance_id     TEXT NOT NULL REFERENCES machine_instances(id) ON DELETE CASCADE,
+  topic           TEXT NOT NULL DEFAULT 'event',
+  payload         JSONB NOT NULL,
+  consumed        BOOLEAN NOT NULL DEFAULT false,
+  created_at      BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_mm_pending ON machine_messages (instance_id, topic) WHERE consumed = false;
+
+CREATE OR REPLACE FUNCTION machine_messages_notify() RETURNS trigger AS $$
+BEGIN
+  PERFORM pg_notify('machine_event', NEW.instance_id || '::' || NEW.topic);
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS machine_messages_trigger ON machine_messages;
+CREATE TRIGGER machine_messages_trigger
+  AFTER INSERT ON machine_messages FOR EACH ROW EXECUTE FUNCTION machine_messages_notify();
+
+CREATE TABLE IF NOT EXISTS transition_log (
+  instance_id     TEXT NOT NULL REFERENCES machine_instances(id) ON DELETE CASCADE,
+  seq             SERIAL,
+  from_state      JSONB,
+  to_state        JSONB NOT NULL,
+  event           TEXT,
+  ts              BIGINT NOT NULL,
+  PRIMARY KEY (instance_id, seq)
+);
+`;
+
+// ─── Types ──────────────────────────────────────────────────────────────────
+
+export interface PgStoreOptions {
+  pool: Pool;
+  schema?: string;
+  useListenNotify?: boolean;
+}
+
+export interface MachineRow {
+  id: string;
+  machineName: string;
+  stateValue: StateValue;
+  context: Record<string, unknown>;
+  status: string;
+  firedDelays: Array<string | number>;
+  wakeAt: number | null;
+  input: Record<string, unknown> | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface PgStore {
+  // Schema
+  ensureSchema(): Promise<void>;
+
+  // Instance CRUD
+  createInstance(
+    id: string,
+    machineName: string,
+    stateValue: StateValue,
+    context: Record<string, unknown>,
+    input: Record<string, unknown> | null,
+    wakeAt?: number | null,
+    firedDelays?: Array<string | number>,
+  ): Promise<void>;
+  getInstance(id: string): Promise<MachineRow | null>;
+  updateInstance(
+    id: string,
+    patch: {
+      stateValue?: StateValue;
+      context?: Record<string, unknown>;
+      wakeAt?: number | null;
+      firedDelays?: Array<string | number>;
+      status?: string;
+    },
+    /** Optional client for transactional updates. */
+    queryable?: PoolClient,
+  ): Promise<void>;
+  listInstances(filter?: {
+    machineName?: string;
+    status?: string;
+  }): Promise<MachineRow[]>;
+
+  // Locking
+  lockAndGetInstance(
+    client: PoolClient,
+    id: string,
+  ): Promise<MachineRow | null>;
+
+  // Messages
+  sendMessage(
+    instanceId: string,
+    payload: unknown,
+    topic?: string,
+  ): Promise<void>;
+  consumeNextMessage(
+    client: PoolClient,
+    instanceId: string,
+    topic?: string,
+  ): Promise<{ id: string; payload: unknown } | null>;
+
+  // Invoke results
+  getInvokeResult(
+    instanceId: string,
+    stepKey: string,
+  ): Promise<{ output: unknown; error: unknown } | null>;
+  recordInvokeResult(
+    instanceId: string,
+    stepKey: string,
+    output: unknown,
+    error?: unknown,
+    startedAt?: number,
+    completedAt?: number,
+  ): Promise<void>;
+  listInvokeResults(instanceId: string): Promise<StepInfo[]>;
+
+  // Transition log
+  appendTransition(
+    instanceId: string,
+    fromState: StateValue | null,
+    toState: StateValue,
+    event: string | null,
+    ts: number,
+  ): Promise<void>;
+  getTransitions(instanceId: string): Promise<TransitionRecord[]>;
+
+  // LISTEN/NOTIFY
+  startListening(
+    callback: (instanceId: string, topic: string) => void,
+  ): Promise<void>;
+  stopListening(): Promise<void>;
+
+  // Lifecycle
+  close(): Promise<void>;
+}
+
+// ─── Row Mapping ────────────────────────────────────────────────────────────
+
+function rowToMachine(row: any): MachineRow {
+  return {
+    id: row.id,
+    machineName: row.machine_name,
+    stateValue: row.state_value as StateValue,
+    context: row.context as Record<string, unknown>,
+    status: row.status,
+    firedDelays: row.fired_delays as Array<string | number>,
+    wakeAt: row.wake_at != null ? Number(row.wake_at) : null,
+    input: row.input as Record<string, unknown> | null,
+    createdAt: Number(row.created_at),
+    updatedAt: Number(row.updated_at),
+  };
+}
+
+// ─── Factory ────────────────────────────────────────────────────────────────
+
+export function createStore(options: PgStoreOptions): PgStore {
+  const { pool, useListenNotify = true } = options;
+  let listenClient: PgClient | null = null;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let stopped = false;
+
+  // ── Schema ──────────────────────────────────────────────────────────────
+
+  async function ensureSchema(): Promise<void> {
+    await pool.query(SCHEMA_SQL);
+  }
+
+  // ── Instance CRUD ───────────────────────────────────────────────────────
+
+  async function createInstance(
+    id: string,
+    machineName: string,
+    stateValue: StateValue,
+    context: Record<string, unknown>,
+    input: Record<string, unknown> | null,
+    wakeAt?: number | null,
+    firedDelays?: Array<string | number>,
+  ): Promise<void> {
+    const now = Date.now();
+    await pool.query(
+      `INSERT INTO machine_instances (id, machine_name, state_value, context, status, fired_delays, wake_at, input, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, 'running', $5, $6, $7, $8, $9)`,
+      [
+        id,
+        machineName,
+        JSON.stringify(stateValue),
+        JSON.stringify(context),
+        JSON.stringify(firedDelays ?? []),
+        wakeAt ?? null,
+        input != null ? JSON.stringify(input) : null,
+        now,
+        now,
+      ],
+    );
+  }
+
+  async function getInstance(id: string): Promise<MachineRow | null> {
+    const { rows } = await pool.query(
+      `SELECT * FROM machine_instances WHERE id = $1`,
+      [id],
+    );
+    return rows.length > 0 ? rowToMachine(rows[0]) : null;
+  }
+
+  async function updateInstance(
+    id: string,
+    patch: {
+      stateValue?: StateValue;
+      context?: Record<string, unknown>;
+      wakeAt?: number | null;
+      firedDelays?: Array<string | number>;
+      status?: string;
+    },
+    queryable?: PoolClient,
+  ): Promise<void> {
+    const q = queryable ?? pool;
+    const sets: string[] = [];
+    const values: unknown[] = [];
+    let idx = 1;
+
+    if (patch.stateValue !== undefined) {
+      sets.push(`state_value = $${idx++}`);
+      values.push(JSON.stringify(patch.stateValue));
+    }
+    if (patch.context !== undefined) {
+      sets.push(`context = $${idx++}`);
+      values.push(JSON.stringify(patch.context));
+    }
+    if (patch.wakeAt !== undefined) {
+      sets.push(`wake_at = $${idx++}`);
+      values.push(patch.wakeAt);
+    }
+    if (patch.firedDelays !== undefined) {
+      sets.push(`fired_delays = $${idx++}`);
+      values.push(JSON.stringify(patch.firedDelays));
+    }
+    if (patch.status !== undefined) {
+      sets.push(`status = $${idx++}`);
+      values.push(patch.status);
+    }
+
+    if (sets.length === 0) return;
+
+    sets.push(`updated_at = $${idx++}`);
+    values.push(Date.now());
+
+    values.push(id);
+    await q.query(
+      `UPDATE machine_instances SET ${sets.join(", ")} WHERE id = $${idx}`,
+      values,
+    );
+  }
+
+  async function listInstances(filter?: {
+    machineName?: string;
+    status?: string;
+  }): Promise<MachineRow[]> {
+    const conditions: string[] = [];
+    const values: unknown[] = [];
+    let idx = 1;
+
+    if (filter?.machineName) {
+      conditions.push(`machine_name = $${idx++}`);
+      values.push(filter.machineName);
+    }
+    if (filter?.status) {
+      conditions.push(`status = $${idx++}`);
+      values.push(filter.status);
+    }
+
+    const where =
+      conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
+    const { rows } = await pool.query(
+      `SELECT * FROM machine_instances${where} ORDER BY created_at ASC`,
+      values,
+    );
+    return rows.map(rowToMachine);
+  }
+
+  // ── Locking ─────────────────────────────────────────────────────────────
+
+  async function lockAndGetInstance(
+    client: PoolClient,
+    id: string,
+  ): Promise<MachineRow | null> {
+    const { rows } = await client.query(
+      `SELECT * FROM machine_instances WHERE id = $1 FOR NO KEY UPDATE NOWAIT`,
+      [id],
+    );
+    return rows.length > 0 ? rowToMachine(rows[0]) : null;
+  }
+
+  // ── Messages ────────────────────────────────────────────────────────────
+
+  async function sendMessage(
+    instanceId: string,
+    payload: unknown,
+    topic = "event",
+  ): Promise<void> {
+    await pool.query(
+      `INSERT INTO machine_messages (instance_id, topic, payload, created_at)
+       VALUES ($1, $2, $3, $4)`,
+      [instanceId, topic, JSON.stringify(payload), Date.now()],
+    );
+  }
+
+  async function consumeNextMessage(
+    client: PoolClient,
+    instanceId: string,
+    topic = "event",
+  ): Promise<{ id: string; payload: unknown } | null> {
+    const { rows } = await client.query(
+      `UPDATE machine_messages
+       SET consumed = true
+       WHERE id = (
+         SELECT id FROM machine_messages
+         WHERE instance_id = $1 AND topic = $2 AND consumed = false
+         ORDER BY created_at ASC
+         LIMIT 1
+         FOR UPDATE SKIP LOCKED
+       )
+       RETURNING id, payload`,
+      [instanceId, topic],
+    );
+    if (rows.length === 0) return null;
+    return { id: rows[0].id, payload: rows[0].payload };
+  }
+
+  // ── Invoke Results ──────────────────────────────────────────────────────
+
+  async function getInvokeResult(
+    instanceId: string,
+    stepKey: string,
+  ): Promise<{ output: unknown; error: unknown } | null> {
+    const { rows } = await pool.query(
+      `SELECT output, error FROM invoke_results WHERE instance_id = $1 AND step_key = $2`,
+      [instanceId, stepKey],
+    );
+    if (rows.length === 0) return null;
+    return { output: rows[0].output, error: rows[0].error };
+  }
+
+  async function recordInvokeResult(
+    instanceId: string,
+    stepKey: string,
+    output: unknown,
+    error?: unknown,
+    startedAt?: number,
+    completedAt?: number,
+  ): Promise<void> {
+    await pool.query(
+      `INSERT INTO invoke_results (instance_id, step_key, output, error, started_at, completed_at)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (instance_id, step_key) DO NOTHING`,
+      [
+        instanceId,
+        stepKey,
+        output != null ? JSON.stringify(output) : null,
+        error != null ? JSON.stringify(error) : null,
+        startedAt ?? null,
+        completedAt ?? null,
+      ],
+    );
+  }
+
+  async function listInvokeResults(instanceId: string): Promise<StepInfo[]> {
+    const { rows } = await pool.query(
+      `SELECT step_key, output, error, started_at, completed_at
+       FROM invoke_results WHERE instance_id = $1 ORDER BY started_at ASC`,
+      [instanceId],
+    );
+    return rows.map(
+      (row: any): StepInfo => ({
+        name: row.step_key,
+        output: row.output,
+        error: row.error,
+        startedAtEpochMs: row.started_at != null ? Number(row.started_at) : undefined,
+        completedAtEpochMs:
+          row.completed_at != null ? Number(row.completed_at) : undefined,
+      }),
+    );
+  }
+
+  // ── Transition Log ──────────────────────────────────────────────────────
+
+  async function appendTransition(
+    instanceId: string,
+    fromState: StateValue | null,
+    toState: StateValue,
+    event: string | null,
+    ts: number,
+  ): Promise<void> {
+    await pool.query(
+      `INSERT INTO transition_log (instance_id, from_state, to_state, event, ts)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [
+        instanceId,
+        fromState != null ? JSON.stringify(fromState) : null,
+        JSON.stringify(toState),
+        event,
+        ts,
+      ],
+    );
+  }
+
+  async function getTransitions(
+    instanceId: string,
+  ): Promise<TransitionRecord[]> {
+    const { rows } = await pool.query(
+      `SELECT from_state, to_state, ts FROM transition_log
+       WHERE instance_id = $1 ORDER BY seq ASC`,
+      [instanceId],
+    );
+    return rows.map(
+      (row: any): TransitionRecord => ({
+        from: row.from_state as StateValue | null,
+        to: row.to_state as StateValue,
+        ts: Number(row.ts),
+      }),
+    );
+  }
+
+  // ── LISTEN/NOTIFY ─────────────────────────────────────────────────────
+
+  let listenCallback: ((instanceId: string, topic: string) => void) | null =
+    null;
+
+  async function connectListener(): Promise<void> {
+    if (stopped || !useListenNotify) return;
+
+    try {
+      // Create a dedicated client (not from pool) for LISTEN
+      const { Client } = await import("pg");
+      const client = new Client(
+        (pool as any).options ?? {
+          connectionString: (pool as any)._connectionString,
+        },
+      );
+      await client.connect();
+      await client.query("LISTEN machine_event");
+
+      listenClient = client as unknown as PgClient;
+
+      client.on("notification", (msg: any) => {
+        if (msg.channel === "machine_event" && msg.payload && listenCallback) {
+          const [instanceId, topic] = msg.payload.split("::");
+          listenCallback(instanceId, topic ?? "event");
+        }
+      });
+
+      client.on("error", () => {
+        reconnect();
+      });
+
+      client.on("end", () => {
+        if (!stopped) reconnect();
+      });
+    } catch {
+      reconnect();
+    }
+  }
+
+  function reconnect(): void {
+    if (stopped) return;
+    if (listenClient) {
+      (listenClient as any).end().catch(() => {});
+      listenClient = null;
+    }
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    reconnectTimer = setTimeout(() => {
+      void connectListener();
+    }, 1000);
+  }
+
+  async function startListening(
+    callback: (instanceId: string, topic: string) => void,
+  ): Promise<void> {
+    listenCallback = callback;
+    if (useListenNotify) {
+      await connectListener();
+    }
+  }
+
+  async function stopListening(): Promise<void> {
+    stopped = true;
+    listenCallback = null;
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    if (listenClient) {
+      await (listenClient as any).end().catch(() => {});
+      listenClient = null;
+    }
+  }
+
+  // ── Lifecycle ─────────────────────────────────────────────────────────
+
+  async function close(): Promise<void> {
+    await stopListening();
+  }
+
+  // ── Return ────────────────────────────────────────────────────────────
+
+  const store: PgStore & { _pool: Pool } = {
+    _pool: pool,
+    ensureSchema,
+    createInstance,
+    getInstance,
+    updateInstance,
+    listInstances,
+    lockAndGetInstance,
+    sendMessage,
+    consumeNextMessage,
+    getInvokeResult,
+    recordInvokeResult,
+    listInvokeResults,
+    appendTransition,
+    getTransitions,
+    startListening,
+    stopListening,
+    close,
+  };
+  return store;
+}

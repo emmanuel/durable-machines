@@ -58,8 +58,12 @@
     "xstate": "^5.0.0"
   },
   "peerDependenciesMeta": {
-    "@dbos-inc/dbos-sdk": { "optional": true },
-    "pg": { "optional": true }
+    "@dbos-inc/dbos-sdk": {
+      "optional": true
+    },
+    "pg": {
+      "optional": true
+    }
   },
   "optionalDependencies": {
     "@dbos-inc/dbos-sdk": "^4.0.0"
@@ -67,6 +71,8 @@
   "devDependencies": {
     "@dbos-inc/dbos-sdk": "^4.0.0",
     "@types/node": "^24",
+    "@types/pg": "^8.18.0",
+    "pg": "^8.11.3",
     "typescript": "^5.7.0",
     "vitest": "^4.0.18",
     "xstate": "^5.19.0"

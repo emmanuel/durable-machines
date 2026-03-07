@@ -242,6 +242,58 @@ Returned by `start()` and `get()`:
 - `DurableMachineError` — general runtime error (timeout, unexpected state)
 - `DurableMachineValidationError` — thrown at registration time with an `errors: string[]` array of diagnostics
 
+## PG Backend
+
+Direct Postgres backend — zero runtime dependencies beyond `pg`. Machines live as
+rows in Postgres, load into memory only to process events.
+
+### Quick start (PG)
+
+```typescript
+import { Pool } from "pg";
+import { createDurableMachine } from "@durable-xstate/durable-machine/pg";
+
+const pool = new Pool({ connectionString: "postgresql://..." });
+const durable = createDurableMachine(orderMachine, { pool });
+
+const handle = await durable.start("order-123", { orderId: "o1", total: 99.99 });
+await handle.send({ type: "PAY" });
+```
+
+### Configuration (PG)
+
+| Env var | Default | Description |
+|---------|---------|-------------|
+| `DATABASE_URL` | *(required)* | Postgres connection URL |
+| `PG_SCHEMA` | `"public"` | Schema for tables |
+| `WAKE_POLLING_INTERVAL_MS` | `5000` | After-delay poll interval |
+| `PG_USE_LISTEN_NOTIFY` | `true` | `false` for PgBouncer transaction mode |
+
+### External client (PG)
+
+```typescript
+import { Pool } from "pg";
+import { sendMachineEvent, getMachineState } from "@durable-xstate/durable-machine/pg";
+
+const pool = new Pool({ connectionString: "postgresql://..." });
+await sendMachineEvent(pool, "order-123", { type: "PAY" });
+const state = await getMachineState(pool, "order-123");
+```
+
+## Backends
+
+### DBOS (workflow-based)
+```typescript
+import { createDurableMachine } from "@durable-xstate/durable-machine/dbos";
+```
+
+### Postgres (event-driven)
+```typescript
+import { createDurableMachine } from "@durable-xstate/durable-machine/pg";
+```
+
+Same `DurableMachine` interface, same machine definitions. Switch by changing one import.
+
 ## How recovery works
 
 1. DBOS detects a workflow is `PENDING` after restart

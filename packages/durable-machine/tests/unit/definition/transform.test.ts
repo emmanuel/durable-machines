@@ -350,4 +350,74 @@ describe("transformDefinition", () => {
 
     expect(states.transient.always).toEqual({ target: "done" });
   });
+
+  it("includes effects in meta alongside durable", () => {
+    const effects = [{ type: "webhook", url: "https://example.com" }];
+    const def: MachineDefinition = {
+      id: "test",
+      initial: "waiting",
+      states: {
+        waiting: {
+          durable: true,
+          effects,
+          on: { GO: { target: "done" } },
+        },
+        done: { type: "final" },
+      },
+    };
+    const config = transformDefinition(def, registry);
+    const states = config.states as Record<string, any>;
+
+    expect(states.waiting.meta[META_KEY].durable).toBe(true);
+    expect(states.waiting.meta[META_KEY].effects).toEqual(effects);
+  });
+
+  it("preserves template expressions as raw strings in effects", () => {
+    const effects = [
+      { type: "webhook", url: "https://example.com/{{ context.orderId }}" },
+    ];
+    const def: MachineDefinition = {
+      id: "test",
+      initial: "waiting",
+      states: {
+        waiting: {
+          durable: true,
+          effects,
+          on: { GO: { target: "done" } },
+        },
+        done: { type: "final" },
+      },
+    };
+    const config = transformDefinition(def, registry);
+    const states = config.states as Record<string, any>;
+
+    expect(states.waiting.meta[META_KEY].effects[0].url).toBe(
+      "https://example.com/{{ context.orderId }}",
+    );
+  });
+
+  it("includes effects-only meta without durable flag", () => {
+    const effects = [{ type: "log", message: "entered" }];
+    const def: MachineDefinition = {
+      id: "test",
+      initial: "processing",
+      states: {
+        processing: {
+          effects,
+          invoke: {
+            src: "processPayment",
+            onDone: "done",
+            onError: "done",
+          },
+        },
+        done: { type: "final" },
+      },
+    };
+    const config = transformDefinition(def, registry);
+    const states = config.states as Record<string, any>;
+
+    // effects alone don't set durable: true
+    expect(states.processing.meta[META_KEY].durable).toBeUndefined();
+    expect(states.processing.meta[META_KEY].effects).toEqual(effects);
+  });
 });

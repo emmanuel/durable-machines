@@ -1,6 +1,7 @@
 import type { AnyStateMachine } from "xstate";
 import { walkStateNodes } from "./validate.js";
 import { getPromptConfig } from "./prompt.js";
+import { getEffectsConfig } from "./effects.js";
 import type {
   SerializedMachine,
   SerializedStateNode,
@@ -39,6 +40,12 @@ export function serializeMachineDefinition(
     const promptConfig = getPromptConfig(meta);
     if (promptConfig) {
       node.prompt = promptConfig;
+    }
+
+    // Effects config
+    const effectConfigs = getEffectsConfig(meta);
+    if (effectConfigs) {
+      node.effects = effectConfigs;
     }
 
     // Invoke definitions

@@ -1,4 +1,5 @@
 import type { AnyStateMachine, AnyMachineSnapshot } from "xstate";
+import type { EffectConfig } from "./effects.js";
 
 const META_KEY = "xstate-durable";
 
@@ -10,9 +11,24 @@ const META_KEY = "xstate-durable";
  * ```ts
  * pending: { ...durableState(), on: { PAY: "processing" } }
  * ```
+ *
+ * Optionally attach effects that fire on state entry:
+ * ```ts
+ * pending: {
+ *   ...durableState({ effects: [{ type: "webhook", url: "..." }] }),
+ *   on: { PAY: "processing" },
+ * }
+ * ```
  */
-export function durableState() {
-  return { meta: { [META_KEY]: { durable: true } } } as const;
+export function durableState(options?: { effects?: EffectConfig[] }) {
+  return {
+    meta: {
+      [META_KEY]: {
+        durable: true,
+        ...(options?.effects ? { effects: options.effects } : {}),
+      },
+    },
+  } as const;
 }
 
 /**

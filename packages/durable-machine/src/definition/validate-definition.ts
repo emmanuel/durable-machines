@@ -127,12 +127,6 @@ function validateStateNode(
     );
   }
 
-  // Prompt requires durable
-  if (state.prompt && !state.durable && state.prompt != null) {
-    // prompt implies durable, so this is OK — but if someone explicitly set durable: false
-    // we still allow it since prompt implies durable
-  }
-
   // Prompt event handlers
   if (state.prompt) {
     const onHandlers = state.on ?? {};
@@ -145,6 +139,28 @@ function validateStateNode(
             `but has no matching "on" handler.`,
         );
       }
+    }
+  }
+
+  // Effects validation
+  if (state.effects) {
+    // Effects on transient (always-only) states are not allowed
+    if (hasAlways && !markedDurable && !hasInvoke) {
+      errors.push(
+        `State "${path}" has effects on a transient (always) state. ` +
+          `Effects are only allowed on durable or invoke states.`,
+      );
+    }
+
+    for (const effect of state.effects) {
+      if (!effect.type) {
+        errors.push(
+          `State "${path}" has an effect without a "type" field.`,
+        );
+      }
+
+      // Validate template syntax in effect payload values
+      validateExpressions(effect, path, errors);
     }
   }
 

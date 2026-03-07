@@ -3,6 +3,7 @@ import { setup, fromPromise, createMachine } from "xstate";
 import { durableState } from "../../src/durable-state.js";
 import { prompt } from "../../src/prompt.js";
 import { validateMachineForDurability } from "../../src/validate.js";
+import { createEffectHandlers } from "../../src/effects.js";
 import { DurableMachineValidationError } from "../../src/types.js";
 
 describe("validateMachineForDurability()", () => {
@@ -342,6 +343,171 @@ describe("validateMachineForDurability()", () => {
         expect(err.errors.length).toBeGreaterThanOrEqual(2);
         expect(err.errors.some((e) => e.includes('"a"'))).toBe(true);
         expect(err.errors.some((e) => e.includes('"b"'))).toBe(true);
+      }
+    });
+  });
+
+  describe("effects validation", () => {
+    it("passes for durable state with effects", () => {
+      const machine = createMachine({
+        id: "effects",
+        initial: "waiting",
+        states: {
+          waiting: {
+            ...durableState({
+              effects: [{ type: "webhook", url: "https://example.com" }],
+            }),
+            on: { GO: "done" },
+          },
+          done: { type: "final" },
+        },
+      });
+
+      expect(() => validateMachineForDurability(machine)).not.toThrow();
+    });
+
+    it("passes for prompt state with effects", () => {
+      const machine = createMachine({
+        id: "promptEffects",
+        initial: "waiting",
+        states: {
+          waiting: {
+            ...prompt(
+              {
+                type: "choice",
+                text: "Choose",
+                options: [{ label: "A", event: "A" }],
+              },
+              { effects: [{ type: "log", message: "prompted" }] },
+            ),
+            on: { A: "done" },
+          },
+          done: { type: "final" },
+        },
+      });
+
+      expect(() => validateMachineForDurability(machine)).not.toThrow();
+    });
+
+    it("rejects effect type not in handler registry when registry provided", () => {
+      const registry = createEffectHandlers({ webhook: async () => {} });
+      const machine = createMachine({
+        id: "badEffect",
+        initial: "waiting",
+        states: {
+          waiting: {
+            ...durableState({
+              effects: [{ type: "unknown_handler" }],
+            }),
+            on: { GO: "done" },
+          },
+          done: { type: "final" },
+        },
+      });
+
+      try {
+        validateMachineForDurability(machine, { effectHandlers: registry });
+        expect.fail("should have thrown");
+      } catch (e) {
+        const err = e as DurableMachineValidationError;
+        expect(err.errors.some((e) => e.includes("unknown_handler"))).toBe(true);
+      }
+    });
+
+    it("skips handler type check when no registry provided", () => {
+      const machine = createMachine({
+        id: "noRegistry",
+        initial: "waiting",
+        states: {
+          waiting: {
+            ...durableState({
+              effects: [{ type: "anything_goes" }],
+            }),
+            on: { GO: "done" },
+          },
+          done: { type: "final" },
+        },
+      });
+
+      expect(() => validateMachineForDurability(machine)).not.toThrow();
+    });
+
+    it("rejects effects on transient (always-only) state", () => {
+      // We need a machine where a transient state somehow has effects in its meta.
+      // This is only possible by manually constructing the meta.
+      const machine = createMachine({
+        id: "transientEffect",
+        initial: "checking",
+        states: {
+          checking: {
+            meta: {
+              "xstate-durable": {
+                effects: [{ type: "webhook" }],
+              },
+            },
+            always: { target: "done" },
+          },
+          done: { type: "final" },
+        },
+      });
+
+      try {
+        validateMachineForDurability(machine);
+        expect.fail("should have thrown");
+      } catch (e) {
+        const err = e as DurableMachineValidationError;
+        expect(err.errors.some((e) => e.includes("transient"))).toBe(true);
+      }
+    });
+
+    it("rejects effects with unbalanced template expressions", () => {
+      const machine = createMachine({
+        id: "badTemplate",
+        initial: "waiting",
+        states: {
+          waiting: {
+            ...durableState({
+              effects: [{ type: "webhook", url: "{{ context.url" }],
+            }),
+            on: { GO: "done" },
+          },
+          done: { type: "final" },
+        },
+      });
+
+      try {
+        validateMachineForDurability(machine);
+        expect.fail("should have thrown");
+      } catch (e) {
+        const err = e as DurableMachineValidationError;
+        expect(err.errors.some((e) => e.includes("unbalanced"))).toBe(true);
+      }
+    });
+
+    it("rejects effects without type field", () => {
+      const machine = createMachine({
+        id: "noType",
+        initial: "waiting",
+        states: {
+          waiting: {
+            meta: {
+              "xstate-durable": {
+                durable: true,
+                effects: [{ url: "https://example.com" }],
+              },
+            },
+            on: { GO: "done" },
+          },
+          done: { type: "final" },
+        },
+      });
+
+      try {
+        validateMachineForDurability(machine);
+        expect.fail("should have thrown");
+      } catch (e) {
+        const err = e as DurableMachineValidationError;
+        expect(err.errors.some((e) => e.includes("without a \"type\""))).toBe(true);
       }
     });
   });

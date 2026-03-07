@@ -2,6 +2,32 @@ import { describe, it, expect } from "vitest";
 import { setup, fromPromise, createMachine, initialTransition, transition } from "xstate";
 import { durableState, isDurableState } from "../../src/durable-state.js";
 
+describe("durableState()", () => {
+  it("returns durable meta without options", () => {
+    const result = durableState();
+    expect(result.meta["xstate-durable"]).toEqual({ durable: true });
+  });
+
+  it("includes effects in meta when provided", () => {
+    const effects = [{ type: "webhook", url: "https://example.com" }];
+    const result = durableState({ effects });
+    expect(result.meta["xstate-durable"]).toEqual({
+      durable: true,
+      effects,
+    });
+  });
+
+  it("omits effects key when not provided", () => {
+    const result = durableState();
+    expect("effects" in result.meta["xstate-durable"]).toBe(false);
+  });
+
+  it("omits effects key when options object has no effects", () => {
+    const result = durableState({});
+    expect("effects" in result.meta["xstate-durable"]).toBe(false);
+  });
+});
+
 describe("isDurableState()", () => {
   const machine = setup({
     types: {

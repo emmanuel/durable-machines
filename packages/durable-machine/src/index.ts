@@ -1,9 +1,15 @@
 // Core markers
 export { durableState, isDurableState } from "./durable-state.js";
 export { prompt, getPromptConfig, getPromptEvents } from "./prompt.js";
+export { createEffectHandlers, getEffectsConfig } from "./effects.js";
+export type { EffectConfig, ResolvedEffect, EffectHandler, EffectHandlerRegistry } from "./effects.js";
+
+// Effect collector
+export { collectAndResolveEffects } from "./effect-collector.js";
 
 // Validation
 export { validateMachineForDurability, walkStateNodes } from "./validate.js";
+export type { ValidateOptions } from "./validate.js";
 
 // XState utilities (advanced)
 export {

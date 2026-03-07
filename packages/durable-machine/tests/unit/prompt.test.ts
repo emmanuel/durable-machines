@@ -16,6 +16,31 @@ describe("prompt()", () => {
       expect(text({ context: { orderId: "123" } })).toBe("Order #123");
     }
   });
+
+  it("includes effects in meta when provided", () => {
+    const config: PromptConfig = {
+      type: "choice",
+      text: "Pick",
+      options: [{ label: "A", event: "A" }],
+    };
+    const effects = [{ type: "webhook", url: "https://example.com" }];
+    const result = prompt(config, { effects });
+    expect(result.meta["xstate-durable"]).toEqual({
+      durable: true,
+      prompt: config,
+      effects,
+    });
+  });
+
+  it("omits effects when not provided", () => {
+    const config: PromptConfig = {
+      type: "choice",
+      text: "Pick",
+      options: [{ label: "A", event: "A" }],
+    };
+    const result = prompt(config);
+    expect("effects" in result.meta["xstate-durable"]).toBe(false);
+  });
 });
 
 describe("getPromptConfig()", () => {

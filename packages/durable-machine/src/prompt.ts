@@ -1,4 +1,5 @@
 import type { PromptConfig } from "./types.js";
+import type { EffectConfig } from "./effects.js";
 
 const META_KEY = "xstate-durable";
 
@@ -14,10 +15,27 @@ const META_KEY = "xstate-durable";
  *   on: { APPROVE: "approved", REJECT: "rejected" },
  * }
  * ```
+ *
+ * Optionally attach effects that fire on state entry:
+ * ```ts
+ * waitingForApproval: {
+ *   ...prompt(
+ *     { type: "choice", text: "Approve?", options: [...] },
+ *     { effects: [{ type: "webhook", url: "..." }] },
+ *   ),
+ *   on: { APPROVE: "approved", REJECT: "rejected" },
+ * }
+ * ```
  */
-export function prompt(config: PromptConfig) {
+export function prompt(config: PromptConfig, options?: { effects?: EffectConfig[] }) {
   return {
-    meta: { [META_KEY]: { durable: true, prompt: config } },
+    meta: {
+      [META_KEY]: {
+        durable: true,
+        prompt: config,
+        ...(options?.effects ? { effects: options.effects } : {}),
+      },
+    },
   } as const;
 }
 

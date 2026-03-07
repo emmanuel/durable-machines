@@ -278,6 +278,31 @@ describe("serializeMachineDefinition()", () => {
     expect(def.states["regionA.idle"]).toBeDefined();
     expect(def.states["regionB.active"]).toBeDefined();
   });
+
+  it("includes effects in serialized state node", () => {
+    const effects = [
+      { type: "webhook", url: "https://example.com/hook" },
+      { type: "analytics", event: "state_entered" },
+    ];
+    const effectMachine = createMachine({
+      id: "effectMachine",
+      initial: "waiting",
+      states: {
+        waiting: {
+          ...durableState({ effects }),
+          on: { GO: "done" },
+        },
+        done: { type: "final" },
+      },
+    });
+    const def = serializeMachineDefinition(effectMachine);
+    expect(def.states["waiting"].effects).toEqual(effects);
+  });
+
+  it("omits effects when none declared", () => {
+    const def = serializeMachineDefinition(simpleMachine);
+    expect(def.states["waiting"].effects).toBeUndefined();
+  });
 });
 
 // ─── computeStateDurations() ─────────────────────────────────────────────

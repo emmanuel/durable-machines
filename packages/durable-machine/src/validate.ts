@@ -1,8 +1,16 @@
 import type { AnyStateMachine } from "xstate";
 import { getPromptConfig, getPromptEvents } from "./prompt.js";
+import { getEffectsConfig } from "./effects.js";
+import type { EffectHandlerRegistry } from "./effects.js";
 import { DurableMachineValidationError } from "./types.js";
 
 const META_KEY = "xstate-durable";
+
+/** Options for {@link validateMachineForDurability}. */
+export interface ValidateOptions {
+  /** When provided, effect `type` values are checked against this registry. */
+  effectHandlers?: EffectHandlerRegistry;
+}
 
 /**
  * Walks all state nodes in a machine recursively, yielding
@@ -37,6 +45,7 @@ export function* walkStateNodes(
  * - Machine has an `id`
  *
  * @param machine - The XState machine definition to validate
+ * @param options - Optional validation settings (e.g. effect handler registry)
  * @throws {@link DurableMachineValidationError} with all collected errors if validation fails
  *
  * @example
@@ -50,7 +59,10 @@ export function* walkStateNodes(
  * }
  * ```
  */
-export function validateMachineForDurability(machine: AnyStateMachine): void {
+export function validateMachineForDurability(
+  machine: AnyStateMachine,
+  options?: ValidateOptions,
+): void {
   const errors: string[] = [];
 
   // XState v5 auto-generates an id like "(machine)" if none is provided,
@@ -120,9 +132,73 @@ export function validateMachineForDurability(machine: AnyStateMachine): void {
         }
       }
     }
+
+    // Effects validation
+    const effectConfigs = getEffectsConfig(meta);
+    if (effectConfigs) {
+      // Effects on transient (always-only) states are not allowed
+      if (hasAlways && !markedDurable && !hasInvoke) {
+        errors.push(
+          `State "${path}" has effects on a transient (always) state. ` +
+            `Effects are only allowed on durable or invoke states.`,
+        );
+      }
+
+      for (const effect of effectConfigs) {
+        // Every effect must have a type
+        if (!effect.type) {
+          errors.push(
+            `State "${path}" has an effect without a "type" field.`,
+          );
+        }
+
+        // If handler registry is provided, check that handler exists
+        if (effect.type && options?.effectHandlers) {
+          if (!options.effectHandlers.handlers.has(effect.type)) {
+            errors.push(
+              `State "${path}" has effect type "${effect.type}" ` +
+                `not found in effect handler registry.`,
+            );
+          }
+        }
+
+        // Check template syntax in effect payload values
+        validateEffectTemplates(effect, path, errors);
+      }
+    }
   }
 
   if (errors.length > 0) {
     throw new DurableMachineValidationError(errors);
+  }
+}
+
+function validateEffectTemplates(
+  value: unknown,
+  path: string,
+  errors: string[],
+): void {
+  if (typeof value === "string") {
+    const opens = (value.match(/\{\{/g) ?? []).length;
+    const closes = (value.match(/\}\}/g) ?? []).length;
+    if (opens !== closes) {
+      errors.push(
+        `State "${path}" has unbalanced template expression in effect value "${value}".`,
+      );
+    }
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      validateEffectTemplates(item, path, errors);
+    }
+    return;
+  }
+
+  if (typeof value === "object" && value !== null) {
+    for (const val of Object.values(value)) {
+      validateEffectTemplates(val, path, errors);
+    }
   }
 }

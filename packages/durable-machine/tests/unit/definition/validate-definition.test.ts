@@ -291,4 +291,56 @@ describe("validateDefinition", () => {
     const result = validateDefinition(def, registry);
     expect(result.valid).toBe(true);
   });
+
+  it("accepts durable state with effects", () => {
+    const def = validDefinition();
+    def.states.pending.effects = [
+      { type: "webhook", url: "https://example.com" },
+    ];
+    const result = validateDefinition(def, registry);
+    expect(result.valid).toBe(true);
+  });
+
+  it("reports effects on transient (always-only) state", () => {
+    const def: MachineDefinition = {
+      id: "test",
+      initial: "transient",
+      states: {
+        transient: {
+          always: { target: "done" },
+          effects: [{ type: "webhook" }],
+        },
+        done: { type: "final" },
+      },
+    };
+    const result = validateDefinition(def, registry);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContainEqual(
+      expect.stringContaining("transient"),
+    );
+  });
+
+  it("reports unbalanced templates in effect values", () => {
+    const def = validDefinition();
+    def.states.pending.effects = [
+      { type: "webhook", url: "{{ context.url" },
+    ];
+    const result = validateDefinition(def, registry);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContainEqual(
+      expect.stringContaining("unbalanced"),
+    );
+  });
+
+  it("reports effects without type field", () => {
+    const def = validDefinition();
+    def.states.pending.effects = [
+      { url: "https://example.com" } as any,
+    ];
+    const result = validateDefinition(def, registry);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContainEqual(
+      expect.stringContaining("without a \"type\""),
+    );
+  });
 });

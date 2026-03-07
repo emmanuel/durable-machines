@@ -103,12 +103,22 @@ function transformState(state: StateDefinition): Record<string, unknown> {
 
 function buildMeta(state: StateDefinition): Record<string, unknown> | undefined {
   const isDurable = state.durable === true || state.prompt != null;
-  if (!isDurable) return undefined;
+  const hasEffects = Array.isArray(state.effects) && state.effects.length > 0;
+  if (!isDurable && !hasEffects) return undefined;
 
-  const durableMeta: Record<string, unknown> = { durable: true };
+  const durableMeta: Record<string, unknown> = {};
+
+  if (isDurable) {
+    durableMeta.durable = true;
+  }
 
   if (state.prompt) {
     durableMeta.prompt = transformPrompt(state.prompt);
+  }
+
+  if (hasEffects) {
+    // Keep template expressions as raw strings — resolved by the collector at runtime
+    durableMeta.effects = state.effects;
   }
 
   return { [META_KEY]: durableMeta };

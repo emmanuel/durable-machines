@@ -1,4 +1,5 @@
 import type { PromptConfig } from "../types.js";
+import type { EffectConfig } from "../effects.js";
 
 // ─── Machine Definition ─────────────────────────────────────────────────────
 
@@ -38,6 +39,8 @@ export interface StateDefinition {
   after?: Record<string, TransitionDefinition | TransitionDefinition[]>;
   /** Invoked actors. */
   invoke?: InvokeDefinition | InvokeDefinition[];
+  /** Effects to fire on state entry. */
+  effects?: EffectConfig[];
 }
 
 // ─── Transition Definition ──────────────────────────────────────────────────

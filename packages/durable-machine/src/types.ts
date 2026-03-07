@@ -245,6 +245,8 @@ export interface SerializedStateNode {
   durable?: boolean;
   /** The prompt configuration attached to this state, if any. */
   prompt?: PromptConfig;
+  /** Effects to fire on state entry. */
+  effects?: { type: string; [key: string]: unknown }[];
   /** Invoked actors declared on this state node. */
   invoke?: { id: string; src: string }[];
   /** Delayed (`after`) transitions declared on this state node. */

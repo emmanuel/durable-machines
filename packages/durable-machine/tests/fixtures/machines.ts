@@ -363,6 +363,45 @@ export const promptWithTimeoutMachine = setup({
   },
 });
 
+// ─── Effects ────────────────────────────────────────────────────────────────
+
+export const effectsMachine = setup({
+  types: {
+    context: {} as { orderId: string },
+    events: {} as { type: "PROCESS" } | { type: "DONE" },
+    input: {} as { orderId: string },
+  },
+  actors: {
+    doWork: fromPromise(async () => "result"),
+  },
+}).createMachine({
+  id: "effects-test",
+  initial: "pending",
+  context: ({ input }) => ({ orderId: input.orderId }),
+  states: {
+    pending: {
+      ...durableState({
+        effects: [
+          { type: "webhook", url: "https://example.com/created" },
+          { type: "analytics", event: "order_created", orderId: "{{ context.orderId }}" },
+        ],
+      }),
+      on: { PROCESS: "processing" },
+    },
+    processing: {
+      invoke: { src: "doWork", onDone: "completed", onError: "failed" },
+    },
+    completed: {
+      ...durableState({
+        effects: [{ type: "webhook", url: "https://example.com/completed" }],
+      }),
+      on: { DONE: "done" },
+    },
+    failed: { type: "final" },
+    done: { type: "final" },
+  },
+});
+
 // ─── Visualization ──────────────────────────────────────────────────────────
 
 export function makeVizMachine(id: string) {

@@ -5,6 +5,8 @@ import type { DurableMachineOptions, ChannelAdapter, PromptConfig, TransitionRec
 import { DurableMachineError } from "../types.js";
 import { isDurableState } from "../durable-state.js";
 import { getPromptConfig } from "../prompt.js";
+import { collectAndResolveEffects } from "../effect-collector.js";
+import type { ResolvedEffect } from "../effects.js";
 import {
   getActiveInvocation,
   extractActorImplementations,
@@ -31,6 +33,32 @@ export function createMachineLoop(
   const actorImpls = extractActorImplementations(machine);
   const channels: ChannelAdapter[] = options.channels ?? [];
   const enableTransitionStream = options.enableTransitionStream ?? false;
+  const effectHandlers = options.effectHandlers;
+  const effectRetryPolicy = options.effectRetryPolicy;
+
+  // Register effect child workflow if handlers are provided
+  let effectWorkflow: ((...args: any[]) => Promise<any>) | null = null;
+
+  if (effectHandlers) {
+    effectWorkflow = DBOS.registerWorkflow(
+      async (effects: ResolvedEffect[]) => {
+        for (let i = 0; i < effects.length; i++) {
+          const effect = effects[i];
+          const handler = effectHandlers.handlers.get(effect.type);
+          if (!handler) continue;
+          await DBOS.runStep(
+            () => handler(effect),
+            {
+              name: `${effect.type}:${i}`,
+              retriesAllowed: true,
+              ...effectRetryPolicy,
+            },
+          );
+        }
+      },
+      { name: `xstate:${machine.id}:effects` },
+    );
+  }
 
   return async function machineLoop(
     input: Record<string, unknown>,
@@ -69,6 +97,29 @@ export function createMachineLoop(
       }
     }
 
+    // Helper: dispatch effects as a child workflow
+    async function dispatchEffects(
+      prevSnap: AnyMachineSnapshot,
+      nextSnap: AnyMachineSnapshot,
+      event: AnyEventObject,
+    ): Promise<void> {
+      if (!effectWorkflow) return;
+
+      const { effects } = collectAndResolveEffects(machine, prevSnap, nextSnap, event);
+      if (effects.length === 0) return;
+
+      // Start child workflow — parent does NOT await getResult()
+      await DBOS.startWorkflow(effectWorkflow, {
+        workflowID: `${DBOS.workflowID}:effects:${JSON.stringify(nextSnap.value)}`,
+      })(effects);
+    }
+
+    // Dispatch effects for initial state entry
+    {
+      const emptyPrev = { _nodes: [] } as unknown as AnyMachineSnapshot;
+      await dispatchEffects(emptyPrev, snapshot, { type: "xstate.init" } as AnyEventObject);
+    }
+
     while (snapshot.status !== "done") {
       // 1. Resolve transient transitions (always/eventless)
       snapshot = resolveTransientTransitions(machine, snapshot);
@@ -87,10 +138,12 @@ export function createMachineLoop(
       if (invocation) {
         // Persist before invocation (crash recovery needs pre-invocation state)
         await persistSnapshot();
+        const preInvokeSnapshot = snapshot;
         snapshot = await executeInvocation(machine, snapshot, invocation, actorImpls, options);
         // Persist after invocation returns
         if (!stateValueEquals(snapshot.value, prevStateValue)) {
           await recordTransition(prevStateValue, snapshot.value);
+          await dispatchEffects(preInvokeSnapshot, snapshot, { type: `xstate.done.actor.${invocation.id}` } as AnyEventObject);
           firedDelays = new Set<number>();
           prevStateValue = snapshot.value;
         }
@@ -147,6 +200,15 @@ export function createMachineLoop(
             },
             { name: `resolve-prompt:${JSON.stringify(prevValue)}` },
           );
+        }
+
+        // Dispatch effects on state change after durable wait
+        if (!stateValueEquals(prevValue, snapshot.value)) {
+          const prevSnap = machine.resolveState({ value: prevValue, context: snapshot.context });
+          const waitEvent = result.firedDelay !== null
+            ? buildAfterEvent(machine, prevSnap, result.firedDelay) as AnyEventObject
+            : { type: "xstate.resolved" } as AnyEventObject;
+          await dispatchEffects(prevSnap, snapshot, waitEvent);
         }
       } else {
         throw new DurableMachineError(

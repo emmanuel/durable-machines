@@ -6,6 +6,7 @@ import type {
   DurableMachine,
   DurableMachineOptions,
 } from "../types.js";
+import type { EffectHandler, ResolvedEffect } from "../effects.js";
 import { createAppContext } from "../app-context.js";
 import { createStore } from "./store.js";
 import type { PgStore } from "./store.js";
@@ -31,7 +32,9 @@ export function createPgWorkerContext(config: PgConfig): PgWorkerAppContext {
   });
 
   const machines = new Map<string, PgDurableMachine>();
+  const allEffectHandlers = new Map<string, EffectHandler>();
   let pollerHandle: ReturnType<typeof setInterval> | null = null;
+  let effectPollerHandle: ReturnType<typeof setInterval> | null = null;
 
   // ── Poll for timed-out instances ────────────────────────────────────────
 
@@ -58,6 +61,46 @@ export function createPgWorkerContext(config: PgConfig): PgWorkerAppContext {
     }
   }
 
+  // ── Poll for pending effects ─────────────────────────────────────────────
+
+  function computeBackoff(attempt: number): number {
+    const baseMs = 1000;
+    const rate = 2;
+    return baseMs * rate ** (attempt - 1);
+  }
+
+  async function pollEffects(): Promise<void> {
+    if (allEffectHandlers.size === 0) return;
+
+    try {
+      const rows = await store.claimPendingEffects(50);
+      for (const row of rows) {
+        const handler = allEffectHandlers.get(row.effectType);
+        if (!handler) {
+          await store.markEffectFailed(row.id, `No handler for "${row.effectType}"`, null);
+          continue;
+        }
+
+        try {
+          await handler({ type: row.effectType, ...row.effectPayload } as ResolvedEffect);
+          await store.markEffectCompleted(row.id);
+        } catch (err) {
+          const exhausted = row.attempts >= row.maxAttempts;
+          const nextRetry = exhausted
+            ? null
+            : Date.now() + computeBackoff(row.attempts);
+          await store.markEffectFailed(
+            row.id,
+            err instanceof Error ? err.message : String(err),
+            nextRetry,
+          );
+        }
+      }
+    } catch {
+      // Poll errors silently ignored
+    }
+  }
+
   // ── Backend for createAppContext ────────────────────────────────────────
 
   const backend = {
@@ -66,10 +109,11 @@ export function createPgWorkerContext(config: PgConfig): PgWorkerAppContext {
 
       await store.startListening(
         (machineName: string, instanceId: string, topic: string) => {
-          if (topic !== "event") return;
-          const dm = machines.get(machineName);
-          if (!dm) return;
-          void dm.consumeAndProcess(instanceId);
+          if (topic === "event") {
+            const dm = machines.get(machineName);
+            if (!dm) return;
+            void dm.consumeAndProcess(instanceId);
+          }
         },
       );
 
@@ -78,12 +122,23 @@ export function createPgWorkerContext(config: PgConfig): PgWorkerAppContext {
         void pollTimeouts();
       }, intervalMs);
       pollerHandle.unref();
+
+      // Start effect poller
+      const effectIntervalMs = config.effectPollingIntervalMs ?? 1000;
+      effectPollerHandle = setInterval(() => {
+        void pollEffects();
+      }, effectIntervalMs);
+      effectPollerHandle.unref();
     },
 
     async stop(): Promise<void> {
       if (pollerHandle != null) {
         clearInterval(pollerHandle);
         pollerHandle = null;
+      }
+      if (effectPollerHandle != null) {
+        clearInterval(effectPollerHandle);
+        effectPollerHandle = null;
       }
       await store.close();
       await pool.end();
@@ -109,6 +164,13 @@ export function createPgWorkerContext(config: PgConfig): PgWorkerAppContext {
     });
 
     machines.set(machine.id, dm);
+
+    // Merge effect handlers into the shared handler map
+    if (options?.effectHandlers) {
+      for (const [type, handler] of options.effectHandlers.handlers) {
+        allEffectHandlers.set(type, handler);
+      }
+    }
 
     // Return as DurableMachine (hides PgDurableMachine internals)
     return dm as DurableMachine<T>;

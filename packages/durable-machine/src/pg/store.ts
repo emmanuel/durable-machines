@@ -1,6 +1,7 @@
 import type { Pool, PoolClient, Client as PgClient } from "pg";
 import type { StateValue } from "xstate";
 import type { StepInfo, TransitionRecord } from "../types.js";
+import type { ResolvedEffect } from "../effects.js";
 
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS machine_instances (
@@ -62,6 +63,35 @@ CREATE TABLE IF NOT EXISTS transition_log (
   ts              BIGINT NOT NULL,
   PRIMARY KEY (instance_id, seq)
 );
+
+CREATE TABLE IF NOT EXISTS effect_outbox (
+  id              TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
+  instance_id     TEXT NOT NULL REFERENCES machine_instances(id) ON DELETE CASCADE,
+  state_value     JSONB NOT NULL,
+  effect_type     TEXT NOT NULL,
+  effect_payload  JSONB NOT NULL,
+  status          TEXT NOT NULL DEFAULT 'pending',
+  attempts        INTEGER NOT NULL DEFAULT 0,
+  max_attempts    INTEGER NOT NULL DEFAULT 3,
+  next_retry_at   BIGINT,
+  last_error      TEXT,
+  created_at      BIGINT NOT NULL,
+  completed_at    BIGINT
+);
+CREATE INDEX IF NOT EXISTS idx_eo_pending
+  ON effect_outbox (next_retry_at)
+  WHERE status = 'pending';
+
+CREATE OR REPLACE FUNCTION effect_outbox_notify() RETURNS trigger AS $$
+BEGIN
+  PERFORM pg_notify('effect_pending', NEW.instance_id);
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS effect_outbox_trigger ON effect_outbox;
+CREATE TRIGGER effect_outbox_trigger
+  AFTER INSERT ON effect_outbox FOR EACH ROW EXECUTE FUNCTION effect_outbox_notify();
 `;
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -85,6 +115,20 @@ export interface MachineRow {
   updatedAt: number;
 }
 
+export interface EffectOutboxRow {
+  id: string;
+  instanceId: string;
+  stateValue: StateValue;
+  effectType: string;
+  effectPayload: Record<string, unknown>;
+  status: string;
+  attempts: number;
+  maxAttempts: number;
+  lastError: string | null;
+  createdAt: number;
+  completedAt: number | null;
+}
+
 export interface PgStore {
   // Schema
   ensureSchema(): Promise<void>;
@@ -98,6 +142,7 @@ export interface PgStore {
     input: Record<string, unknown> | null,
     wakeAt?: number | null,
     firedDelays?: Array<string | number>,
+    queryable?: PoolClient,
   ): Promise<void>;
   getInstance(id: string): Promise<MachineRow | null>;
   updateInstance(
@@ -160,6 +205,19 @@ export interface PgStore {
   ): Promise<void>;
   getTransitions(instanceId: string): Promise<TransitionRecord[]>;
 
+  // Effect outbox
+  insertEffects(
+    client: PoolClient,
+    instanceId: string,
+    stateValue: StateValue,
+    effects: ResolvedEffect[],
+    maxAttempts?: number,
+  ): Promise<void>;
+  claimPendingEffects(limit?: number): Promise<EffectOutboxRow[]>;
+  markEffectCompleted(effectId: string): Promise<void>;
+  markEffectFailed(effectId: string, error: string, nextRetryAt: number | null): Promise<void>;
+  listEffects(instanceId: string): Promise<EffectOutboxRow[]>;
+
   // LISTEN/NOTIFY
   startListening(
     callback: (machineName: string, instanceId: string, topic: string) => void,
@@ -211,9 +269,11 @@ export function createStore(options: PgStoreOptions): PgStore {
     input: Record<string, unknown> | null,
     wakeAt?: number | null,
     firedDelays?: Array<string | number>,
+    queryable?: PoolClient,
   ): Promise<void> {
+    const q = queryable ?? pool;
     const now = Date.now();
-    await pool.query(
+    await q.query(
       `INSERT INTO machine_instances (id, machine_name, state_value, context, status, fired_delays, wake_at, input, created_at, updated_at)
        VALUES ($1, $2, $3, $4, 'running', $5, $6, $7, $8, $9)`,
       [
@@ -456,6 +516,89 @@ export function createStore(options: PgStoreOptions): PgStore {
     );
   }
 
+  // ── Effect Outbox ───────────────────────────────────────────────────
+
+  function rowToEffect(row: any): EffectOutboxRow {
+    return {
+      id: row.id,
+      instanceId: row.instance_id,
+      stateValue: row.state_value as StateValue,
+      effectType: row.effect_type,
+      effectPayload: row.effect_payload as Record<string, unknown>,
+      status: row.status,
+      attempts: Number(row.attempts),
+      maxAttempts: Number(row.max_attempts),
+      lastError: row.last_error ?? null,
+      createdAt: Number(row.created_at),
+      completedAt: row.completed_at != null ? Number(row.completed_at) : null,
+    };
+  }
+
+  async function insertEffects(
+    client: PoolClient,
+    instanceId: string,
+    stateValue: StateValue,
+    effects: ResolvedEffect[],
+    maxAttempts = 3,
+  ): Promise<void> {
+    if (effects.length === 0) return;
+    const now = Date.now();
+    const stateJson = JSON.stringify(stateValue);
+    for (const effect of effects) {
+      const { type, ...payload } = effect;
+      await client.query(
+        `INSERT INTO effect_outbox (instance_id, state_value, effect_type, effect_payload, max_attempts, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [instanceId, stateJson, type, JSON.stringify(payload), maxAttempts, now],
+      );
+    }
+  }
+
+  async function claimPendingEffects(limit = 50): Promise<EffectOutboxRow[]> {
+    const now = Date.now();
+    const { rows } = await pool.query(
+      `UPDATE effect_outbox
+       SET status = 'executing', attempts = attempts + 1
+       WHERE id IN (
+         SELECT id FROM effect_outbox
+         WHERE status = 'pending' AND (next_retry_at IS NULL OR next_retry_at <= $1)
+         ORDER BY created_at ASC
+         LIMIT $2
+         FOR UPDATE SKIP LOCKED
+       )
+       RETURNING *`,
+      [now, limit],
+    );
+    return rows.map(rowToEffect);
+  }
+
+  async function markEffectCompleted(effectId: string): Promise<void> {
+    await pool.query(
+      `UPDATE effect_outbox SET status = 'completed', completed_at = $1 WHERE id = $2`,
+      [Date.now(), effectId],
+    );
+  }
+
+  async function markEffectFailed(
+    effectId: string,
+    error: string,
+    nextRetryAt: number | null,
+  ): Promise<void> {
+    const status = nextRetryAt != null ? "pending" : "failed";
+    await pool.query(
+      `UPDATE effect_outbox SET status = $1, last_error = $2, next_retry_at = $3 WHERE id = $4`,
+      [status, error, nextRetryAt, effectId],
+    );
+  }
+
+  async function listEffects(instanceId: string): Promise<EffectOutboxRow[]> {
+    const { rows } = await pool.query(
+      `SELECT * FROM effect_outbox WHERE instance_id = $1 ORDER BY created_at ASC`,
+      [instanceId],
+    );
+    return rows.map(rowToEffect);
+  }
+
   // ── LISTEN/NOTIFY ─────────────────────────────────────────────────────
 
   let listenCallback:
@@ -554,6 +697,11 @@ export function createStore(options: PgStoreOptions): PgStore {
     listInvokeResults,
     appendTransition,
     getTransitions,
+    insertEffects,
+    claimPendingEffects,
+    markEffectCompleted,
+    markEffectFailed,
+    listEffects,
     startListening,
     stopListening,
     close,

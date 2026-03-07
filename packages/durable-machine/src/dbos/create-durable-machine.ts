@@ -38,7 +38,7 @@ export function createDurableMachine<T extends AnyStateMachine>(
   machine: T,
   options?: DurableMachineOptions,
 ): DurableMachine<T> {
-  validateMachineForDurability(machine);
+  validateMachineForDurability(machine, { effectHandlers: options?.effectHandlers });
 
   const opts = options ?? {};
   const workflowName = `xstate:${machine.id}`;

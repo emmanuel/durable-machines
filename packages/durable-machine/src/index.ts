@@ -72,6 +72,7 @@ export type {
   DurableMachineOptions,
   StepRetryPolicy,
   StepInfo,
+  EffectStatus,
   ChannelAdapter,
   SendPromptParams,
   ResolvePromptParams,

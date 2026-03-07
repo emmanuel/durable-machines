@@ -134,6 +134,21 @@ export interface DurableMachineHandle<TContext = Record<string, unknown>> {
   getSteps(): Promise<StepInfo[]>;
   /** Cancel the running workflow. The machine will not process further events. */
   cancel(): Promise<void>;
+  /** Return the list of effects enqueued for this instance, with their execution status. Only available on PG backend. */
+  listEffects?(): Promise<EffectStatus[]>;
+}
+
+/** Execution status of a single effect in the transactional outbox. */
+export interface EffectStatus {
+  id: string;
+  effectType: string;
+  effectPayload: Record<string, unknown>;
+  status: "pending" | "executing" | "completed" | "failed";
+  attempts: number;
+  maxAttempts: number;
+  lastError: string | null;
+  createdAt: number;
+  completedAt: number | null;
 }
 
 /** Summary status of a durable machine instance, typically returned when listing active instances. */
@@ -371,6 +386,10 @@ export interface DurableMachineOptions {
   channels?: ChannelAdapter[];
   /** When `true`, the workflow emits a transition stream that visualization tools can subscribe to. */
   enableTransitionStream?: boolean;
+  /** Registry of effect handlers. When provided, effects declared via `durableState({ effects: [...] })` are executed via the transactional outbox. */
+  effectHandlers?: import("./effects.js").EffectHandlerRegistry;
+  /** Retry policy for effect execution. @defaultValue `{ maxAttempts: 3, intervalSeconds: 1, backoffRate: 2 }` */
+  effectRetryPolicy?: StepRetryPolicy;
 }
 
 // ─── Errors ─────────────────────────────────────────────────────────────────

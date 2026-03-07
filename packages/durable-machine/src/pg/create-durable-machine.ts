@@ -6,6 +6,7 @@ import type {
   DurableMachineOptions,
   DurableMachineStatus,
   DurableStateSnapshot,
+  EffectStatus,
 } from "../types.js";
 import { DurableMachineError } from "../types.js";
 import { validateMachineForDurability } from "../validate.js";
@@ -62,7 +63,7 @@ export function createDurableMachine<T extends AnyStateMachine>(
   options: PgDurableMachineOptions,
 ): PgDurableMachine<T> {
   // Validate at registration time
-  validateMachineForDurability(machine);
+  validateMachineForDurability(machine, { effectHandlers: options.effectHandlers });
 
   const store = options.store ?? createStore({
     pool: options.pool,
@@ -150,6 +151,21 @@ export function createDurableMachine<T extends AnyStateMachine>(
 
       async cancel(): Promise<void> {
         await store.updateInstance(workflowId, { status: "cancelled" });
+      },
+
+      async listEffects(): Promise<EffectStatus[]> {
+        const rows = await store.listEffects(workflowId);
+        return rows.map((r) => ({
+          id: r.id,
+          effectType: r.effectType,
+          effectPayload: r.effectPayload,
+          status: r.status as EffectStatus["status"],
+          attempts: r.attempts,
+          maxAttempts: r.maxAttempts,
+          lastError: r.lastError,
+          createdAt: r.createdAt,
+          completedAt: r.completedAt,
+        }));
       },
     };
   }

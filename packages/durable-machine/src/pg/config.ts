@@ -2,6 +2,7 @@ export interface PgConfig {
   databaseUrl: string;
   schema?: string;
   wakePollingIntervalMs?: number;
+  effectPollingIntervalMs?: number;
   useListenNotify?: boolean;
 }
 

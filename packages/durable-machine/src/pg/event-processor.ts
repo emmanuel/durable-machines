@@ -12,6 +12,7 @@ import type {
 import { DurableMachineError } from "../types.js";
 import { isDurableState } from "../durable-state.js";
 import { getPromptConfig } from "../prompt.js";
+import { collectAndResolveEffects } from "../effect-collector.js";
 import {
   getActiveInvocation,
   extractActorImplementations,
@@ -73,6 +74,29 @@ function getSnapshotPromptConfig(
     if (config) return config;
   }
   return null;
+}
+
+// ─── Effects Helper ─────────────────────────────────────────────────────────
+
+async function enqueueEffects(
+  deps: EventProcessorOptions,
+  client: import("pg").PoolClient,
+  instanceId: string,
+  prevSnapshot: AnyMachineSnapshot,
+  nextSnapshot: AnyMachineSnapshot,
+  event: AnyEventObject,
+): Promise<void> {
+  if (!deps.options.effectHandlers) return;
+
+  const { effects } = collectAndResolveEffects(
+    deps.machine, prevSnapshot, nextSnapshot, event,
+  );
+  if (effects.length === 0) return;
+
+  const retryPolicy = deps.options.effectRetryPolicy;
+  const maxAttempts = retryPolicy?.maxAttempts ?? 3;
+
+  await deps.store.insertEffects(client, instanceId, nextSnapshot.value, effects, maxAttempts);
 }
 
 // ─── Core: Execute Invocations Inline ───────────────────────────────────────
@@ -254,15 +278,34 @@ export async function processStartup(
 
   const status = snapshot.status === "done" ? "done" : "running";
 
-  await store.createInstance(
-    instanceId,
-    machine.id,
-    snapshot.value,
-    snapshot.context as Record<string, unknown>,
-    input,
-    wakeAt,
-    [],
-  );
+  // Wrap creation + effect insert in a single transaction
+  const client = await getPool(store).connect();
+  try {
+    await client.query("BEGIN");
+
+    await store.createInstance(
+      instanceId,
+      machine.id,
+      snapshot.value,
+      snapshot.context as Record<string, unknown>,
+      input,
+      wakeAt,
+      [],
+      client,
+    );
+
+    if (deps.options.effectHandlers) {
+      const emptyPrev = { _nodes: [] } as unknown as AnyMachineSnapshot;
+      await enqueueEffects(deps, client, instanceId, emptyPrev, snapshot, { type: "xstate.init" } as AnyEventObject);
+    }
+
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
 
   if (status === "done") {
     await store.updateInstance(instanceId, { status: "done" });
@@ -361,7 +404,7 @@ export async function processEvent(
         );
       }
 
-      // Prompt lifecycle
+      // Prompt lifecycle + effects
       if (!stateValueEquals(prevStateValue, current.value)) {
         await handlePromptExit(
           deps,
@@ -371,6 +414,8 @@ export async function processEvent(
           channels,
           event,
         );
+
+        await enqueueEffects(deps, client, instanceId, snapshot, current, event);
 
         if (status === "running" && isDurableState(machine, current)) {
           await handlePromptEntry(deps, instanceId, current, channels);
@@ -497,7 +542,7 @@ export async function processTimeout(
         );
       }
 
-      // Prompt lifecycle
+      // Prompt lifecycle + effects
       if (!stateValueEquals(prevStateValue, current.value)) {
         await handlePromptExit(
           deps,
@@ -507,6 +552,8 @@ export async function processTimeout(
           channels,
           afterEvent as AnyEventObject,
         );
+
+        await enqueueEffects(deps, client, instanceId, snapshot, current, afterEvent as AnyEventObject);
 
         if (status === "running" && isDurableState(machine, current)) {
           await handlePromptEntry(deps, instanceId, current, channels);

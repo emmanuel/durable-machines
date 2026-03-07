@@ -43,6 +43,11 @@ const mockStore: PgStore = {
   listInvokeResults: vi.fn(),
   appendTransition: vi.fn(),
   getTransitions: vi.fn(),
+  insertEffects: vi.fn(),
+  claimPendingEffects: vi.fn().mockResolvedValue([]),
+  markEffectCompleted: vi.fn(),
+  markEffectFailed: vi.fn(),
+  listEffects: vi.fn().mockResolvedValue([]),
 };
 
 vi.mock("../../src/pg/store.js", () => ({
@@ -192,13 +197,13 @@ describe("createPgWorkerContext", () => {
       expect(cb.length).toBe(3);
     });
 
-    it("start() starts the wake poller (setInterval called)", async () => {
+    it("start() starts the wake poller and effect poller (setInterval called twice)", async () => {
       const siSpy = vi.spyOn(globalThis, "setInterval");
       const ctx = createPgWorkerContext({ databaseUrl: "postgres://localhost/test" });
 
       await ctx.start({ handleExceptions: false, signals: [] });
 
-      expect(siSpy).toHaveBeenCalledOnce();
+      expect(siSpy).toHaveBeenCalledTimes(2);
     });
 
     it("shutdown stops poller, then store.close(), then pool.end() (in order)", async () => {

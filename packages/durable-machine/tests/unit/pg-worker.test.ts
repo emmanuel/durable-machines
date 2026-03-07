@@ -1,0 +1,376 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import type { AnyStateMachine } from "xstate";
+import type { PgStore } from "../../src/pg/store.js";
+import type { PgDurableMachine } from "../../src/pg/create-durable-machine.js";
+
+// ─── Mocks ──────────────────────────────────────────────────────────────────
+
+// Mock pg module — must be before the import of worker.ts
+const mockPoolEnd = vi.fn().mockResolvedValue(undefined);
+const mockPoolQuery = vi.fn().mockResolvedValue({ rows: [] });
+const mockPool = {
+  query: mockPoolQuery,
+  end: mockPoolEnd,
+  connect: vi.fn(),
+};
+
+vi.mock("pg", () => ({
+  Pool: vi.fn(function () {
+    return mockPool;
+  }),
+}));
+
+// Mock createStore
+const mockEnsureSchema = vi.fn().mockResolvedValue(undefined);
+const mockStartListening = vi.fn().mockResolvedValue(undefined);
+const mockStopListening = vi.fn().mockResolvedValue(undefined);
+const mockClose = vi.fn().mockResolvedValue(undefined);
+
+const mockStore: PgStore = {
+  ensureSchema: mockEnsureSchema,
+  startListening: mockStartListening,
+  stopListening: mockStopListening,
+  close: mockClose,
+  createInstance: vi.fn(),
+  getInstance: vi.fn(),
+  updateInstance: vi.fn(),
+  listInstances: vi.fn(),
+  lockAndGetInstance: vi.fn(),
+  sendMessage: vi.fn(),
+  consumeNextMessage: vi.fn(),
+  getInvokeResult: vi.fn(),
+  recordInvokeResult: vi.fn(),
+  listInvokeResults: vi.fn(),
+  appendTransition: vi.fn(),
+  getTransitions: vi.fn(),
+};
+
+vi.mock("../../src/pg/store.js", () => ({
+  createStore: vi.fn(() => mockStore),
+}));
+
+// Mock createDurableMachine
+const mockConsumeAndProcess = vi.fn().mockResolvedValue(undefined);
+const mockProcessTimeout = vi.fn().mockResolvedValue(undefined);
+
+function makeMockDurableMachine(machine: AnyStateMachine): PgDurableMachine {
+  return {
+    machine,
+    start: vi.fn(),
+    get: vi.fn(),
+    list: vi.fn(),
+    consumeAndProcess: mockConsumeAndProcess,
+    processTimeout: mockProcessTimeout,
+  };
+}
+
+let lastCreatedMachine: PgDurableMachine | null = null;
+
+vi.mock("../../src/pg/create-durable-machine.js", () => ({
+  createDurableMachine: vi.fn((machine: AnyStateMachine) => {
+    lastCreatedMachine = makeMockDurableMachine(machine);
+    return lastCreatedMachine;
+  }),
+}));
+
+// Mock createAppContext — pass-through to real implementation for lifecycle tests
+// but we intercept process.on / process.exit
+vi.mock("../../src/app-context.js", async () => {
+  return await vi.importActual("../../src/app-context.js");
+});
+
+// ─── Import after mocks ─────────────────────────────────────────────────────
+
+import { createPgWorkerContext } from "../../src/pg/worker.js";
+
+// ─── Fake machines ──────────────────────────────────────────────────────────
+
+function fakeMachine(id: string): AnyStateMachine {
+  return { id } as unknown as AnyStateMachine;
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+type SignalHandler = (...args: unknown[]) => void;
+let listeners: Map<string, SignalHandler[]>;
+
+// ─── Setup / Teardown ───────────────────────────────────────────────────────
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.clearAllMocks();
+  lastCreatedMachine = null;
+
+  listeners = new Map();
+  vi.spyOn(process, "on").mockImplementation(
+    (event: string | symbol, handler: (...args: any[]) => void) => {
+      const key = typeof event === "symbol" ? event.toString() : event;
+      const list = listeners.get(key) ?? [];
+      list.push(handler);
+      listeners.set(key, list);
+      return process;
+    },
+  );
+
+  vi.spyOn(process, "exit").mockImplementation(
+    (_code?: string | number | null) => undefined as never,
+  );
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
+
+// ─── Tests ──────────────────────────────────────────────────────────────────
+
+describe("createPgWorkerContext", () => {
+  // ── Registration ─────────────────────────────────────────────────────────
+
+  describe("register()", () => {
+    it("returns DurableMachine with correct .machine ref", () => {
+      const ctx = createPgWorkerContext({ databaseUrl: "postgres://localhost/test" });
+      const m = fakeMachine("order");
+
+      const dm = ctx.register(m);
+
+      expect(dm.machine).toBe(m);
+    });
+
+    it("throws on duplicate machine ID", () => {
+      const ctx = createPgWorkerContext({ databaseUrl: "postgres://localhost/test" });
+      const m = fakeMachine("order");
+
+      ctx.register(m);
+
+      expect(() => ctx.register(m)).toThrow('Machine "order" is already registered');
+    });
+
+    it("works both before and after start()", async () => {
+      const ctx = createPgWorkerContext({ databaseUrl: "postgres://localhost/test" });
+      const m1 = fakeMachine("before");
+      const m2 = fakeMachine("after");
+
+      // Before start
+      const dm1 = ctx.register(m1);
+      expect(dm1.machine).toBe(m1);
+
+      await ctx.start({ handleExceptions: false, signals: [] });
+
+      // After start
+      const dm2 = ctx.register(m2);
+      expect(dm2.machine).toBe(m2);
+    });
+
+    it("exposes pool and store on the returned context", () => {
+      const ctx = createPgWorkerContext({ databaseUrl: "postgres://localhost/test" });
+
+      expect(ctx.pool).toBe(mockPool);
+      expect(ctx.store).toBe(mockStore);
+    });
+  });
+
+  // ── Lifecycle ────────────────────────────────────────────────────────────
+
+  describe("lifecycle", () => {
+    it("start() calls store.ensureSchema()", async () => {
+      const ctx = createPgWorkerContext({ databaseUrl: "postgres://localhost/test" });
+
+      await ctx.start({ handleExceptions: false, signals: [] });
+
+      expect(mockEnsureSchema).toHaveBeenCalledOnce();
+    });
+
+    it("start() calls store.startListening() with a 3-arg callback", async () => {
+      const ctx = createPgWorkerContext({ databaseUrl: "postgres://localhost/test" });
+
+      await ctx.start({ handleExceptions: false, signals: [] });
+
+      expect(mockStartListening).toHaveBeenCalledOnce();
+      const cb = mockStartListening.mock.calls[0][0];
+      expect(typeof cb).toBe("function");
+      expect(cb.length).toBe(3);
+    });
+
+    it("start() starts the wake poller (setInterval called)", async () => {
+      const siSpy = vi.spyOn(globalThis, "setInterval");
+      const ctx = createPgWorkerContext({ databaseUrl: "postgres://localhost/test" });
+
+      await ctx.start({ handleExceptions: false, signals: [] });
+
+      expect(siSpy).toHaveBeenCalledOnce();
+    });
+
+    it("shutdown stops poller, then store.close(), then pool.end() (in order)", async () => {
+      const ctx = createPgWorkerContext({ databaseUrl: "postgres://localhost/test" });
+
+      await ctx.start({ handleExceptions: false, signals: [] });
+
+      const callOrder: string[] = [];
+      mockClose.mockImplementation(async () => {
+        callOrder.push("store.close");
+      });
+      mockPoolEnd.mockImplementation(async () => {
+        callOrder.push("pool.end");
+      });
+
+      void ctx.shutdown("test");
+      await vi.advanceTimersByTimeAsync(0);
+
+      // store.close before pool.end
+      expect(callOrder).toEqual(["store.close", "pool.end"]);
+
+      // Poller should no longer fire after shutdown
+      mockPoolQuery.mockClear();
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(mockPoolQuery).not.toHaveBeenCalled();
+    });
+
+    it("isShuttingDown() is false before shutdown, true after", async () => {
+      const ctx = createPgWorkerContext({ databaseUrl: "postgres://localhost/test" });
+
+      await ctx.start({ handleExceptions: false, signals: [] });
+      expect(ctx.isShuttingDown()).toBe(false);
+
+      void ctx.shutdown("test");
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(ctx.isShuttingDown()).toBe(true);
+    });
+  });
+
+  // ── Fan-out ──────────────────────────────────────────────────────────────
+
+  describe("LISTEN fan-out", () => {
+    it("dispatches to correct machine's consumeAndProcess() by name", async () => {
+      const ctx = createPgWorkerContext({ databaseUrl: "postgres://localhost/test" });
+      const m = fakeMachine("order");
+      ctx.register(m);
+
+      await ctx.start({ handleExceptions: false, signals: [] });
+
+      const cb = mockStartListening.mock.calls[0][0] as (
+        machineName: string,
+        instanceId: string,
+        topic: string,
+      ) => void;
+
+      cb("order", "inst-1", "event");
+
+      // consumeAndProcess is called via void (fire-and-forget), wait for microtask
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(lastCreatedMachine!.consumeAndProcess).toHaveBeenCalledWith("inst-1");
+    });
+
+    it("ignores topics other than 'event'", async () => {
+      const ctx = createPgWorkerContext({ databaseUrl: "postgres://localhost/test" });
+      const m = fakeMachine("order");
+      ctx.register(m);
+
+      await ctx.start({ handleExceptions: false, signals: [] });
+
+      const cb = mockStartListening.mock.calls[0][0] as (
+        machineName: string,
+        instanceId: string,
+        topic: string,
+      ) => void;
+
+      cb("order", "inst-1", "other-topic");
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(mockConsumeAndProcess).not.toHaveBeenCalled();
+    });
+
+    it("ignores unknown machine names (no throw)", async () => {
+      const ctx = createPgWorkerContext({ databaseUrl: "postgres://localhost/test" });
+
+      await ctx.start({ handleExceptions: false, signals: [] });
+
+      const cb = mockStartListening.mock.calls[0][0] as (
+        machineName: string,
+        instanceId: string,
+        topic: string,
+      ) => void;
+
+      // Should not throw
+      expect(() => cb("unknown", "inst-1", "event")).not.toThrow();
+    });
+  });
+
+  // ── Poller ───────────────────────────────────────────────────────────────
+
+  describe("wake poller", () => {
+    it("calls processTimeout() for timed-out instances, dispatched by machine name", async () => {
+      const ctx = createPgWorkerContext({
+        databaseUrl: "postgres://localhost/test",
+        wakePollingIntervalMs: 1000,
+      });
+      const m = fakeMachine("order");
+      ctx.register(m);
+
+      mockPoolQuery.mockResolvedValueOnce({
+        rows: [{ id: "inst-1", machine_name: "order" }],
+      });
+
+      await ctx.start({ handleExceptions: false, signals: [] });
+
+      // Trigger poller
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(lastCreatedMachine!.processTimeout).toHaveBeenCalledWith("inst-1");
+    });
+
+    it("survives individual processTimeout() failures", async () => {
+      const ctx = createPgWorkerContext({
+        databaseUrl: "postgres://localhost/test",
+        wakePollingIntervalMs: 1000,
+      });
+      const m = fakeMachine("order");
+      ctx.register(m);
+
+      // First tick: processTimeout fails
+      mockPoolQuery.mockResolvedValueOnce({
+        rows: [{ id: "inst-1", machine_name: "order" }],
+      });
+      mockProcessTimeout.mockRejectedValueOnce(new Error("boom"));
+
+      await ctx.start({ handleExceptions: false, signals: [] });
+      await vi.advanceTimersByTimeAsync(1000);
+
+      // Second tick: should still fire
+      mockPoolQuery.mockResolvedValueOnce({
+        rows: [{ id: "inst-2", machine_name: "order" }],
+      });
+      mockProcessTimeout.mockResolvedValueOnce(undefined);
+
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(mockProcessTimeout).toHaveBeenCalledWith("inst-2");
+    });
+
+    it("survives query failures", async () => {
+      const ctx = createPgWorkerContext({
+        databaseUrl: "postgres://localhost/test",
+        wakePollingIntervalMs: 1000,
+      });
+      const m = fakeMachine("order");
+      ctx.register(m);
+
+      // First tick: query fails
+      mockPoolQuery.mockRejectedValueOnce(new Error("connection refused"));
+
+      await ctx.start({ handleExceptions: false, signals: [] });
+      await vi.advanceTimersByTimeAsync(1000);
+
+      // Second tick: query succeeds
+      mockPoolQuery.mockResolvedValueOnce({
+        rows: [{ id: "inst-3", machine_name: "order" }],
+      });
+
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(mockProcessTimeout).toHaveBeenCalledWith("inst-3");
+    });
+  });
+});

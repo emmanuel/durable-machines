@@ -558,6 +558,181 @@ describe("PG Event Processor", () => {
       expect(row!.eventCursor).toBe(seq);
     });
 
+    it("does not persist final state when cancelled during invocation", async () => {
+      // Use a slow invocation to simulate cancellation during execution
+      const slowMachine = setup({
+        types: {
+          context: {} as { result?: string },
+          events: {} as { type: "START" },
+          input: {} as Record<string, never>,
+        },
+        actors: {
+          slowWork: fromPromise(async () => {
+            // During this invocation, we'll set status to cancelled
+            const inst = store.instances.get("evt-cancel");
+            if (inst) inst.status = "cancelled";
+            return { result: "done" };
+          }),
+        },
+      }).createMachine({
+        id: "slowInvoke",
+        initial: "waiting",
+        context: {},
+        states: {
+          waiting: {
+            ...durableState(),
+            on: { START: "working" },
+          },
+          working: {
+            invoke: {
+              src: "slowWork",
+              input: () => ({}),
+              onDone: {
+                target: "complete",
+                actions: assign({ result: ({ event }) => (event.output as any).result }),
+              },
+              onError: "failed",
+            },
+          },
+          complete: { type: "final" },
+          failed: { type: "final" },
+        },
+      });
+
+      const deps: EventProcessorOptions = {
+        store,
+        machine: slowMachine,
+        options: {},
+      };
+
+      await processStartup(deps, "evt-cancel", {});
+      await store.appendEvent("evt-cancel", { type: "START" });
+      await processNextFromLog(deps, "evt-cancel");
+
+      const row = store.instances.get("evt-cancel");
+      // Should stay cancelled — final state should not be persisted
+      expect(row!.status).toBe("cancelled");
+      expect(row!.stateValue).toBe("working");
+    });
+
+    it("persists intermediate invoking state before executing invocation", async () => {
+      let stateValueDuringInvoke: unknown;
+
+      const spyMachine = setup({
+        types: {
+          context: {} as { result?: string },
+          events: {} as { type: "START" },
+          input: {} as Record<string, never>,
+        },
+        actors: {
+          spyWork: fromPromise(async () => {
+            // Capture the persisted state during invocation
+            const inst = store.instances.get("evt-spy");
+            stateValueDuringInvoke = inst?.stateValue;
+            return { result: "spied" };
+          }),
+        },
+      }).createMachine({
+        id: "spyInvoke",
+        initial: "waiting",
+        context: {},
+        states: {
+          waiting: {
+            ...durableState(),
+            on: { START: "working" },
+          },
+          working: {
+            invoke: {
+              src: "spyWork",
+              input: () => ({}),
+              onDone: {
+                target: "complete",
+                actions: assign({ result: ({ event }) => (event.output as any).result }),
+              },
+              onError: "failed",
+            },
+          },
+          complete: { type: "final" },
+          failed: { type: "final" },
+        },
+      });
+
+      const deps: EventProcessorOptions = {
+        store,
+        machine: spyMachine,
+        options: {},
+      };
+
+      await processStartup(deps, "evt-spy", {});
+      await store.appendEvent("evt-spy", { type: "START" });
+      await processNextFromLog(deps, "evt-spy");
+
+      // During invocation, state should have been persisted as "working"
+      expect(stateValueDuringInvoke).toBe("working");
+      // After completion, final state should be "complete"
+      const row = store.instances.get("evt-spy");
+      expect(row!.stateValue).toBe("complete");
+      expect(row!.status).toBe("done");
+    });
+
+    it("does not advance cursor in Txn 1 when invocation is detected", async () => {
+      let cursorDuringInvoke: number | undefined;
+
+      const cursorSpyMachine = setup({
+        types: {
+          context: {} as { result?: string },
+          events: {} as { type: "START" },
+          input: {} as Record<string, never>,
+        },
+        actors: {
+          cursorWork: fromPromise(async () => {
+            const inst = store.instances.get("evt-cursor-inv");
+            cursorDuringInvoke = inst?.eventCursor;
+            return { result: "ok" };
+          }),
+        },
+      }).createMachine({
+        id: "cursorInvoke",
+        initial: "waiting",
+        context: {},
+        states: {
+          waiting: {
+            ...durableState(),
+            on: { START: "working" },
+          },
+          working: {
+            invoke: {
+              src: "cursorWork",
+              input: () => ({}),
+              onDone: {
+                target: "complete",
+                actions: assign({ result: ({ event }) => (event.output as any).result }),
+              },
+              onError: "failed",
+            },
+          },
+          complete: { type: "final" },
+          failed: { type: "final" },
+        },
+      });
+
+      const deps: EventProcessorOptions = {
+        store,
+        machine: cursorSpyMachine,
+        options: {},
+      };
+
+      await processStartup(deps, "evt-cursor-inv", {});
+      const { seq } = await store.appendEvent("evt-cursor-inv", { type: "START" });
+      await processNextFromLog(deps, "evt-cursor-inv");
+
+      // During invocation, cursor should NOT have been advanced
+      expect(cursorDuringInvoke).toBe(0);
+      // After completion, cursor should be advanced
+      const row = store.instances.get("evt-cursor-inv");
+      expect(row!.eventCursor).toBe(seq);
+    });
+
     it("fires correct after event via event log", async () => {
       const deps: EventProcessorOptions = {
         store,

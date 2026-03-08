@@ -294,7 +294,30 @@ import { createDurableMachine } from "@durable-xstate/durable-machine/pg";
 
 Same `DurableMachine` interface, same machine definitions. Switch by changing one import.
 
-## How recovery works
+### Backend comparison
+
+#### Runtime model
+
+| | DBOS | PG |
+|---|---|---|
+| **Architecture** | Long-running workflow function (`while` loop with `DBOS.recv()` / `DBOS.runStep()`) | Event-driven pull (one short transaction per event) |
+| **Per-instance while idle** | Suspended Promise + closure + XState snapshot (~10-50 KB) | Row in Postgres (~1 KB) |
+| **Connection overhead** | One DBOS system DB session per in-flight workflow | Shared `pg.Pool` across all instances |
+| **Timeout handling** | `DBOS.recv(topic, timeoutSec)` with durable timeout tracking | `wake_at` column + poller (default 5 s interval) + `LISTEN/NOTIFY` |
+
+#### Idle capacity (rough estimates, medium EC2 — 4 vCPU / 16 GB)
+
+| | DBOS | PG |
+|---|---|---|
+| **Idle instance cost** | ~10-50 KB heap per suspended workflow | ~1 KB row in Postgres (no heap) |
+| **Max idle instances** | ~100K-500K (limited by Node.js heap) | ~1-10M+ (limited by Postgres storage; workers scale independently) |
+| **Scale-to-zero** | Not practical — killing the process loses all suspended workflows until recovery re-creates them | Workers can scale to zero; instances survive in the DB indefinitely |
+
+The PG backend decouples instance storage from compute. A single Postgres instance can hold millions of idle machines while zero workers are running. The DBOS backend ties instance lifetime to process lifetime — every active workflow is a suspended Promise in the Node.js event loop.
+
+#### Recovery model
+
+**DBOS: deterministic replay**
 
 1. DBOS detects a workflow is `PENDING` after restart
 2. It calls the workflow function again with the original input
@@ -304,7 +327,35 @@ Same `DurableMachine` interface, same machine definitions. Switch by changing on
 6. The loop fast-forwards to the interruption point
 7. The next step or recv with no cache executes live
 
-No snapshots to manage. No event store to compact. DBOS handles it all.
+Recovery cost scales with workflow history depth — a machine that has processed 100 events replays 100 cached transitions to reach the current state. No snapshots to manage; DBOS handles it all.
+
+**PG: event log cursor + invocation cache**
+
+1. Instance row stores `event_cursor` (last processed event sequence number)
+2. On wake (NOTIFY or poll), the processor reads the next unconsumed event
+3. Runs `transition()` (pure, instant)
+4. If the transition triggers an invocation, checks `invoke_results` for a cached result before executing
+5. Persists the new state + advances the cursor atomically
+
+Recovery cost is O(1) — the processor picks up exactly where it left off, regardless of how many events the instance has processed historically. No replay, no fast-forwarding.
+
+#### Other differences
+
+| | DBOS | PG |
+|---|---|---|
+| **Dependencies** | `@dbos-inc/dbos-sdk` (includes ORM, tracing, cloud features) | `pg` only |
+| **Deployment** | DBOS Cloud, or self-hosted with DBOS runtime | Any environment with Postgres |
+| **Observability** | Built-in DBOS tracing + dashboard | Bring your own (transition log + effect outbox provide raw data) |
+| **Concurrency control** | Implicit — one workflow function per instance | Explicit — `FOR NO KEY UPDATE NOWAIT` row locking with retry |
+| **Effect outbox** | Not built-in (side effects run via `DBOS.runStep()`) | Built-in outbox with retry policies, claim/complete lifecycle |
+| **External clients** | Via `DBOSClient` (needs DBOS system DB) | Via raw `pg.Pool` (direct SQL) |
+| **Operational complexity** | Lower — DBOS manages recovery, timeouts, idempotency | Higher — you manage the worker process, polling intervals, connection pool sizing |
+
+#### When to choose which
+
+**Choose DBOS** when you want minimal operational overhead and are already in the DBOS ecosystem. Good for smaller-scale deployments where the number of concurrent workflows fits comfortably in Node.js memory (thousands, not millions).
+
+**Choose PG** when you need high density of idle workflows, independent scaling of compute and storage, or want to avoid a runtime dependency beyond `pg`. Better for multi-tenant systems, long-lived workflows (days/weeks), or environments where you already operate Postgres.
 
 ## Development
 

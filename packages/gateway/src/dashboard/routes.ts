@@ -359,8 +359,6 @@ function collectStatePaths(
 function extractVisitedStates(transitions: TransitionRecord[]): string[] {
   const visited = new Set<string>();
   for (const t of transitions) {
-    collectStatePaths(t.to, "", [...visited].length ? undefined as any : []);
-    // Simpler: just collect to-state paths
     const paths: string[] = [];
     collectStatePaths(t.to, "", paths);
     for (const p of paths) visited.add(p);

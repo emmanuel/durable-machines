@@ -512,6 +512,56 @@ tr:last-child td { border-bottom: none; }
   word-break: break-word;
 }
 
+/* ── Start Instance Form ───────────────────────── */
+
+.start-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.start-form input,
+.start-form textarea {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  color: var(--text);
+  padding: 8px 12px;
+}
+
+.start-form input:focus,
+.start-form textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.start-form textarea {
+  min-height: 60px;
+  resize: vertical;
+}
+
+.start-form button {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: var(--green);
+  color: var(--bg);
+  cursor: pointer;
+}
+
+.start-form button:hover { opacity: 0.9; }
+
+.start-form-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 /* ── Danger Button ─────────────────────────────── */
 
 .btn-danger {

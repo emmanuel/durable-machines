@@ -62,7 +62,7 @@ export function createDashboardRoutes(options: DashboardRouteOptions): Hono {
 
     const status = c.req.query("status");
     const instances = await durable.list(status ? { status } : undefined);
-    return c.html(instanceListPage(basePath, machineId, instances, status));
+    return c.html(instanceListPage(basePath, machineId, instances, status, restBasePath));
   });
 
   // ── GET /:machineId/:instanceId — Instance detail ────────────────────────

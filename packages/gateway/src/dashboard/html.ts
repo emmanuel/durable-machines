@@ -141,6 +141,7 @@ export function instanceListPage(
   machineId: string,
   instances: DurableMachineStatus[],
   statusFilter?: string,
+  restBasePath?: string,
 ): string {
   const filters = ["all", "PENDING", "SUCCESS", "ERROR", "CANCELLED"];
 
@@ -171,10 +172,22 @@ export function instanceListPage(
   }
 
   const sseUrl = `${basePath}/sse/${machineId}`;
+  const startUrl = `${restBasePath ?? ""}/machines/${machineId}/instances`;
 
   const body = `
     <script type="application/json" id="base-path">${esc(basePath)}</script>
     <script type="application/json" id="machine-id">${esc(machineId)}</script>
+    <div class="card start-instance-card">
+      <h2>Start Instance</h2>
+      <form id="start-form" class="start-form" data-url="${esc(startUrl)}" data-detail-base="${esc(basePath)}/${esc(machineId)}">
+        <input type="text" name="instanceId" placeholder="Instance ID (required)" required />
+        <textarea name="input" placeholder='{"key": "value"} (optional initial context)'></textarea>
+        <div class="start-form-row">
+          <button type="submit">Start</button>
+          <span class="form-status" id="start-status"></span>
+        </div>
+      </form>
+    </div>
     <div class="card">
       <h2>Instances: ${esc(machineId)}</h2>
       ${filterHtml}

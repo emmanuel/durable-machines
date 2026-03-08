@@ -572,6 +572,60 @@ export const CLIENT_JS = /* js */ `
     });
   }
 
+  // ── Start Instance Form ──────────────────────────────────
+
+  function initStartForm() {
+    var form = document.getElementById('start-form');
+    if (!form) return;
+
+    form.addEventListener('submit', async function(e) {
+      e.preventDefault();
+      var url = form.getAttribute('data-url');
+      var detailBase = form.getAttribute('data-detail-base');
+      var idInput = form.querySelector('input[name="instanceId"]');
+      var textArea = form.querySelector('textarea[name="input"]');
+      var status = document.getElementById('start-status');
+      var instanceId = idInput ? idInput.value.trim() : '';
+      if (!instanceId) return;
+
+      var input = {};
+      if (textArea && textArea.value.trim()) {
+        try {
+          input = JSON.parse(textArea.value);
+        } catch (err) {
+          if (status) {
+            status.textContent = 'Invalid JSON input';
+            status.className = 'form-status error';
+          }
+          return;
+        }
+      }
+
+      try {
+        var resp = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ instanceId: instanceId, input: input }),
+        });
+        if (resp.ok) {
+          // Navigate to the new instance detail page
+          window.location.href = detailBase + '/' + encodeURIComponent(instanceId);
+        } else {
+          var errData = await resp.json().catch(function() { return {}; });
+          if (status) {
+            status.textContent = errData.error || 'Failed to start instance';
+            status.className = 'form-status error';
+          }
+        }
+      } catch (err) {
+        if (status) {
+          status.textContent = 'Network error';
+          status.className = 'form-status error';
+        }
+      }
+    });
+  }
+
   // ── SSE Live Updates ───────────────────────────────────────
 
   function connectSSE(url, handlers) {
@@ -813,6 +867,7 @@ export const CLIENT_JS = /* js */ `
 
     initEventSender();
     initCancelButton();
+    initStartForm();
     initInstanceDetailSSE();
     initInstanceListSSE();
   });

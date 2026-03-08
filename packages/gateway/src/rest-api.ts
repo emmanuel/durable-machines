@@ -152,6 +152,28 @@ export function createRestApi(options: RestApiOptions): Hono {
     return c.json(effects);
   });
 
+  // GET /machines/:machineId/instances/:instanceId/events/log — event log
+  r.get("/:instanceId/events/log", async (c) => {
+    const machineId = c.req.param("machineId")!;
+    const instanceId = c.req.param("instanceId")!;
+    const durable = machines.get(machineId);
+    if (!durable) return c.json({ error: "Machine not found" }, 404);
+
+    const handle = durable.get(instanceId);
+    if (!handle.getEventLog) {
+      return c.json({ error: "Event log not supported by this backend" }, 501);
+    }
+
+    const limit = c.req.query("limit");
+    const after = c.req.query("after");
+    const opts: { limit?: number; afterSeq?: number } = {};
+    if (limit) opts.limit = Number(limit);
+    if (after) opts.afterSeq = Number(after);
+
+    const events = await handle.getEventLog(opts);
+    return c.json(events);
+  });
+
   // DELETE /machines/:machineId/instances/:instanceId — cancel
   r.delete("/:instanceId", async (c) => {
     const machineId = c.req.param("machineId")!;

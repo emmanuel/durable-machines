@@ -3,6 +3,7 @@ import { createDurableMachine, createStore, getVisualizationState as pgGetVisual
 import type { PgDurableMachine } from "../../../src/pg/create-durable-machine.js";
 import type { BackendFixture } from "../../fixtures/helpers.js";
 import type { EffectHandler, ResolvedEffect } from "../../../src/effects.js";
+import { getSortedAfterDelays, buildAfterEvent } from "../../../src/xstate-utils.js";
 
 const TEST_DB_URL =
   process.env.PG_TEST_DATABASE_URL ??
@@ -102,19 +103,40 @@ export function createPgFixture(): BackendFixture {
     try {
       const now = Date.now();
       const { rows } = await pool.query(
-        `SELECT id, machine_name FROM machine_instances
+        `SELECT id, machine_name, state_value, context, fired_delays
+         FROM machine_instances
          WHERE wake_at <= $1 AND status = 'running'
          ORDER BY wake_at ASC LIMIT 50`,
         [now],
       );
       for (const row of rows) {
         const m = machines.get(row.machine_name);
-        if (m) {
-          try {
-            await m.processTimeout(row.id);
-          } catch {
-            // individual failures don't stop the poller
-          }
+        if (!m) continue;
+
+        // Optimistic claim
+        const { rowCount } = await pool.query(
+          `UPDATE machine_instances SET wake_at = NULL
+           WHERE id = $1 AND wake_at IS NOT NULL AND wake_at <= $2`,
+          [row.id, now],
+        );
+        if (!rowCount) continue;
+
+        try {
+          const snapshot = m.machine.resolveState({
+            value: row.state_value,
+            context: row.context,
+          });
+          const allDelays = getSortedAfterDelays(m.machine, snapshot);
+          const firedDelays = row.fired_delays as Array<string | number>;
+          const unfired = allDelays.filter((d: string | number) => !firedDelays.includes(d));
+          if (unfired.length === 0) continue;
+
+          const afterEvent = buildAfterEvent(m.machine, snapshot, unfired[0]);
+          await store.appendEvent(row.id, afterEvent, "timeout", "system:timeout");
+
+          try { await m.consumeAndProcess(row.id); } catch { /* NOTIFY retry */ }
+        } catch {
+          // individual failures don't stop the poller
         }
       }
     } catch {

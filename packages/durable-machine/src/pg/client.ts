@@ -4,7 +4,7 @@ import type { DurableStateSnapshot } from "../types.js";
 import type { StateValue } from "xstate";
 
 /**
- * Sends an event to a machine instance via direct SQL insert into `machine_messages`.
+ * Sends an event to a machine instance via direct SQL insert into `event_log`.
  * The NOTIFY trigger will alert the listener for event-driven processing.
  */
 export async function sendMachineEvent(
@@ -13,7 +13,7 @@ export async function sendMachineEvent(
   event: AnyEventObject,
 ): Promise<void> {
   await pool.query(
-    `INSERT INTO machine_messages (instance_id, topic, payload, created_at)
+    `INSERT INTO event_log (instance_id, topic, payload, created_at)
      VALUES ($1, 'event', $2, $3)`,
     [workflowId, JSON.stringify(event), Date.now()],
   );
@@ -43,7 +43,7 @@ export async function sendMachineEventBatch(
   }
 
   await pool.query(
-    `INSERT INTO machine_messages (instance_id, topic, payload, created_at)
+    `INSERT INTO event_log (instance_id, topic, payload, created_at)
      SELECT * FROM UNNEST($1::text[], $2::text[], $3::jsonb[], $4::bigint[])`,
     [instanceIds, topics, payloads, timestamps],
   );

@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS machine_instances (
   fired_delays    JSONB NOT NULL DEFAULT '[]',
   wake_at         BIGINT,
   input           JSONB,
+  event_cursor    BIGINT NOT NULL DEFAULT 0,
   created_at      BIGINT NOT NULL,
   updated_at      BIGINT NOT NULL
 );
@@ -30,17 +31,19 @@ CREATE TABLE IF NOT EXISTS invoke_results (
   PRIMARY KEY (instance_id, step_key)
 );
 
-CREATE TABLE IF NOT EXISTS machine_messages (
-  id              TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE IF NOT EXISTS event_log (
   instance_id     TEXT NOT NULL REFERENCES machine_instances(id) ON DELETE CASCADE,
+  seq             BIGSERIAL,
   topic           TEXT NOT NULL DEFAULT 'event',
   payload         JSONB NOT NULL,
-  consumed        BOOLEAN NOT NULL DEFAULT false,
-  created_at      BIGINT NOT NULL
+  source          TEXT,
+  created_at      BIGINT NOT NULL,
+  PRIMARY KEY (instance_id, seq)
 );
-CREATE INDEX IF NOT EXISTS idx_mm_pending ON machine_messages (instance_id, topic) WHERE consumed = false;
+CREATE INDEX IF NOT EXISTS idx_el_pending
+  ON event_log (instance_id, seq);
 
-CREATE OR REPLACE FUNCTION machine_messages_notify() RETURNS trigger AS $$
+CREATE OR REPLACE FUNCTION event_log_notify() RETURNS trigger AS $$
 DECLARE
   m_name TEXT;
 BEGIN
@@ -50,9 +53,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS machine_messages_trigger ON machine_messages;
-CREATE TRIGGER machine_messages_trigger
-  AFTER INSERT ON machine_messages FOR EACH ROW EXECUTE FUNCTION machine_messages_notify();
+DROP TRIGGER IF EXISTS event_log_trigger ON event_log;
+CREATE TRIGGER event_log_trigger
+  AFTER INSERT ON event_log FOR EACH ROW EXECUTE FUNCTION event_log_notify();
 
 CREATE TABLE IF NOT EXISTS transition_log (
   instance_id     TEXT NOT NULL REFERENCES machine_instances(id) ON DELETE CASCADE,
@@ -111,8 +114,17 @@ export interface MachineRow {
   firedDelays: Array<string | number>;
   wakeAt: number | null;
   input: Record<string, unknown> | null;
+  eventCursor: number;
   createdAt: number;
   updatedAt: number;
+}
+
+export interface EventLogEntry {
+  seq: number;
+  topic: string;
+  payload: unknown;
+  source: string | null;
+  createdAt: number;
 }
 
 export interface EffectOutboxRow {
@@ -153,6 +165,7 @@ export interface PgStore {
       wakeAt?: number | null;
       firedDelays?: Array<string | number>;
       status?: string;
+      eventCursor?: number;
     },
     /** Optional client for transactional updates. */
     queryable?: PoolClient,
@@ -168,17 +181,26 @@ export interface PgStore {
     id: string,
   ): Promise<MachineRow | null>;
 
-  // Messages
-  sendMessage(
+  // Event log
+  appendEvent(
     instanceId: string,
     payload: unknown,
     topic?: string,
-  ): Promise<void>;
-  consumeNextMessage(
+    source?: string,
+  ): Promise<{ seq: number }>;
+
+  lockAndPeekEvent(
     client: PoolClient,
     instanceId: string,
-    topic?: string,
-  ): Promise<{ id: string; payload: unknown } | null>;
+  ): Promise<{
+    row: MachineRow;
+    nextEvent: { seq: number; payload: unknown } | null;
+  } | null>;
+
+  getEventLog(
+    instanceId: string,
+    opts?: { afterSeq?: number; limit?: number },
+  ): Promise<EventLogEntry[]>;
 
   // Invoke results
   getInvokeResult(
@@ -240,6 +262,7 @@ function rowToMachine(row: any): MachineRow {
     firedDelays: row.fired_delays as Array<string | number>,
     wakeAt: row.wake_at != null ? Number(row.wake_at) : null,
     input: row.input as Record<string, unknown> | null,
+    eventCursor: Number(row.event_cursor),
     createdAt: Number(row.created_at),
     updatedAt: Number(row.updated_at),
   };
@@ -306,6 +329,7 @@ export function createStore(options: PgStoreOptions): PgStore {
       wakeAt?: number | null;
       firedDelays?: Array<string | number>;
       status?: string;
+      eventCursor?: number;
     },
     queryable?: PoolClient,
   ): Promise<void> {
@@ -333,6 +357,10 @@ export function createStore(options: PgStoreOptions): PgStore {
     if (patch.status !== undefined) {
       sets.push(`status = $${idx++}`);
       values.push(patch.status);
+    }
+    if (patch.eventCursor !== undefined) {
+      sets.push(`event_cursor = $${idx++}`);
+      values.push(patch.eventCursor);
     }
 
     if (sets.length === 0) return;
@@ -386,40 +414,84 @@ export function createStore(options: PgStoreOptions): PgStore {
     return rows.length > 0 ? rowToMachine(rows[0]) : null;
   }
 
-  // ── Messages ────────────────────────────────────────────────────────────
+  // ── Event Log ───────────────────────────────────────────────────────────
 
-  async function sendMessage(
+  async function appendEvent(
     instanceId: string,
     payload: unknown,
     topic = "event",
-  ): Promise<void> {
-    await pool.query(
-      `INSERT INTO machine_messages (instance_id, topic, payload, created_at)
-       VALUES ($1, $2, $3, $4)`,
-      [instanceId, topic, JSON.stringify(payload), Date.now()],
+    source?: string,
+  ): Promise<{ seq: number }> {
+    const { rows } = await pool.query(
+      `INSERT INTO event_log (instance_id, topic, payload, source, created_at)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING seq`,
+      [instanceId, topic, JSON.stringify(payload), source ?? null, Date.now()],
     );
+    return { seq: Number(rows[0].seq) };
   }
 
-  async function consumeNextMessage(
+  async function lockAndPeekEvent(
     client: PoolClient,
     instanceId: string,
-    topic = "event",
-  ): Promise<{ id: string; payload: unknown } | null> {
+  ): Promise<{
+    row: MachineRow;
+    nextEvent: { seq: number; payload: unknown } | null;
+  } | null> {
     const { rows } = await client.query(
-      `UPDATE machine_messages
-       SET consumed = true
-       WHERE id = (
-         SELECT id FROM machine_messages
-         WHERE instance_id = $1 AND topic = $2 AND consumed = false
-         ORDER BY created_at ASC
-         LIMIT 1
-         FOR UPDATE SKIP LOCKED
-       )
-       RETURNING id, payload`,
-      [instanceId, topic],
+      `WITH locked AS (
+        SELECT * FROM machine_instances WHERE id = $1 FOR NO KEY UPDATE NOWAIT
+      )
+      SELECT locked.*,
+             e.seq AS next_event_seq,
+             e.payload AS next_event_payload
+      FROM locked
+      LEFT JOIN LATERAL (
+        SELECT seq, payload FROM event_log
+        WHERE instance_id = locked.id AND seq > locked.event_cursor
+        ORDER BY seq ASC LIMIT 1
+      ) e ON true`,
+      [instanceId],
     );
     if (rows.length === 0) return null;
-    return { id: rows[0].id, payload: rows[0].payload };
+    const r = rows[0];
+    const machineRow = rowToMachine(r);
+    const nextEvent = r.next_event_seq != null
+      ? { seq: Number(r.next_event_seq), payload: r.next_event_payload }
+      : null;
+    return { row: machineRow, nextEvent };
+  }
+
+  async function getEventLog(
+    instanceId: string,
+    opts?: { afterSeq?: number; limit?: number },
+  ): Promise<EventLogEntry[]> {
+    const conditions = ["instance_id = $1"];
+    const values: unknown[] = [instanceId];
+    let idx = 2;
+
+    if (opts?.afterSeq !== undefined) {
+      conditions.push(`seq > $${idx++}`);
+      values.push(opts.afterSeq);
+    }
+
+    let sql = `SELECT seq, topic, payload, source, created_at FROM event_log
+       WHERE ${conditions.join(" AND ")}
+       ORDER BY seq ASC`;
+
+    if (opts?.limit !== undefined) {
+      sql += ` LIMIT $${idx++}`;
+      values.push(opts.limit);
+    }
+
+    const { rows } = await pool.query(sql, values);
+    return rows.map((r: any) => ({
+      seq: Number(r.seq),
+      topic: r.topic as string,
+      payload: r.payload,
+      source: r.source as string | null,
+      createdAt: Number(r.created_at),
+    }));
   }
 
   // ── Invoke Results ──────────────────────────────────────────────────────
@@ -690,8 +762,9 @@ export function createStore(options: PgStoreOptions): PgStore {
     updateInstance,
     listInstances,
     lockAndGetInstance,
-    sendMessage,
-    consumeNextMessage,
+    appendEvent,
+    lockAndPeekEvent,
+    getEventLog,
     getInvokeResult,
     recordInvokeResult,
     listInvokeResults,

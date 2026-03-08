@@ -73,6 +73,7 @@ export type {
   StepRetryPolicy,
   StepInfo,
   EffectStatus,
+  EventLogEntry,
   ChannelAdapter,
   SendPromptParams,
   ResolvePromptParams,

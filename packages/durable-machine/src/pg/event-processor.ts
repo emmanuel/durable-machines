@@ -17,7 +17,6 @@ import {
   getActiveInvocation,
   extractActorImplementations,
   getSortedAfterDelays,
-  buildAfterEvent,
   isReentryDelay,
   resolveTransientTransitions,
   stateValueEquals,
@@ -322,191 +321,63 @@ export async function processStartup(
   }
 }
 
-// ─── Process Event ──────────────────────────────────────────────────────────
+// ─── Process Next From Log ──────────────────────────────────────────────────
 
-export async function processEvent(
+export async function processNextFromLog(
   deps: EventProcessorOptions,
   instanceId: string,
-  event: AnyEventObject,
-): Promise<void> {
-  await withRetry(async () => {
-    const { store, machine, options, enableTransitionStream } = deps;
-    const channels = options.channels ?? [];
+): Promise<boolean> {
+  const { store, machine, options, enableTransitionStream } = deps;
+  const channels = options.channels ?? [];
+  let processed = false;
 
-    // Use a transaction with row lock
+  await withRetry(async () => {
     const client = await getPool(store).connect();
     try {
       await client.query("BEGIN");
 
-      const row = await store.lockAndGetInstance(client, instanceId);
-      if (!row) {
-        throw new DurableMachineError(
-          `Instance ${instanceId} not found`,
-        );
-      }
-      if (row.status !== "running") {
-        throw new DurableMachineError(
-          `Instance ${instanceId} is not running (status: ${row.status})`,
-        );
+      // Single roundtrip: lock instance + peek next unconsumed event
+      const result = await store.lockAndPeekEvent(client, instanceId);
+      if (!result || result.row.status !== "running" || !result.nextEvent) {
+        await client.query("COMMIT");
+        return;
       }
 
-      // Reconstruct snapshot
+      const { row, nextEvent } = result;
+      const event = nextEvent.payload as AnyEventObject;
       const snapshot = machine.resolveState({
         value: row.stateValue,
         context: row.context,
       });
-
       const prevStateValue = snapshot.value;
 
-      // Transition
+      // Transition + invocations
       const [nextState] = transition(machine, snapshot, event);
-      let current = await executeInvocationsInline(
-        deps,
-        instanceId,
-        nextState,
-      );
+      let current = await executeInvocationsInline(deps, instanceId, nextState);
 
-      // Compute wake_at
-      const firedDelays = row.firedDelays as Array<string | number>;
-      const allDelays = getSortedAfterDelays(machine, current);
-      const unfiredDelays = allDelays.filter(
-        (d) => !firedDelays.includes(d),
-      );
-      const wakeAt =
-        unfiredDelays.length > 0 ? Date.now() + unfiredDelays[0] : null;
-
-      const status = current.status === "done" ? "done" : "running";
-
-      // Update instance within transaction
-      await store.updateInstance(
-        instanceId,
-        {
-          stateValue: current.value,
-          context: current.context as Record<string, unknown>,
-          wakeAt,
-          firedDelays: [],
-          status,
-        },
-        client,
-      );
-
-      // Transition log
-      if (
-        enableTransitionStream &&
-        !stateValueEquals(prevStateValue, current.value)
-      ) {
-        await store.appendTransition(
-          instanceId,
-          prevStateValue,
-          current.value,
-          event.type,
-          Date.now(),
-        );
-      }
-
-      // Prompt lifecycle + effects
-      if (!stateValueEquals(prevStateValue, current.value)) {
-        await handlePromptExit(
-          deps,
-          instanceId,
-          prevStateValue,
-          current,
-          channels,
-          event,
-        );
-
-        await enqueueEffects(deps, client, instanceId, snapshot, current, event);
-
-        if (status === "running" && isDurableState(machine, current)) {
-          await handlePromptEntry(deps, instanceId, current, channels);
-        }
-      }
-
-      await client.query("COMMIT");
-    } catch (err) {
-      await client.query("ROLLBACK").catch(() => {});
-      throw err;
-    } finally {
-      client.release();
-    }
-  });
-}
-
-// ─── Process Timeout ────────────────────────────────────────────────────────
-
-export async function processTimeout(
-  deps: EventProcessorOptions,
-  instanceId: string,
-): Promise<void> {
-  await withRetry(async () => {
-    const { store, machine, options, enableTransitionStream } = deps;
-    const channels = options.channels ?? [];
-
-    const client = await getPool(store).connect();
-    try {
-      await client.query("BEGIN");
-
-      const row = await store.lockAndGetInstance(client, instanceId);
-      if (!row || row.status !== "running") {
-        await client.query("COMMIT");
-        return;
-      }
-
-      // Reconstruct snapshot
-      const snapshot = machine.resolveState({
-        value: row.stateValue,
-        context: row.context,
-      });
-
-      const prevStateValue = snapshot.value;
-      const firedDelays = [...(row.firedDelays as Array<string | number>)];
-
-      // Determine which delay fired
-      const allDelays = getSortedAfterDelays(machine, snapshot);
-      const unfiredDelays = allDelays.filter((d) => !firedDelays.includes(d));
-      if (unfiredDelays.length === 0) {
-        await client.query("COMMIT");
-        return;
-      }
-
-      const firedDelay = unfiredDelays[0];
-      const afterEvent = buildAfterEvent(machine, snapshot, firedDelay);
-
-      // Handle reentry vs accumulate
+      // Compute firedDelays — timeout-aware
       let newFiredDelays: Array<string | number>;
-      if (isReentryDelay(machine, snapshot, firedDelay)) {
-        newFiredDelays = [];
+      if (event.type.startsWith("xstate.after.")) {
+        const allDelays = getSortedAfterDelays(machine, snapshot);
+        const unfired = allDelays.filter(
+          (d) => !(row.firedDelays as Array<string | number>).includes(d),
+        );
+        const firedDelay = unfired[0];
+        newFiredDelays = firedDelay !== undefined && isReentryDelay(machine, snapshot, firedDelay)
+          ? []
+          : [...(row.firedDelays as Array<string | number>), ...(firedDelay !== undefined ? [firedDelay] : [])];
       } else {
-        newFiredDelays = [...firedDelays, firedDelay];
+        newFiredDelays = [];
       }
 
-      // Transition
-      const [nextState] = transition(
-        machine,
-        snapshot,
-        afterEvent as AnyEventObject,
-      );
-      let current = await executeInvocationsInline(
-        deps,
-        instanceId,
-        nextState,
-      );
-
-      // Compute new wake_at
-      const nextAllDelays = getSortedAfterDelays(machine, current);
-      const nextUnfired = nextAllDelays.filter(
-        (d) => !newFiredDelays.includes(d),
-      );
-
-      // For reentry, the delay restarts from now
-      // For accumulated delays, subtract already-elapsed time
+      // Compute wakeAt
+      const nextDelays = getSortedAfterDelays(machine, current);
+      const nextUnfired = nextDelays.filter((d) => !newFiredDelays.includes(d));
       let wakeAt: number | null = null;
       if (nextUnfired.length > 0) {
         if (newFiredDelays.length === 0) {
-          // Reentry: restart from now
           wakeAt = Date.now() + nextUnfired[0];
         } else {
-          // Accumulated: next delay minus largest fired
           const maxFired = Math.max(
             ...(newFiredDelays.filter((d) => typeof d === "number") as number[]),
           );
@@ -516,6 +387,7 @@ export async function processTimeout(
 
       const status = current.status === "done" ? "done" : "running";
 
+      // Atomic: state change + cursor advance
       await store.updateInstance(
         instanceId,
         {
@@ -524,43 +396,25 @@ export async function processTimeout(
           wakeAt,
           firedDelays: newFiredDelays,
           status,
+          eventCursor: nextEvent.seq,
         },
         client,
       );
 
-      // Transition log
-      if (
-        enableTransitionStream &&
-        !stateValueEquals(prevStateValue, current.value)
-      ) {
-        await store.appendTransition(
-          instanceId,
-          prevStateValue,
-          current.value,
-          afterEvent.type,
-          Date.now(),
-        );
+      // Transition log, prompt lifecycle, effects
+      if (enableTransitionStream && !stateValueEquals(prevStateValue, current.value)) {
+        await store.appendTransition(instanceId, prevStateValue, current.value, event.type, Date.now());
       }
-
-      // Prompt lifecycle + effects
       if (!stateValueEquals(prevStateValue, current.value)) {
-        await handlePromptExit(
-          deps,
-          instanceId,
-          prevStateValue,
-          current,
-          channels,
-          afterEvent as AnyEventObject,
-        );
-
-        await enqueueEffects(deps, client, instanceId, snapshot, current, afterEvent as AnyEventObject);
-
+        await handlePromptExit(deps, instanceId, prevStateValue, current, channels, event);
+        await enqueueEffects(deps, client, instanceId, snapshot, current, event);
         if (status === "running" && isDurableState(machine, current)) {
           await handlePromptEntry(deps, instanceId, current, channels);
         }
       }
 
       await client.query("COMMIT");
+      processed = true;
     } catch (err) {
       await client.query("ROLLBACK").catch(() => {});
       throw err;
@@ -568,6 +422,7 @@ export async function processTimeout(
       client.release();
     }
   });
+  return processed;
 }
 
 // ─── Internal Helpers ───────────────────────────────────────────────────────

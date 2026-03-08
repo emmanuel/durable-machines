@@ -7,12 +7,13 @@ import type {
   DurableMachineStatus,
   DurableStateSnapshot,
   EffectStatus,
+  EventLogEntry,
 } from "../types.js";
 import { DurableMachineError } from "../types.js";
 import { validateMachineForDurability } from "../validate.js";
 import { createStore } from "./store.js";
 import type { PgStore, MachineRow } from "./store.js";
-import { processStartup, processEvent, processTimeout as processTimeoutInternal } from "./event-processor.js";
+import { processStartup, processNextFromLog } from "./event-processor.js";
 import type { EventProcessorOptions } from "./event-processor.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -32,10 +33,8 @@ export interface PgDurableMachineOptions extends DurableMachineOptions {
 export interface PgDurableMachine<T extends AnyStateMachine = AnyStateMachine>
   extends DurableMachine<T>
 {
-  /** Process queued messages for an instance (called by listener fan-out). */
+  /** Process queued events for an instance (called by listener fan-out and wake poller). */
   consumeAndProcess(instanceId: string): Promise<void>;
-  /** Process a timed-out instance (called by wake poller). */
-  processTimeout(instanceId: string): Promise<void>;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -78,25 +77,11 @@ export function createDurableMachine<T extends AnyStateMachine>(
     enableTransitionStream: options.enableTransitionStream ?? false,
   };
 
-  // ── Message Consumer ────────────────────────────────────────────────────
+  // ── Event Consumer ──────────────────────────────────────────────────────
 
   async function consumeAndProcessMessages(instanceId: string): Promise<void> {
-    const client = await (store as any)._pool.connect();
-    try {
-      await client.query("BEGIN");
-      const msg = await store.consumeNextMessage(client, instanceId);
-      await client.query("COMMIT");
-
-      if (msg) {
-        await processEvent(deps, instanceId, msg.payload as AnyEventObject);
-        // Process additional queued messages
-        await consumeAndProcessMessages(instanceId);
-      }
-    } catch {
-      await client.query("ROLLBACK").catch(() => {});
-    } finally {
-      client.release();
-    }
+    const processed = await processNextFromLog(deps, instanceId);
+    if (processed) await consumeAndProcessMessages(instanceId);
   }
 
   // ── Handle Factory ──────────────────────────────────────────────────────
@@ -106,8 +91,7 @@ export function createDurableMachine<T extends AnyStateMachine>(
       workflowId,
 
       async send(event: AnyEventObject): Promise<void> {
-        await store.sendMessage(workflowId, event);
-        // Also trigger immediate processing (don't wait for NOTIFY)
+        await store.appendEvent(workflowId, event);
         try {
           await consumeAndProcessMessages(workflowId);
         } catch {
@@ -167,6 +151,10 @@ export function createDurableMachine<T extends AnyStateMachine>(
           completedAt: r.completedAt,
         }));
       },
+
+      async getEventLog(opts?: { afterSeq?: number; limit?: number }): Promise<EventLogEntry[]> {
+        return store.getEventLog(workflowId, opts);
+      },
     };
   }
 
@@ -209,10 +197,6 @@ export function createDurableMachine<T extends AnyStateMachine>(
 
     async consumeAndProcess(instanceId: string): Promise<void> {
       await consumeAndProcessMessages(instanceId);
-    },
-
-    async processTimeout(instanceId: string): Promise<void> {
-      await processTimeoutInternal(deps, instanceId);
     },
   };
 }

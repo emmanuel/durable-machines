@@ -110,40 +110,116 @@ describe("PgStore", () => {
     }
   });
 
-  // ── Messages ──────────────────────────────────────────────────────────
+  // ── Event Log ───────────────────────────────────────────────────────
 
-  it("sendMessage + consumeNextMessage FIFO ordering", async () => {
-    await store.createInstance("msg-1", "m1", "idle", {}, null);
+  it("appendEvent + getEventLog round-trip", async () => {
+    await store.createInstance("evlog-1", "m1", "idle", {}, null);
 
-    await store.sendMessage("msg-1", { type: "A" });
-    await store.sendMessage("msg-1", { type: "B" });
+    const { seq: seq1 } = await store.appendEvent("evlog-1", { type: "A" });
+    const { seq: seq2 } = await store.appendEvent("evlog-1", { type: "B" });
+
+    expect(seq2).toBeGreaterThan(seq1);
+
+    const log = await store.getEventLog("evlog-1");
+    expect(log).toHaveLength(2);
+    expect(log[0].payload).toMatchObject({ type: "A" });
+    expect(log[1].payload).toMatchObject({ type: "B" });
+    expect(log[0].topic).toBe("event");
+  });
+
+  it("appendEvent with custom topic and source", async () => {
+    await store.createInstance("evlog-2", "m1", "idle", {}, null);
+
+    await store.appendEvent("evlog-2", { type: "TIMEOUT" }, "timeout", "system:timeout");
+
+    const log = await store.getEventLog("evlog-2");
+    expect(log).toHaveLength(1);
+    expect(log[0].topic).toBe("timeout");
+    expect(log[0].source).toBe("system:timeout");
+  });
+
+  it("getEventLog returns empty array when no events", async () => {
+    await store.createInstance("evlog-3", "m1", "idle", {}, null);
+    const log = await store.getEventLog("evlog-3");
+    expect(log).toHaveLength(0);
+  });
+
+  it("getEventLog supports afterSeq and limit", async () => {
+    await store.createInstance("evlog-4", "m1", "idle", {}, null);
+
+    await store.appendEvent("evlog-4", { type: "A" });
+    const { seq: seq2 } = await store.appendEvent("evlog-4", { type: "B" });
+    await store.appendEvent("evlog-4", { type: "C" });
+
+    const afterFirst = await store.getEventLog("evlog-4", { afterSeq: seq2 - 1 });
+    expect(afterFirst).toHaveLength(2);
+    expect(afterFirst[0].payload).toMatchObject({ type: "B" });
+
+    const limited = await store.getEventLog("evlog-4", { limit: 1 });
+    expect(limited).toHaveLength(1);
+    expect(limited[0].payload).toMatchObject({ type: "A" });
+  });
+
+  it("lockAndPeekEvent returns row + next unconsumed event", async () => {
+    await store.createInstance("peek-1", "m1", "idle", {}, null);
+    await store.appendEvent("peek-1", { type: "X" });
 
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      const first = await store.consumeNextMessage(client, "msg-1");
-      expect(first).not.toBeNull();
-      expect(first!.payload).toMatchObject({ type: "A" });
-      await client.query("COMMIT");
-
-      await client.query("BEGIN");
-      const second = await store.consumeNextMessage(client, "msg-1");
-      expect(second).not.toBeNull();
-      expect(second!.payload).toMatchObject({ type: "B" });
+      const result = await store.lockAndPeekEvent(client, "peek-1");
+      expect(result).not.toBeNull();
+      expect(result!.row.id).toBe("peek-1");
+      expect(result!.nextEvent).not.toBeNull();
+      expect(result!.nextEvent!.payload).toMatchObject({ type: "X" });
       await client.query("COMMIT");
     } finally {
       client.release();
     }
   });
 
-  it("consumeNextMessage returns null when no messages", async () => {
-    await store.createInstance("msg-2", "m1", "idle", {}, null);
+  it("lockAndPeekEvent returns null nextEvent when no unconsumed events", async () => {
+    await store.createInstance("peek-2", "m1", "idle", {}, null);
 
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      const msg = await store.consumeNextMessage(client, "msg-2");
-      expect(msg).toBeNull();
+      const result = await store.lockAndPeekEvent(client, "peek-2");
+      expect(result).not.toBeNull();
+      expect(result!.nextEvent).toBeNull();
+      await client.query("COMMIT");
+    } finally {
+      client.release();
+    }
+  });
+
+  it("lockAndPeekEvent returns null for missing instance", async () => {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await store.lockAndPeekEvent(client, "nonexistent");
+      expect(result).toBeNull();
+      await client.query("COMMIT");
+    } finally {
+      client.release();
+    }
+  });
+
+  it("lockAndPeekEvent respects event_cursor", async () => {
+    await store.createInstance("peek-3", "m1", "idle", {}, null);
+    const { seq: seq1 } = await store.appendEvent("peek-3", { type: "A" });
+    await store.appendEvent("peek-3", { type: "B" });
+
+    // Advance cursor past first event
+    await store.updateInstance("peek-3", { eventCursor: seq1 });
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await store.lockAndPeekEvent(client, "peek-3");
+      expect(result).not.toBeNull();
+      expect(result!.nextEvent).not.toBeNull();
+      expect(result!.nextEvent!.payload).toMatchObject({ type: "B" });
       await client.query("COMMIT");
     } finally {
       client.release();
@@ -234,7 +310,7 @@ describe("PgStore", () => {
       ]);
 
       const { rows } = await pool.query(
-        `SELECT instance_id, topic, payload FROM machine_messages
+        `SELECT instance_id, topic, payload FROM event_log
          WHERE instance_id IN ('batch-1', 'batch-2') ORDER BY instance_id, payload->>'type'`,
       );
       expect(rows).toHaveLength(3);
@@ -244,9 +320,9 @@ describe("PgStore", () => {
     });
 
     it("is a no-op for empty array", async () => {
-      const { rows: before } = await pool.query("SELECT count(*) FROM machine_messages");
+      const { rows: before } = await pool.query("SELECT count(*) FROM event_log");
       await sendMachineEventBatch(pool, []);
-      const { rows: after } = await pool.query("SELECT count(*) FROM machine_messages");
+      const { rows: after } = await pool.query("SELECT count(*) FROM event_log");
       expect(after[0].count).toBe(before[0].count);
     });
 
@@ -261,7 +337,7 @@ describe("PgStore", () => {
       ]);
 
       const { rows } = await pool.query(
-        `SELECT topic, payload FROM machine_messages
+        `SELECT topic, payload FROM event_log
          WHERE instance_id = 'cmp-1' ORDER BY payload->>'type'`,
       );
       expect(rows).toHaveLength(3);

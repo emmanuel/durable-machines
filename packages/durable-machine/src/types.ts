@@ -136,6 +136,17 @@ export interface DurableMachineHandle<TContext = Record<string, unknown>> {
   cancel(): Promise<void>;
   /** Return the list of effects enqueued for this instance, with their execution status. Only available on PG backend. */
   listEffects?(): Promise<EffectStatus[]>;
+  /** Return the ordered log of all events received by this instance. Only available on PG backend. */
+  getEventLog?(opts?: { afterSeq?: number; limit?: number }): Promise<EventLogEntry[]>;
+}
+
+/** A single entry in the append-only event log. */
+export interface EventLogEntry {
+  seq: number;
+  topic: string;
+  payload: unknown;
+  source: string | null;
+  createdAt: number;
 }
 
 /** Execution status of a single effect in the transactional outbox. */

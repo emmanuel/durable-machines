@@ -26,6 +26,8 @@ const mockStartListening = vi.fn().mockResolvedValue(undefined);
 const mockStopListening = vi.fn().mockResolvedValue(undefined);
 const mockClose = vi.fn().mockResolvedValue(undefined);
 
+const mockAppendEvent = vi.fn().mockResolvedValue({ seq: 1 });
+
 const mockStore: PgStore = {
   ensureSchema: mockEnsureSchema,
   startListening: mockStartListening,
@@ -36,8 +38,9 @@ const mockStore: PgStore = {
   updateInstance: vi.fn(),
   listInstances: vi.fn(),
   lockAndGetInstance: vi.fn(),
-  sendMessage: vi.fn(),
-  consumeNextMessage: vi.fn(),
+  appendEvent: mockAppendEvent,
+  lockAndPeekEvent: vi.fn(),
+  getEventLog: vi.fn().mockResolvedValue([]),
   getInvokeResult: vi.fn(),
   recordInvokeResult: vi.fn(),
   listInvokeResults: vi.fn(),
@@ -56,7 +59,6 @@ vi.mock("../../src/pg/store.js", () => ({
 
 // Mock createDurableMachine
 const mockConsumeAndProcess = vi.fn().mockResolvedValue(undefined);
-const mockProcessTimeout = vi.fn().mockResolvedValue(undefined);
 
 function makeMockDurableMachine(machine: AnyStateMachine): PgDurableMachine {
   return {
@@ -65,7 +67,6 @@ function makeMockDurableMachine(machine: AnyStateMachine): PgDurableMachine {
     get: vi.fn(),
     list: vi.fn(),
     consumeAndProcess: mockConsumeAndProcess,
-    processTimeout: mockProcessTimeout,
   };
 }
 
@@ -268,7 +269,7 @@ describe("createPgWorkerContext", () => {
       expect(lastCreatedMachine!.consumeAndProcess).toHaveBeenCalledWith("inst-1");
     });
 
-    it("ignores topics other than 'event'", async () => {
+    it("dispatches for any topic (event, timeout, etc.)", async () => {
       const ctx = createPgWorkerContext({ databaseUrl: "postgres://localhost/test" });
       const m = fakeMachine("order");
       ctx.register(m);
@@ -281,10 +282,10 @@ describe("createPgWorkerContext", () => {
         topic: string,
       ) => void;
 
-      cb("order", "inst-1", "other-topic");
+      cb("order", "inst-1", "timeout");
       await vi.advanceTimersByTimeAsync(0);
 
-      expect(mockConsumeAndProcess).not.toHaveBeenCalled();
+      expect(mockConsumeAndProcess).toHaveBeenCalledWith("inst-1");
     });
 
     it("ignores unknown machine names (no throw)", async () => {
@@ -306,54 +307,6 @@ describe("createPgWorkerContext", () => {
   // ── Poller ───────────────────────────────────────────────────────────────
 
   describe("wake poller", () => {
-    it("calls processTimeout() for timed-out instances, dispatched by machine name", async () => {
-      const ctx = createPgWorkerContext({
-        databaseUrl: "postgres://localhost/test",
-        wakePollingIntervalMs: 1000,
-      });
-      const m = fakeMachine("order");
-      ctx.register(m);
-
-      mockPoolQuery.mockResolvedValueOnce({
-        rows: [{ id: "inst-1", machine_name: "order" }],
-      });
-
-      await ctx.start({ handleExceptions: false, signals: [] });
-
-      // Trigger poller
-      await vi.advanceTimersByTimeAsync(1000);
-
-      expect(lastCreatedMachine!.processTimeout).toHaveBeenCalledWith("inst-1");
-    });
-
-    it("survives individual processTimeout() failures", async () => {
-      const ctx = createPgWorkerContext({
-        databaseUrl: "postgres://localhost/test",
-        wakePollingIntervalMs: 1000,
-      });
-      const m = fakeMachine("order");
-      ctx.register(m);
-
-      // First tick: processTimeout fails
-      mockPoolQuery.mockResolvedValueOnce({
-        rows: [{ id: "inst-1", machine_name: "order" }],
-      });
-      mockProcessTimeout.mockRejectedValueOnce(new Error("boom"));
-
-      await ctx.start({ handleExceptions: false, signals: [] });
-      await vi.advanceTimersByTimeAsync(1000);
-
-      // Second tick: should still fire
-      mockPoolQuery.mockResolvedValueOnce({
-        rows: [{ id: "inst-2", machine_name: "order" }],
-      });
-      mockProcessTimeout.mockResolvedValueOnce(undefined);
-
-      await vi.advanceTimersByTimeAsync(1000);
-
-      expect(mockProcessTimeout).toHaveBeenCalledWith("inst-2");
-    });
-
     it("survives query failures", async () => {
       const ctx = createPgWorkerContext({
         databaseUrl: "postgres://localhost/test",
@@ -368,14 +321,10 @@ describe("createPgWorkerContext", () => {
       await ctx.start({ handleExceptions: false, signals: [] });
       await vi.advanceTimersByTimeAsync(1000);
 
-      // Second tick: query succeeds
-      mockPoolQuery.mockResolvedValueOnce({
-        rows: [{ id: "inst-3", machine_name: "order" }],
-      });
-
+      // Second tick: no rows returned (default mock behavior)
       await vi.advanceTimersByTimeAsync(1000);
 
-      expect(mockProcessTimeout).toHaveBeenCalledWith("inst-3");
+      // No error — poller survives
     });
   });
 });

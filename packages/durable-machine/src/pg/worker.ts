@@ -7,6 +7,7 @@ import type {
   DurableMachineOptions,
 } from "../types.js";
 import type { EffectHandler, ResolvedEffect } from "../effects.js";
+import { getSortedAfterDelays, buildAfterEvent } from "../xstate-utils.js";
 import { createAppContext } from "../app-context.js";
 import { createStore } from "./store.js";
 import type { PgStore } from "./store.js";
@@ -44,7 +45,8 @@ export function createPgWorkerContext(config: PgConfig): PgWorkerAppContext {
     try {
       const now = Date.now();
       const { rows } = await pool.query(
-        `SELECT id, machine_name FROM machine_instances
+        `SELECT id, machine_name, state_value, context, fired_delays
+         FROM machine_instances
          WHERE wake_at <= $1 AND status = 'running' LIMIT 50`,
         [now],
       );
@@ -52,8 +54,33 @@ export function createPgWorkerContext(config: PgConfig): PgWorkerAppContext {
       for (const row of rows) {
         const dm = machines.get(row.machine_name);
         if (!dm) continue;
+
+        // Optimistic claim: clear wake_at to prevent duplicate timeout events
+        const { rowCount } = await pool.query(
+          `UPDATE machine_instances SET wake_at = NULL
+           WHERE id = $1 AND wake_at IS NOT NULL AND wake_at <= $2`,
+          [row.id, now],
+        );
+        if (!rowCount) continue;
+
         try {
-          await dm.processTimeout(row.id);
+          // Build the after event
+          const snapshot = dm.machine.resolveState({
+            value: row.state_value,
+            context: row.context,
+          });
+          const allDelays = getSortedAfterDelays(dm.machine, snapshot);
+          const firedDelays = row.fired_delays as Array<string | number>;
+          const unfired = allDelays.filter((d: string | number) => !firedDelays.includes(d));
+          if (unfired.length === 0) continue;
+
+          const afterEvent = buildAfterEvent(dm.machine, snapshot, unfired[0]);
+
+          // Insert into event log — NOTIFY trigger fires automatically
+          await store.appendEvent(row.id, afterEvent, "timeout", "system:timeout");
+
+          // Trigger immediate consumption
+          try { await dm.consumeAndProcess(row.id); } catch { /* NOTIFY retry */ }
         } catch {
           // Individual failures don't stop the poller
         }
@@ -110,12 +137,10 @@ export function createPgWorkerContext(config: PgConfig): PgWorkerAppContext {
       await store.ensureSchema();
 
       await store.startListening(
-        (machineName: string, instanceId: string, topic: string) => {
-          if (topic === "event") {
-            const dm = machines.get(machineName);
-            if (!dm) return;
-            void dm.consumeAndProcess(instanceId);
-          }
+        (machineName: string, instanceId: string, _topic: string) => {
+          const dm = machines.get(machineName);
+          if (!dm) return;
+          void dm.consumeAndProcess(instanceId);
         },
       );
 

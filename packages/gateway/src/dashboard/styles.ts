@@ -469,4 +469,46 @@ tr:last-child td { border-bottom: none; }
 .sse-indicator.connected { background: var(--green); }
 .sse-indicator.disconnected { background: var(--red); }
 .sse-indicator.connecting { background: var(--yellow); animation: pulse 1s infinite; }
+
+/* ── Error Panel ────────────────────────────────── */
+
+.error-panel {
+  background: rgba(248,113,113,0.08);
+  border: 1px solid rgba(248,113,113,0.3);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  margin-bottom: 16px;
+}
+
+.error-panel h2 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--red);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+}
+
+.error-item {
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(248,113,113,0.15);
+  font-size: 13px;
+}
+
+.error-item:last-child { border-bottom: none; }
+
+.error-item-source {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+
+.error-item-message {
+  color: var(--red);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 `;

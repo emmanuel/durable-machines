@@ -575,6 +575,9 @@ export const CLIENT_JS = /* js */ `
           renderGraph(graphData, { activeStates: activeStates, visitedStates: visitedStates });
         }
 
+        // Update error panel
+        updateErrorPanel(data.snapshot, data.steps, data.effects);
+
         // Update effects panel
         if (data.effects) {
           updateEffectsPanel(data.effects);
@@ -611,6 +614,63 @@ export const CLIENT_JS = /* js */ `
         tbody.innerHTML = html || '<tr><td colspan="2" class="empty">No instances</td></tr>';
       },
     });
+  }
+
+  function updateErrorPanel(snapshot, steps, effects) {
+    var container = document.getElementById('error-panel-container');
+    if (!container) return;
+
+    var errors = [];
+
+    if (snapshot && snapshot.status === 'error') {
+      var ctx = snapshot.context || {};
+      var errMsg = ctx.error || ctx.errorMessage || ctx.err;
+      if (errMsg != null) {
+        errors.push({
+          source: 'Instance',
+          message: typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg, null, 2),
+        });
+      } else {
+        errors.push({ source: 'Instance', message: 'Machine reached error status' });
+      }
+    }
+
+    if (steps) {
+      for (var i = 0; i < steps.length; i++) {
+        if (steps[i].error != null) {
+          errors.push({
+            source: 'Step: ' + steps[i].name,
+            message: typeof steps[i].error === 'string' ? steps[i].error : JSON.stringify(steps[i].error, null, 2),
+          });
+        }
+      }
+    }
+
+    if (effects) {
+      for (var j = 0; j < effects.length; j++) {
+        if (effects[j].status === 'failed' && effects[j].lastError) {
+          errors.push({
+            source: 'Effect: ' + effects[j].effectType,
+            message: effects[j].lastError,
+          });
+        }
+      }
+    }
+
+    if (errors.length === 0) {
+      container.innerHTML = '';
+      return;
+    }
+
+    var html = '<div class="error-panel" id="error-panel"><h2>Errors</h2>';
+    for (var k = 0; k < errors.length; k++) {
+      html += '<div class="error-item">';
+      html += '<div class="error-item-source">' + esc(errors[k].source) + '</div>';
+      html += '<div class="error-item-message">' + esc(errors[k].message) + '</div>';
+      html += '</div>';
+    }
+    html += '</div>';
+    container.innerHTML = html;
   }
 
   function updateEffectsPanel(effects) {

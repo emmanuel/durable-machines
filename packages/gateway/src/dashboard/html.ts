@@ -339,11 +339,15 @@ export function instanceDetailPage(
       </div>
     </div>` : "";
 
+  // Error panel — shown when instance has errors
+  const errorPanel = renderErrorPanel(snapshot, steps, effects);
+
   const body = `
     <div style="margin-bottom:16px">
       <span class="mono" style="font-size:18px;font-weight:600">${esc(instanceId)}</span>
       <span id="instance-status" class="badge badge-${snapshot.status}" style="margin-left:8px">${esc(snapshot.status)}</span>
     </div>
+    <div id="error-panel-container">${errorPanel}</div>
     <div class="detail-grid">
       ${graphPanel}
       ${timelinePanel}
@@ -433,4 +437,63 @@ function renderJsonTree(obj: unknown, depth: number): string {
   }
 
   return esc(String(obj));
+}
+
+function renderErrorPanel(
+  snapshot: DurableStateSnapshot,
+  steps: StepInfo[],
+  effects?: EffectStatus[],
+): string {
+  const errors: { source: string; message: string }[] = [];
+
+  // Instance-level error status
+  if (snapshot.status === "error") {
+    // Check context for common error fields
+    const ctx = snapshot.context;
+    const errMsg = ctx.error ?? ctx.errorMessage ?? ctx.err;
+    if (errMsg != null) {
+      errors.push({
+        source: "Instance",
+        message: typeof errMsg === "string" ? errMsg : JSON.stringify(errMsg, null, 2),
+      });
+    } else if (errors.length === 0) {
+      errors.push({
+        source: "Instance",
+        message: "Machine reached error status",
+      });
+    }
+  }
+
+  // Failed steps
+  for (const s of steps) {
+    if (s.error != null) {
+      errors.push({
+        source: `Step: ${s.name}`,
+        message: typeof s.error === "string" ? s.error : JSON.stringify(s.error, null, 2),
+      });
+    }
+  }
+
+  // Failed effects
+  if (effects) {
+    for (const eff of effects) {
+      if (eff.status === "failed" && eff.lastError) {
+        errors.push({
+          source: `Effect: ${eff.effectType}`,
+          message: eff.lastError,
+        });
+      }
+    }
+  }
+
+  if (errors.length === 0) return "";
+
+  return `<div class="error-panel" id="error-panel">
+    <h2>Errors</h2>
+    ${errors.map((e) => `
+      <div class="error-item">
+        <div class="error-item-source">${esc(e.source)}</div>
+        <div class="error-item-message">${esc(e.message)}</div>
+      </div>`).join("")}
+  </div>`;
 }

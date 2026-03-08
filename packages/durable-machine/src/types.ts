@@ -86,7 +86,7 @@ export interface FormField {
   /** Human-readable label displayed alongside the field. */
   label: string;
   /** The input control type. Use `"select"` with {@link options} to present a dropdown. */
-  type: "text" | "number" | "select" | "date";
+  type: "text" | "number" | "select" | "date" | "checkbox";
   /** Available choices when `type` is `"select"`. Ignored for other field types. */
   options?: string[];
   /** Whether the field must be filled before submission. */
@@ -300,6 +300,10 @@ export interface SerializedMachine {
   initial: string;
   /** Flattened map of all state nodes, keyed by their dot-delimited path. */
   states: Record<string, SerializedStateNode>;
+  /** Runtime event schemas declared via `durableSetup()`, keyed by event type. */
+  eventSchemas?: Record<string, FormField[]>;
+  /** Runtime input schema declared via `durableSetup()`. */
+  inputSchema?: FormField[];
 }
 
 /** Records a single state transition for visualization and debugging. */

@@ -615,4 +615,57 @@ svg .sleep-countdown {
 svg .sleep-countdown.firing {
   fill: var(--orange);
 }
+
+/* ── Schema Form Fields ───────────────────────── */
+
+.event-form label,
+.start-form label {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.event-form .checkbox-label,
+.start-form .checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.event-form input[type="checkbox"],
+.start-form input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+#event-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#event-fields input,
+#event-fields select {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  color: var(--text);
+  padding: 8px 12px;
+}
+
+#event-fields input:focus,
+#event-fields select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
 `;

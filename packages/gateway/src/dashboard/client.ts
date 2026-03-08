@@ -478,28 +478,104 @@ export const CLIENT_JS = /* js */ `
 
   // ── Event Sender ───────────────────────────────────────────
 
+  // Current event schemas from runtime-data or SSE updates
+  var currentEventSchemas = {};
+
+  function renderEventFieldsForType(container, eventType) {
+    var schema = currentEventSchemas[eventType];
+    if (!schema || schema.length === 0) {
+      // No schema — show JSON textarea
+      container.innerHTML = '<textarea name="payload" placeholder=\\'"key": "value"} (optional)\\'></textarea>';
+      return;
+    }
+    // Render typed form fields
+    var html = '';
+    for (var i = 0; i < schema.length; i++) {
+      var f = schema[i];
+      var req = f.required ? ' required' : '';
+      if (f.type === 'select') {
+        html += '<label for="evt-' + f.name + '">' + f.label + '</label>';
+        html += '<select name="evt-' + f.name + '" id="evt-' + f.name + '" data-field="' + f.name + '"' + req + '>';
+        html += '<option value="">-- select --</option>';
+        for (var j = 0; j < (f.options || []).length; j++) {
+          html += '<option value="' + f.options[j] + '">' + f.options[j] + '</option>';
+        }
+        html += '</select>';
+      } else if (f.type === 'checkbox') {
+        html += '<label class="checkbox-label"><input type="checkbox" name="evt-' + f.name + '" data-field="' + f.name + '" value="true" /> ' + f.label + '</label>';
+      } else {
+        var inputType = f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text';
+        html += '<label for="evt-' + f.name + '">' + f.label + '</label>';
+        html += '<input type="' + inputType + '" name="evt-' + f.name + '" id="evt-' + f.name + '" data-field="' + f.name + '" placeholder="' + f.label + '"' + req + ' />';
+      }
+    }
+    container.innerHTML = html;
+  }
+
+  function collectEventFields(container) {
+    var payload = {};
+    var fields = container.querySelectorAll('[data-field]');
+    for (var i = 0; i < fields.length; i++) {
+      var el = fields[i];
+      var name = el.getAttribute('data-field');
+      if (el.type === 'checkbox') {
+        payload[name] = el.checked;
+      } else if (el.type === 'number') {
+        if (el.value !== '') payload[name] = Number(el.value);
+      } else {
+        if (el.value !== '') payload[name] = el.value;
+      }
+    }
+    return payload;
+  }
+
   function initEventSender() {
     const form = document.getElementById('event-form');
     if (!form) return;
 
+    var select = document.getElementById('event-type-select');
+    var fieldsContainer = document.getElementById('event-fields');
+
+    // Load initial schemas from runtime-data
+    var rtEl = document.getElementById('runtime-data');
+    if (rtEl) {
+      try {
+        var rtData = JSON.parse(rtEl.textContent);
+        if (rtData.eventSchemas) currentEventSchemas = rtData.eventSchemas;
+      } catch (e) {}
+    }
+
+    // When event type changes, update the fields container
+    if (select && fieldsContainer) {
+      select.addEventListener('change', function() {
+        renderEventFieldsForType(fieldsContainer, select.value);
+      });
+    }
+
     form.addEventListener('submit', async function(e) {
       e.preventDefault();
-      const select = form.querySelector('select[name="eventType"]');
-      const textarea = form.querySelector('textarea[name="payload"]');
-      const status = form.querySelector('.form-status');
       const eventType = select ? select.value : '';
       if (!eventType) return;
 
-      let payload = {};
-      if (textarea && textarea.value.trim()) {
-        try {
-          payload = JSON.parse(textarea.value);
-        } catch (err) {
-          if (status) {
-            status.textContent = 'Invalid JSON payload';
-            status.className = 'form-status error';
+      var status = form.querySelector('.form-status');
+      var payload = {};
+
+      if (fieldsContainer && currentEventSchemas[eventType]) {
+        // Collect from typed fields
+        payload = collectEventFields(fieldsContainer);
+      } else {
+        // Collect from JSON textarea
+        var textarea = form.querySelector('textarea[name="payload"]');
+        if (textarea && textarea.value.trim()) {
+          try {
+            payload = JSON.parse(textarea.value);
+          } catch (err) {
+            if (status) {
+              status.textContent = 'Invalid JSON payload';
+              status.className = 'form-status error';
+            }
+            return;
           }
-          return;
         }
       }
 
@@ -516,7 +592,13 @@ export const CLIENT_JS = /* js */ `
             status.textContent = 'Event sent';
             status.className = 'form-status success';
           }
-          if (textarea) textarea.value = '';
+          // Reset fields
+          if (fieldsContainer && currentEventSchemas[eventType]) {
+            renderEventFieldsForType(fieldsContainer, eventType);
+          } else {
+            var ta = form.querySelector('textarea[name="payload"]');
+            if (ta) ta.value = '';
+          }
         } else {
           const errData = await resp.json().catch(function() { return {}; });
           if (status) {
@@ -589,7 +671,22 @@ export const CLIENT_JS = /* js */ `
       if (!instanceId) return;
 
       var input = {};
-      if (textArea && textArea.value.trim()) {
+      var hasSchema = form.getAttribute('data-has-schema') === 'true';
+      if (hasSchema) {
+        // Collect from typed form fields
+        var schemaFields = form.querySelectorAll('[data-field]');
+        for (var i = 0; i < schemaFields.length; i++) {
+          var el = schemaFields[i];
+          var fname = el.getAttribute('data-field');
+          if (el.type === 'checkbox') {
+            input[fname] = el.checked;
+          } else if (el.type === 'number') {
+            if (el.value !== '') input[fname] = Number(el.value);
+          } else {
+            if (el.value !== '') input[fname] = el.value;
+          }
+        }
+      } else if (textArea && textArea.value.trim()) {
         try {
           input = JSON.parse(textArea.value);
         } catch (err) {
@@ -692,15 +789,24 @@ export const CLIENT_JS = /* js */ `
           startDurationTicker();
         }
 
-        // Update event sender dropdown
+        // Update event sender dropdown and schemas
         if (data.availableEvents) {
-          const select = document.querySelector('select[name="eventType"]');
+          const select = document.getElementById('event-type-select');
           if (select) {
             const current = select.value;
             select.innerHTML = '<option value="">-- select event --</option>';
             for (const evt of data.availableEvents) {
               select.innerHTML += '<option value="' + esc(evt) + '"' + (evt === current ? ' selected' : '') + '>' + esc(evt) + '</option>';
             }
+          }
+        }
+        if (data.eventSchemas) {
+          currentEventSchemas = data.eventSchemas;
+          // Re-render fields if an event type is currently selected
+          var evtSelect = document.getElementById('event-type-select');
+          var fieldsContainer = document.getElementById('event-fields');
+          if (evtSelect && fieldsContainer && evtSelect.value) {
+            renderEventFieldsForType(fieldsContainer, evtSelect.value);
           }
         }
 

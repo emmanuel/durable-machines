@@ -141,11 +141,25 @@ export function serializeMachineDefinition(
     Object.keys(rootStates)[0] ??
     "";
 
-  return {
+  // Extract event/input schemas from machine.schemas (set by durableSetup())
+  const durableSchemas = (machine as any).schemas?.[META_KEY] as
+    | { events?: Record<string, import("./types.js").FormField[]>; input?: import("./types.js").FormField[] }
+    | undefined;
+
+  const result: SerializedMachine = {
     id: machine.id,
     initial: initialKey,
     states,
   };
+
+  if (durableSchemas?.events && Object.keys(durableSchemas.events).length > 0) {
+    result.eventSchemas = durableSchemas.events;
+  }
+  if (durableSchemas?.input && durableSchemas.input.length > 0) {
+    result.inputSchema = durableSchemas.input;
+  }
+
+  return result;
 }
 
 /**

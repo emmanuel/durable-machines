@@ -11,7 +11,7 @@ import type {
   TransitionRecord,
 } from "@durable-xstate/durable-machine";
 import type { MachineRegistry } from "../rest-types.js";
-import { getAvailableEvents } from "../hateoas.js";
+import { getAvailableEvents, getAvailableEventSchemas } from "../hateoas.js";
 import { extractGraphData } from "./graph.js";
 import type { GraphData } from "./graph.js";
 import {
@@ -62,7 +62,8 @@ export function createDashboardRoutes(options: DashboardRouteOptions): Hono {
 
     const status = c.req.query("status");
     const instances = await durable.list(status ? { status } : undefined);
-    return c.html(instanceListPage(basePath, machineId, instances, status, restBasePath));
+    const definition = serializeMachineDefinition(durable.machine);
+    return c.html(instanceListPage(basePath, machineId, instances, status, restBasePath, definition.inputSchema));
   });
 
   // ── GET /:machineId/:instanceId — Instance detail ────────────────────────
@@ -198,6 +199,7 @@ export function createDashboardRoutes(options: DashboardRouteOptions): Hono {
           if (!snapshot) return false;
 
           const availableEvents = getAvailableEvents(durable.machine, snapshot);
+          const eventSchemas = getAvailableEventSchemas(durable.machine, snapshot);
           const effects = handle.listEffects ? await handle.listEffects() : undefined;
           const eventLog = handle.getEventLog ? await handle.getEventLog({ limit: 50 }) : undefined;
 
@@ -213,6 +215,7 @@ export function createDashboardRoutes(options: DashboardRouteOptions): Hono {
             snapshot,
             steps,
             availableEvents,
+            eventSchemas,
             effects,
             eventLog,
             activeStep: detectActiveStep(steps),
@@ -289,6 +292,7 @@ async function buildDetailData(
   const definition = serializeMachineDefinition(durable.machine);
   const graphData = extractGraphData(definition);
   const availableEvents = getAvailableEvents(durable.machine, snapshot);
+  const eventSchemas = getAvailableEventSchemas(durable.machine, snapshot);
 
   // Use real transitions if available, otherwise fall back to a single-entry stub
   const transitions: TransitionRecord[] = handle.getTransitions
@@ -315,6 +319,7 @@ async function buildDetailData(
     transitions,
     stateDurations,
     availableEvents,
+    eventSchemas,
     effects,
     eventLog,
     activeStates,

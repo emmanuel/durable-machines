@@ -1,4 +1,4 @@
-import type { DurableMachine, DurableStateSnapshot } from "@durable-xstate/durable-machine";
+import type { DurableMachine, DurableStateSnapshot, FormField } from "@durable-xstate/durable-machine";
 import type { HateoasLinks, StateResponse } from "./rest-types.js";
 
 /**
@@ -32,6 +32,29 @@ export function getAvailableEvents(
   }
 
   return [...events].sort();
+}
+
+/**
+ * Returns the event field schemas for events available in the current state.
+ * Only includes events that have declared schemas via `durableSetup()`.
+ */
+export function getAvailableEventSchemas(
+  machine: DurableMachine["machine"],
+  snapshot: DurableStateSnapshot,
+): Record<string, FormField[]> {
+  const allSchemas = (machine as any).schemas?.["xstate-durable"]?.events as
+    | Record<string, FormField[]>
+    | undefined;
+  if (!allSchemas) return {};
+
+  const available = getAvailableEvents(machine, snapshot);
+  const result: Record<string, FormField[]> = {};
+  for (const eventType of available) {
+    if (allSchemas[eventType]) {
+      result[eventType] = allSchemas[eventType];
+    }
+  }
+  return result;
 }
 
 /**

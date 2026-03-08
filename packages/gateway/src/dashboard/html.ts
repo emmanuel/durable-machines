@@ -6,6 +6,7 @@ import type {
   EventLogEntry,
   TransitionRecord,
   StateDuration,
+  FormField,
 } from "@durable-xstate/durable-machine";
 import type { GraphData } from "./graph.js";
 import { CSS } from "./styles.js";
@@ -51,6 +52,35 @@ function statusBadge(status: string): string {
     : lower === "cancelled" ? "badge-cancelled"
     : "badge-pending";
   return `<span class="badge ${cls}">${esc(status)}</span>`;
+}
+
+/**
+ * Render FormField[] as HTML form inputs. Each input uses `data-field="name"`
+ * and is named `${prefix}${name}` for collection by client JS.
+ */
+function renderFormFields(fields: FormField[], prefix = ""): string {
+  return fields
+    .map((f) => {
+      const inputName = `${prefix}${f.name}`;
+      const req = f.required ? " required" : "";
+      const label = `<label for="${esc(inputName)}">${esc(f.label)}</label>`;
+      switch (f.type) {
+        case "select":
+          return `${label}<select name="${esc(inputName)}" id="${esc(inputName)}" data-field="${esc(f.name)}"${req}>
+            <option value="">-- select --</option>
+            ${(f.options ?? []).map((o) => `<option value="${esc(o)}">${esc(o)}</option>`).join("")}
+          </select>`;
+        case "checkbox":
+          return `<label class="checkbox-label"><input type="checkbox" name="${esc(inputName)}" data-field="${esc(f.name)}" value="true" /> ${esc(f.label)}</label>`;
+        case "number":
+          return `${label}<input type="number" name="${esc(inputName)}" id="${esc(inputName)}" data-field="${esc(f.name)}" placeholder="${esc(f.label)}"${req} />`;
+        case "date":
+          return `${label}<input type="date" name="${esc(inputName)}" id="${esc(inputName)}" data-field="${esc(f.name)}"${req} />`;
+        default:
+          return `${label}<input type="text" name="${esc(inputName)}" id="${esc(inputName)}" data-field="${esc(f.name)}" placeholder="${esc(f.label)}"${req} />`;
+      }
+    })
+    .join("\n");
 }
 
 // ── Layout ───────────────────────────────────────────────────────────────────
@@ -142,6 +172,7 @@ export function instanceListPage(
   instances: DurableMachineStatus[],
   statusFilter?: string,
   restBasePath?: string,
+  inputSchema?: FormField[],
 ): string {
   const filters = ["all", "PENDING", "SUCCESS", "ERROR", "CANCELLED"];
 
@@ -179,9 +210,9 @@ export function instanceListPage(
     <script type="application/json" id="machine-id">${esc(machineId)}</script>
     <div class="card start-instance-card">
       <h2>Start Instance</h2>
-      <form id="start-form" class="start-form" data-url="${esc(startUrl)}" data-detail-base="${esc(basePath)}/${esc(machineId)}">
+      <form id="start-form" class="start-form" data-url="${esc(startUrl)}" data-detail-base="${esc(basePath)}/${esc(machineId)}"${inputSchema ? ' data-has-schema="true"' : ""}>
         <input type="text" name="instanceId" placeholder="Instance ID (required)" required />
-        <textarea name="input" placeholder='{"key": "value"} (optional initial context)'></textarea>
+        ${inputSchema && inputSchema.length > 0 ? renderFormFields(inputSchema, "input-") : '<textarea name="input" placeholder=\'{"key": "value"} (optional initial context)\'></textarea>'}
         <div class="start-form-row">
           <button type="submit">Start</button>
           <span class="form-status" id="start-status"></span>
@@ -219,6 +250,7 @@ export interface InstanceDetailData {
   transitions: TransitionRecord[];
   stateDurations: StateDuration[];
   availableEvents: string[];
+  eventSchemas?: Record<string, FormField[]>;
   effects?: EffectStatus[];
   eventLog?: EventLogEntry[];
   activeStates: string[];
@@ -240,6 +272,7 @@ export function instanceDetailPage(
     transitions,
     stateDurations,
     availableEvents,
+    eventSchemas,
     effects,
     eventLog,
     activeStates,
@@ -256,7 +289,7 @@ export function instanceDetailPage(
       <h2>State Graph</h2>
       <div id="graph-container"></div>
       <script type="application/json" id="graph-data">${JSON.stringify(graphData)}</script>
-      <script type="application/json" id="runtime-data">${JSON.stringify({ activeStates, visitedStates, activeSleep: activeSleep ?? null })}</script>
+      <script type="application/json" id="runtime-data">${JSON.stringify({ activeStates, visitedStates, activeSleep: activeSleep ?? null, eventSchemas: eventSchemas ?? {} })}</script>
     </div>`;
 
   // Timeline panel
@@ -286,11 +319,13 @@ export function instanceDetailPage(
     <div class="card event-panel">
       <h2>Send Event</h2>
       <form id="event-form" class="event-form" action="${esc(sendUrl)}" method="POST">
-        <select name="eventType">
+        <select name="eventType" id="event-type-select">
           <option value="">-- select event --</option>
           ${eventOptions}
         </select>
-        <textarea name="payload" placeholder='{"key": "value"} (optional)'></textarea>
+        <div id="event-fields">
+          <textarea name="payload" placeholder='{"key": "value"} (optional)'></textarea>
+        </div>
         <button type="submit">Send</button>
         <div class="form-status"></div>
       </form>

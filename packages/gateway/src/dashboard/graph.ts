@@ -19,6 +19,8 @@ export interface GraphEdge {
   target: string;
   label: string;
   type: "event" | "always" | "after" | "done" | "error";
+  /** For `after` edges: the numeric delay in milliseconds (if statically known). */
+  delay?: number;
 }
 
 /** Data structure embedded in HTML for client-side ELK rendering. */
@@ -89,7 +91,9 @@ export function extractGraphData(definition: SerializedMachine): GraphData {
             ? `${t.delay}ms`
             : String(t.delay);
           const label = t.guard ? `after ${delayLabel} [${t.guard}]` : `after ${delayLabel}`;
-          edges.push({ source: path, target: t.target, label, type: "after" });
+          const edge: GraphEdge = { source: path, target: t.target, label, type: "after" };
+          if (typeof t.delay === "number") edge.delay = t.delay;
+          edges.push(edge);
         }
       }
     }

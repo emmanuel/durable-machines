@@ -511,4 +511,35 @@ tr:last-child td { border-bottom: none; }
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* ── Sleep Countdown ───────────────────────────── */
+
+.sleep-countdown {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--yellow);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: rgba(251,191,36,0.1);
+  display: inline-block;
+  margin-top: 4px;
+}
+
+.sleep-countdown.firing {
+  color: var(--orange);
+  background: rgba(251,146,60,0.15);
+  animation: pulse 0.5s ease-in-out infinite;
+}
+
+/* SVG countdown text (inside graph) */
+svg .sleep-countdown {
+  fill: var(--yellow);
+  font-size: 10px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+svg .sleep-countdown.firing {
+  fill: var(--orange);
+}
 `;

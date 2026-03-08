@@ -13,6 +13,7 @@ import type {
 import type { MachineRegistry } from "../rest-types.js";
 import { getAvailableEvents } from "../hateoas.js";
 import { extractGraphData } from "./graph.js";
+import type { GraphData } from "./graph.js";
 import {
   machineListPage,
   instanceListPage,
@@ -183,6 +184,9 @@ export function createDashboardRoutes(options: DashboardRouteOptions): Hono {
 
     return streamSSE(c, async (stream) => {
       const handle = durable.get(instanceId);
+      // Static graph data — computed once, reused across SSE ticks
+      const sseDefinition = serializeMachineDefinition(durable.machine);
+      const sseGraphData = extractGraphData(sseDefinition);
       let lastJson = "";
 
       const sendUpdate = async (): Promise<boolean> => {
@@ -197,6 +201,14 @@ export function createDashboardRoutes(options: DashboardRouteOptions): Hono {
           const effects = handle.listEffects ? await handle.listEffects() : undefined;
           const eventLog = handle.getEventLog ? await handle.getEventLog({ limit: 50 }) : undefined;
 
+          // Compute active sleep for SSE updates
+          const sseActiveStates = resolveActiveStates(snapshot);
+          const sseTransitions: TransitionRecord[] = handle.getTransitions
+            ? await handle.getTransitions()
+            : buildTransitionsFromSteps(steps, snapshot);
+          const sseStateDurations = computeStateDurations(sseTransitions);
+          const sseSleep = computeActiveSleep(sseGraphData, sseActiveStates, sseStateDurations);
+
           const stateData = {
             snapshot,
             steps,
@@ -204,6 +216,7 @@ export function createDashboardRoutes(options: DashboardRouteOptions): Hono {
             effects,
             eventLog,
             activeStep: detectActiveStep(steps),
+            activeSleep: sseSleep,
           };
 
           const json = JSON.stringify(stateData);
@@ -290,6 +303,9 @@ async function buildDetailData(
   const activeStates = resolveActiveStates(snapshot);
   const visitedStates = extractVisitedStates(transitions);
 
+  // Compute active sleep countdown if in a state with an `after` transition
+  const activeSleep = computeActiveSleep(graphData, activeStates, stateDurations);
+
   return {
     machineId,
     instanceId,
@@ -303,6 +319,7 @@ async function buildDetailData(
     eventLog,
     activeStates,
     visitedStates,
+    activeSleep,
   };
 }
 
@@ -364,6 +381,53 @@ function extractVisitedStates(transitions: TransitionRecord[]): string[] {
     for (const p of paths) visited.add(p);
   }
   return [...visited];
+}
+
+/**
+ * Compute active sleep info: if the machine is in a state with an `after` transition,
+ * return the state, delay, and computed wake time.
+ */
+export function computeActiveSleep(
+  graphData: GraphData,
+  activeStates: string[],
+  stateDurations: import("@durable-xstate/durable-machine").StateDuration[],
+): ActiveSleep | null {
+  // Find after-edges whose source is an active state
+  for (const edge of graphData.edges) {
+    if (edge.type === "after" && edge.delay != null && activeStates.includes(edge.source)) {
+      // Find the enteredAt for this active state
+      const dur = stateDurations.find(
+        (d) => d.exitedAt === null && statePathMatches(d.state, edge.source),
+      );
+      if (dur) {
+        return {
+          stateId: edge.source,
+          delay: edge.delay,
+          enteredAt: dur.enteredAt,
+          wakeAt: dur.enteredAt + edge.delay,
+        };
+      }
+    }
+  }
+  return null;
+}
+
+export interface ActiveSleep {
+  stateId: string;
+  delay: number;
+  enteredAt: number;
+  wakeAt: number;
+}
+
+/** Check if a state value matches a dot-path (handles both string and nested object values). */
+function statePathMatches(stateValue: unknown, path: string): boolean {
+  if (typeof stateValue === "string") return stateValue === path;
+  if (typeof stateValue === "object" && stateValue !== null) {
+    const resolved: string[] = [];
+    collectStatePaths(stateValue, "", resolved);
+    return resolved.includes(path);
+  }
+  return false;
 }
 
 function sleep(ms: number): Promise<void> {

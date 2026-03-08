@@ -239,6 +239,13 @@ gateway tests passing.
 - SSE connection indicator (green/red/yellow dot)
 - Status badge updates via SSE
 - Available events dropdown updates via SSE
+- Error display panel (instance errors, failed steps, failed effects)
+- Active sleep countdown (live countdown timer for `after` delayed transitions)
+  - `GraphEdge.delay` field for numeric after-edge delays
+  - `computeActiveSleep()` computes `wakeAt = enteredAt + delay` from graph + active states + durations
+  - Countdown badge in both timeline and graph SVG (ELK + fallback)
+  - 200ms ticker updates countdown elements; `.firing` class when timer expires
+  - Included in SSE state updates for real-time countdown
 
 ## Verification
 

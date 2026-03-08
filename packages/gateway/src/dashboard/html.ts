@@ -210,6 +210,7 @@ export interface InstanceDetailData {
   eventLog?: EventLogEntry[];
   activeStates: string[];
   visitedStates: string[];
+  activeSleep?: { stateId: string; delay: number; enteredAt: number; wakeAt: number } | null;
 }
 
 export function instanceDetailPage(
@@ -230,6 +231,7 @@ export function instanceDetailPage(
     eventLog,
     activeStates,
     visitedStates,
+    activeSleep,
   } = data;
 
   const sseUrl = `${basePath}/sse/${machineId}/${instanceId}`;
@@ -241,7 +243,7 @@ export function instanceDetailPage(
       <h2>State Graph</h2>
       <div id="graph-container"></div>
       <script type="application/json" id="graph-data">${JSON.stringify(graphData)}</script>
-      <script type="application/json" id="runtime-data">${JSON.stringify({ activeStates, visitedStates })}</script>
+      <script type="application/json" id="runtime-data">${JSON.stringify({ activeStates, visitedStates, activeSleep: activeSleep ?? null })}</script>
     </div>`;
 
   // Timeline panel
@@ -249,7 +251,7 @@ export function instanceDetailPage(
     <div class="card timeline-panel">
       <h2>Transition Timeline</h2>
       <div class="timeline" id="timeline-entries">
-        ${renderTimelineEntries(transitions, stateDurations)}
+        ${renderTimelineEntries(transitions, stateDurations, activeSleep)}
       </div>
     </div>`;
 
@@ -377,6 +379,7 @@ export function instanceDetailPage(
 function renderTimelineEntries(
   transitions: TransitionRecord[],
   durations: StateDuration[],
+  activeSleep?: { stateId: string; delay: number; enteredAt: number; wakeAt: number } | null,
 ): string {
   if (transitions.length === 0) {
     return `<div class="empty">No transitions yet</div>`;
@@ -395,6 +398,7 @@ function renderTimelineEntries(
         ${t.from !== null ? `<div class="timeline-event">from: ${esc(stateValueStr(t.from))}</div>` : ""}
         <div class="timeline-time">${formatTime(t.ts)}</div>
         ${dur ? `<div class="timeline-duration${isActive ? ` active-duration" data-entered="${dur.enteredAt}` : ""}">${formatDuration(dur.durationMs)}</div>` : ""}
+        ${isActive && activeSleep ? `<div class="sleep-countdown" data-wake-at="${activeSleep.wakeAt}">${formatDuration(Math.max(0, activeSleep.wakeAt - Date.now()))} remaining</div>` : ""}
       </div>
     </div>`;
   }

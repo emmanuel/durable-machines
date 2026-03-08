@@ -75,6 +75,7 @@ export const CLIENT_JS = /* js */ `
   function renderSvg(layout, graphData, runtimeState) {
     const activeStates = runtimeState?.activeStates || [];
     const visitedStates = runtimeState?.visitedStates || [];
+    const activeSleep = runtimeState?.activeSleep || null;
     const pad = 20;
     const w = (layout.width || 600) + pad * 2;
     const h = (layout.height || 400) + pad * 2;
@@ -170,6 +171,13 @@ export const CLIENT_JS = /* js */ `
         if (edge.labels && edge.labels[0] && edge.labels[0].x != null) {
           const lbl = edge.labels[0];
           svg += '<text x="' + (lbl.x + pad) + '" y="' + (lbl.y + pad - 2) + '">' + esc(lbl.text) + '</text>';
+
+          // Add countdown badge for active after-edges
+          if (meta && meta.type === 'after' && activeSleep && activeSleep.stateId === meta.source) {
+            var remaining = activeSleep.wakeAt - Date.now();
+            var countdownText = remaining > 0 ? formatDuration(remaining) : 'firing...';
+            svg += '<text class="sleep-countdown" data-wake-at="' + activeSleep.wakeAt + '" x="' + (lbl.x + pad) + '" y="' + (lbl.y + pad + 12) + '">' + esc(countdownText) + '</text>';
+          }
         }
 
         svg += '</g>';
@@ -190,6 +198,7 @@ export const CLIENT_JS = /* js */ `
   function fallbackLayout(graphData, runtimeState) {
     const activeStates = runtimeState?.activeStates || [];
     const visitedStates = runtimeState?.visitedStates || [];
+    const activeSleep = runtimeState?.activeSleep || null;
     const leaves = graphData.nodes.filter(n => n.children.length === 0);
     const nodeW = 140;
     const nodeH = 40;
@@ -272,6 +281,12 @@ export const CLIENT_JS = /* js */ `
         const mx = (from.x + to.x + nodeW) / 2;
         const my = (from.y + nodeH + to.y) / 2 - 4;
         svg += '<text x="' + mx + '" y="' + my + '" text-anchor="middle">' + esc(e.label) + '</text>';
+        // Add countdown for active after-edges
+        if (e.type === 'after' && activeSleep && activeSleep.stateId === e.source) {
+          var remaining = activeSleep.wakeAt - Date.now();
+          var countdownText = remaining > 0 ? formatDuration(remaining) : 'firing...';
+          svg += '<text class="sleep-countdown" data-wake-at="' + activeSleep.wakeAt + '" x="' + mx + '" y="' + (my + 14) + '" text-anchor="middle">' + esc(countdownText) + '</text>';
+        }
       }
       svg += '</g>';
     }
@@ -391,7 +406,7 @@ export const CLIENT_JS = /* js */ `
     return String(v);
   }
 
-  function renderTimeline(transitions, durations, activeState) {
+  function renderTimeline(transitions, durations, activeSleep) {
     const el = document.getElementById('timeline-entries');
     if (!el) return;
 
@@ -417,6 +432,12 @@ export const CLIENT_JS = /* js */ `
       if (dur) {
         html += '<div class="timeline-duration' + (isActive ? ' active-duration" data-entered="' + dur.enteredAt : '') + '">' + formatDuration(dur.durationMs) + '</div>';
       }
+      // Show sleep countdown on the active state entry
+      if (isActive && activeSleep) {
+        var remaining = activeSleep.wakeAt - Date.now();
+        var countdownText = remaining > 0 ? formatDuration(remaining) + ' remaining' : 'firing...';
+        html += '<div class="sleep-countdown' + (remaining <= 0 ? ' firing' : '') + '" data-wake-at="' + activeSleep.wakeAt + '">' + countdownText + '</div>';
+      }
       html += '</div></div>';
     }
     el.innerHTML = html;
@@ -429,14 +450,30 @@ export const CLIENT_JS = /* js */ `
   function startDurationTicker() {
     if (tickInterval) clearInterval(tickInterval);
     tickInterval = setInterval(function() {
-      const els = document.querySelectorAll('.active-duration[data-entered]');
-      for (const el of els) {
-        const entered = parseInt(el.getAttribute('data-entered'));
+      // Update elapsed duration on active states
+      var els = document.querySelectorAll('.active-duration[data-entered]');
+      for (var el of els) {
+        var entered = parseInt(el.getAttribute('data-entered'));
         if (!isNaN(entered)) {
           el.textContent = formatDuration(Date.now() - entered);
         }
       }
-    }, 1000);
+
+      // Update sleep countdown badges
+      var countdowns = document.querySelectorAll('.sleep-countdown[data-wake-at]');
+      for (var cd of countdowns) {
+        var wakeAt = parseInt(cd.getAttribute('data-wake-at'));
+        if (!isNaN(wakeAt)) {
+          var remaining = wakeAt - Date.now();
+          if (remaining <= 0) {
+            cd.textContent = 'firing...';
+            cd.classList.add('firing');
+          } else {
+            cd.textContent = formatDuration(remaining) + ' remaining';
+          }
+        }
+      }
+    }, 200);
   }
 
   // ── Event Sender ───────────────────────────────────────────
@@ -552,7 +589,7 @@ export const CLIENT_JS = /* js */ `
 
         // Update timeline
         if (data.transitions) {
-          renderTimeline(data.transitions, data.stateDurations, null);
+          renderTimeline(data.transitions, data.stateDurations, data.activeSleep || null);
           startDurationTicker();
         }
 
@@ -572,7 +609,7 @@ export const CLIENT_JS = /* js */ `
         if (graphData && data.snapshot) {
           const activeStates = data.activeStates || [];
           const visitedStates = data.visitedStates || [];
-          renderGraph(graphData, { activeStates: activeStates, visitedStates: visitedStates });
+          renderGraph(graphData, { activeStates: activeStates, visitedStates: visitedStates, activeSleep: data.activeSleep || null });
         }
 
         // Update error panel
@@ -726,9 +763,8 @@ export const CLIENT_JS = /* js */ `
       renderGraph(graphData, runtimeState);
     }
 
-    if (runtimeState) {
-      startDurationTicker();
-    }
+    // Start ticker for both duration and sleep countdown
+    startDurationTicker();
 
     initEventSender();
     initInstanceDetailSSE();

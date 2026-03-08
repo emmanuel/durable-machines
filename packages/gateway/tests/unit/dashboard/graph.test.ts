@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { extractGraphData } from "../../../src/dashboard/graph.js";
-import type { SerializedMachine } from "@durable-xstate/durable-machine";
+import { computeActiveSleep } from "../../../src/dashboard/routes.js";
+import type { SerializedMachine, StateDuration } from "@durable-xstate/durable-machine";
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -119,7 +120,7 @@ describe("extractGraphData", () => {
     });
   });
 
-  it("extracts after edges with delay labels", () => {
+  it("extracts after edges with delay labels and numeric delay", () => {
     const { edges } = extractGraphData(compoundMachine());
 
     const afterEdge = edges.find((e) => e.type === "after");
@@ -127,6 +128,7 @@ describe("extractGraphData", () => {
       source: "active.step2",
       target: "timeout",
       label: "after 5000ms",
+      delay: 5000,
     });
   });
 
@@ -179,5 +181,63 @@ describe("extractGraphData", () => {
   it("sets initial from definition", () => {
     const { initial } = extractGraphData(linearMachine());
     expect(initial).toBe("idle");
+  });
+});
+
+describe("computeActiveSleep", () => {
+  it("returns sleep info when active state has an after transition", () => {
+    const graphData = extractGraphData(compoundMachine());
+    const activeStates = ["active.step2"];
+    const durations: StateDuration[] = [
+      { state: "active.step2", enteredAt: 1000, exitedAt: null, durationMs: 2000 },
+    ];
+
+    const result = computeActiveSleep(graphData, activeStates, durations);
+    expect(result).toEqual({
+      stateId: "active.step2",
+      delay: 5000,
+      enteredAt: 1000,
+      wakeAt: 6000,
+    });
+  });
+
+  it("returns null when active state has no after transition", () => {
+    const graphData = extractGraphData(compoundMachine());
+    const activeStates = ["active.step1"];
+    const durations: StateDuration[] = [
+      { state: "active.step1", enteredAt: 1000, exitedAt: null, durationMs: 2000 },
+    ];
+
+    const result = computeActiveSleep(graphData, activeStates, durations);
+    expect(result).toBeNull();
+  });
+
+  it("returns null when no states are active", () => {
+    const graphData = extractGraphData(compoundMachine());
+    const result = computeActiveSleep(graphData, [], []);
+    expect(result).toBeNull();
+  });
+
+  it("ignores after edges with non-numeric delays", () => {
+    const machine: SerializedMachine = {
+      id: "test",
+      initial: "a",
+      states: {
+        a: {
+          path: "a",
+          type: "atomic",
+          after: [{ delay: "dynamicDelay", target: "b" }],
+        },
+        b: { path: "b", type: "final" },
+      },
+    };
+
+    const graphData = extractGraphData(machine);
+    const durations: StateDuration[] = [
+      { state: "a", enteredAt: 1000, exitedAt: null, durationMs: 2000 },
+    ];
+
+    const result = computeActiveSleep(graphData, ["a"], durations);
+    expect(result).toBeNull();
   });
 });

@@ -5,6 +5,7 @@ import type { Hono } from "hono";
 import type { Server } from "node:http";
 import { createWebhookGateway } from "./gateway.js";
 import { createRestApi } from "./rest-api.js";
+import { createDashboard } from "./dashboard/index.js";
 import { createGatewayMetrics } from "./metrics.js";
 import type { GatewayMetrics } from "./metrics.js";
 import { createAdminServer } from "./admin.js";
@@ -75,6 +76,15 @@ export interface GatewayContextOptions {
   restBasePath?: string;
   /** Enable URL-as-API shorthand routes for the REST API (single-machine mode). @defaultValue `false` */
   restShorthand?: boolean;
+  /** Mount the server-rendered dashboard at this path. Set to `false` to disable. @defaultValue `"/dashboard"` */
+  dashboardPath?: string | false;
+  /** Optional PgStore — enables NOTIFY-driven SSE for the dashboard instead of polling. */
+  store?: {
+    startListening(
+      callback: (machineName: string, instanceId: string, topic: string) => void,
+    ): Promise<void>;
+    stopListening(): Promise<void>;
+  };
   streams?: Array<{
     binding: StreamBinding<any, any>;
     checkpointInterval?: number;
@@ -105,6 +115,18 @@ export async function createGatewayContext(
       shorthand: options.restShorthand,
     });
     gateway.route("/", restApi);
+
+    // Mount dashboard unless explicitly disabled
+    if (options.dashboardPath !== false) {
+      const dashboardPath = options.dashboardPath || "/dashboard";
+      const dashboard = createDashboard({
+        machines: options.machines,
+        basePath: dashboardPath,
+        restBasePath: options.restBasePath,
+        store: options.store,
+      });
+      gateway.route(dashboardPath, dashboard);
+    }
   }
 
   const adminServer = createAdminServer({

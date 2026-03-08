@@ -104,3 +104,7 @@ export { broadcastRouter } from "./routers/broadcast.js";
 
 // Transforms
 export { directTransform } from "./transforms/direct.js";
+
+// Dashboard
+export { createDashboard } from "./dashboard/index.js";
+export type { DashboardOptions } from "./dashboard/index.js";

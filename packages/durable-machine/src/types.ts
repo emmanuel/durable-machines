@@ -134,6 +134,8 @@ export interface DurableMachineHandle<TContext = Record<string, unknown>> {
   getSteps(): Promise<StepInfo[]>;
   /** Cancel the running workflow. The machine will not process further events. */
   cancel(): Promise<void>;
+  /** Return the ordered list of state transitions recorded for this instance. Requires `enableTransitionStream` on DBOS backend; always available on PG backend. */
+  getTransitions?(): Promise<TransitionRecord[]>;
   /** Return the list of effects enqueued for this instance, with their execution status. Only available on PG backend. */
   listEffects?(): Promise<EffectStatus[]>;
   /** Return the ordered log of all events received by this instance. Only available on PG backend. */

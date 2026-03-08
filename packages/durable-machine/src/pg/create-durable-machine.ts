@@ -8,6 +8,7 @@ import type {
   DurableStateSnapshot,
   EffectStatus,
   EventLogEntry,
+  TransitionRecord,
 } from "../types.js";
 import { DurableMachineError } from "../types.js";
 import { validateMachineForDurability } from "../validate.js";
@@ -150,6 +151,10 @@ export function createDurableMachine<T extends AnyStateMachine>(
           createdAt: r.createdAt,
           completedAt: r.completedAt,
         }));
+      },
+
+      async getTransitions(): Promise<TransitionRecord[]> {
+        return store.getTransitions(workflowId);
       },
 
       async getEventLog(opts?: { afterSeq?: number; limit?: number }): Promise<EventLogEntry[]> {

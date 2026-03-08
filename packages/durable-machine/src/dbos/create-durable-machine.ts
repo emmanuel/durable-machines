@@ -6,6 +6,7 @@ import type {
   DurableStateSnapshot,
   DurableMachineHandle,
   StepInfo,
+  TransitionRecord,
 } from "../types.js";
 import { validateMachineForDurability } from "../validate.js";
 import { createMachineLoop } from "./machine-loop.js";
@@ -121,6 +122,15 @@ function createHandle(
 
     async cancel(): Promise<void> {
       await DBOS.cancelWorkflow(workflowId);
+    },
+
+    async getTransitions(): Promise<TransitionRecord[]> {
+      const transitions = await DBOS.getEvent<TransitionRecord[]>(
+        workflowId,
+        "xstate.transitions",
+        0.1,
+      );
+      return transitions ?? [];
     },
   };
 }

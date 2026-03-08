@@ -344,10 +344,15 @@ export function instanceDetailPage(
   // Error panel — shown when instance has errors
   const errorPanel = renderErrorPanel(snapshot, steps, effects);
 
+  const cancelUrl = `${restBasePath}/machines/${machineId}/instances/${instanceId}`;
+  const canCancel = snapshot.status === "running";
+
   const body = `
-    <div style="margin-bottom:16px">
+    <div style="margin-bottom:16px;display:flex;align-items:center;gap:12px">
       <span class="mono" style="font-size:18px;font-weight:600">${esc(instanceId)}</span>
-      <span id="instance-status" class="badge badge-${snapshot.status}" style="margin-left:8px">${esc(snapshot.status)}</span>
+      <span id="instance-status" class="badge badge-${snapshot.status}">${esc(snapshot.status)}</span>
+      <button id="cancel-btn" class="btn-danger" data-url="${esc(cancelUrl)}"${canCancel ? "" : " disabled"}>Cancel</button>
+      <span id="cancel-status" class="form-status"></span>
     </div>
     <div id="error-panel-container">${errorPanel}</div>
     <div class="detail-grid">

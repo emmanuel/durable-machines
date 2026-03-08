@@ -533,6 +533,45 @@ export const CLIENT_JS = /* js */ `
     });
   }
 
+  // ── Cancel Button ─────────────────────────────────────────
+
+  function initCancelButton() {
+    var btn = document.getElementById('cancel-btn');
+    if (!btn) return;
+
+    btn.addEventListener('click', async function() {
+      var url = btn.getAttribute('data-url');
+      var status = document.getElementById('cancel-status');
+      if (!url) return;
+
+      if (!confirm('Cancel this instance? This cannot be undone.')) return;
+
+      btn.disabled = true;
+      try {
+        var resp = await fetch(url, { method: 'DELETE' });
+        if (resp.ok) {
+          if (status) {
+            status.textContent = 'Cancelled';
+            status.className = 'form-status success';
+          }
+        } else {
+          var errData = await resp.json().catch(function() { return {}; });
+          if (status) {
+            status.textContent = errData.error || 'Failed to cancel';
+            status.className = 'form-status error';
+          }
+          btn.disabled = false;
+        }
+      } catch (err) {
+        if (status) {
+          status.textContent = 'Network error';
+          status.className = 'form-status error';
+        }
+        btn.disabled = false;
+      }
+    });
+  }
+
   // ── SSE Live Updates ───────────────────────────────────────
 
   function connectSSE(url, handlers) {
@@ -584,6 +623,12 @@ export const CLIENT_JS = /* js */ `
           if (badge) {
             badge.textContent = data.snapshot.status;
             badge.className = 'badge badge-' + data.snapshot.status;
+          }
+
+          // Disable cancel button when no longer running
+          var cancelBtn = document.getElementById('cancel-btn');
+          if (cancelBtn) {
+            cancelBtn.disabled = data.snapshot.status !== 'running';
           }
         }
 
@@ -767,6 +812,7 @@ export const CLIENT_JS = /* js */ `
     startDurationTicker();
 
     initEventSender();
+    initCancelButton();
     initInstanceDetailSSE();
     initInstanceListSSE();
   });

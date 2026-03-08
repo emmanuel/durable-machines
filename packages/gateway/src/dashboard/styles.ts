@@ -512,6 +512,29 @@ tr:last-child td { border-bottom: none; }
   word-break: break-word;
 }
 
+/* ── Danger Button ─────────────────────────────── */
+
+.btn-danger {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--red);
+  background: transparent;
+  color: var(--red);
+  cursor: pointer;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: rgba(248,113,113,0.15);
+}
+
+.btn-danger:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* ── Sleep Countdown ───────────────────────────── */
 
 .sleep-countdown {

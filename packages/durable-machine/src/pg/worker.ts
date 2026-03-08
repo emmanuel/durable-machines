@@ -19,6 +19,8 @@ import type { PgConfig } from "./config.js";
 export type PgWorkerAppContext = WorkerAppContext & {
   readonly pool: PoolType;
   readonly store: PgStore;
+  /** Live registry of all machines registered via {@link WorkerAppContext.register}. Entries are added dynamically; consumers see updates immediately. */
+  readonly machines: ReadonlyMap<string, DurableMachine>;
 };
 
 // ─── Factory ────────────────────────────────────────────────────────────────
@@ -181,6 +183,7 @@ export function createPgWorkerContext(config: PgConfig): PgWorkerAppContext {
     shutdown: appContext.shutdown,
     isShuttingDown: appContext.isShuttingDown,
     register,
+    machines,
     pool,
     store,
   };

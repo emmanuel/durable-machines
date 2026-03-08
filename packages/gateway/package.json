@@ -54,6 +54,10 @@
       "types": "./dist/transforms/index.d.ts",
       "import": "./dist/transforms/index.js"
     },
+    "./rest": {
+      "types": "./dist/rest-api.d.ts",
+      "import": "./dist/rest-api.js"
+    },
     "./hmac": {
       "types": "./dist/hmac.d.ts",
       "import": "./dist/hmac.js"

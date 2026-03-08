@@ -4,11 +4,13 @@ import { DBOSClient } from "@dbos-inc/dbos-sdk";
 import type { Hono } from "hono";
 import type { Server } from "node:http";
 import { createWebhookGateway } from "./gateway.js";
+import { createRestApi } from "./rest-api.js";
 import { createGatewayMetrics } from "./metrics.js";
 import type { GatewayMetrics } from "./metrics.js";
 import { createAdminServer } from "./admin.js";
 import { gracefulShutdown, isShuttingDown } from "@durable-xstate/durable-machine/dbos";
 import type { GatewayClient, WebhookBinding } from "./types.js";
+import type { MachineRegistry } from "./rest-types.js";
 import type { Logger, StreamBinding } from "./streams/types.js";
 import type { StreamConsumerHandle } from "./streams/consumer.js";
 import { startStreamConsumer } from "./streams/consumer.js";
@@ -67,6 +69,12 @@ export function parseGatewayConfig(
 
 export interface GatewayContextOptions {
   bindings: WebhookBinding<any>[];
+  /** Register durable machines to expose via the REST API with HATEOAS responses. */
+  machines?: MachineRegistry;
+  /** Base path prefix for REST API routes. @defaultValue `""` */
+  restBasePath?: string;
+  /** Enable URL-as-API shorthand routes for the REST API (single-machine mode). @defaultValue `false` */
+  restShorthand?: boolean;
   streams?: Array<{
     binding: StreamBinding<any, any>;
     checkpointInterval?: number;
@@ -88,6 +96,17 @@ export async function createGatewayContext(
   };
   const metrics = createGatewayMetrics();
   const gateway = createWebhookGateway({ client, bindings: options.bindings, metrics });
+
+  // Mount REST API if machines are registered
+  if (options.machines && options.machines.size > 0) {
+    const restApi = createRestApi({
+      machines: options.machines,
+      basePath: options.restBasePath,
+      shorthand: options.restShorthand,
+    });
+    gateway.route("/", restApi);
+  }
+
   const adminServer = createAdminServer({
     metrics,
     isReady: () => !isShuttingDown(),

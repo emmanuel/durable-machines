@@ -1,6 +1,17 @@
 // Gateway
 export { createWebhookGateway } from "./gateway.js";
 
+// REST API
+export { createRestApi } from "./rest-api.js";
+export type {
+  MachineRegistry,
+  RestApiOptions,
+  HateoasLinks,
+  StateResponse,
+  ErrorResponse,
+} from "./rest-types.js";
+export { getAvailableEvents, buildLinks, toStateResponse } from "./hateoas.js";
+
 // Admin server
 export { createAdminServer } from "./admin.js";
 export type { AdminServerOptions } from "./admin.js";

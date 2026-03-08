@@ -1,9 +1,9 @@
 # Plan: HTTP REST Gateway
 
-## Status: Planned
+## Status: Done
 
-Prerequisite: none (works with any `DurableMachine` backend). Enhanced by
-machine-definition-as-data plan (dynamic machine registration via API).
+Implemented in commits `554fbe6` (REST API with HATEOAS responses) and `0adcebb`
+(end-to-end PG integration test).
 
 ## Problem
 

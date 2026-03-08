@@ -1,10 +1,9 @@
 # Plan: First-Class Effects
 
-## Status: Planned
+## Status: Done
 
-Prerequisite: none (builds on existing marker pattern). Impacts machine-definition-as-data
-plan (effects declared in JSON definitions) and both backend plans (PG and CF DO backends
-each need effect execution strategies).
+Implemented in commits `3b4a6fc` (first-class effects system) and `6758db5` (transactional
+outbox for durable effect execution).
 
 ## Problem
 

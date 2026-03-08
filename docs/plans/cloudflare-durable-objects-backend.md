@@ -1,10 +1,9 @@
 # Plan: Cloudflare Durable Objects Backend
 
-## Status: Planned
+## Status: Deferred
 
-Prerequisite: none (uses existing core utilities from `@durable-xstate/durable-machine`).
-Benefits from first-class effects plan (effects executed via DO alarms) and
-machine-definition-as-data plan (JSON-defined machines deployed to CF Workers).
+No concrete user demand. Revisit if edge deployment or zero-infrastructure use cases
+create pull. Analysis preserved below for future reference.
 
 ## Problem
 

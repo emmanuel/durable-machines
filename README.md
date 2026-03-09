@@ -377,19 +377,19 @@ This library is under active development. Both DBOS and PostgreSQL backends are 
 - DBOS workflow loop with invoke execution, event reception, and `after` timeout handling
 - PostgreSQL backend with append-only event log, split-transaction invocations, `LISTEN/NOTIFY`
 - `after` transitions with multiple delays, `firedDelays` tracking, `reenter: true` support, and named delays
-- Channel adapter interface with `consoleChannel()` built-in adapter
+- Channel adapters: `consoleChannel()` (built-in), `slackChannel()`, `emailChannel()`, `twilioSmsChannel()`
 - Prompt lifecycle: `sendPrompt` on entry, `resolvePrompt` on transition
 - Transactional effect outbox with retry policies
 - Public API: `createDurableMachine`, `DurableMachineHandle`
 - External client helpers (`sendMachineEvent`, `getMachineState`)
 - Visualization: `serializeMachineDefinition()`, `getVisualizationState()`, opt-in transition stream
 - Gateway with REST API, server-rendered dashboard, SSE live updates, and schema-driven forms
-- 620 tests (364 durable-machine + 256 gateway)
+- Webhook gateway for inbound event routing (Slack, Stripe, GitHub, Linear, Cal.com, Twilio, X/Twitter)
+- Stream consumers with SSE transport and checkpoint stores
+- 640 tests (364 durable-machine + 276 gateway)
 
 ### Planned
 
-- Channel adapters for external delivery (Slack, email, webhook)
-- Webhook gateway for inbound event routing
 - Multi-replica clustering (heartbeat + reaper)
 - KEDA autoscaler manifest generation
 

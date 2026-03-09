@@ -185,8 +185,8 @@ Minimal — functional, not decorative.
 
 ## Implementation Status
 
-All phases implemented in a single pass. Typecheck clean, all 209 existing
-gateway tests passing.
+All phases implemented in a single pass. Typecheck clean, all 267 gateway
+tests passing.
 
 ### Phase 1: Skeleton + Machine List — DONE
 

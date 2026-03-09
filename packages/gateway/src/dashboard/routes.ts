@@ -84,58 +84,7 @@ export function createDashboardRoutes(options: DashboardRouteOptions): Hono {
     return c.html(instanceListPage(basePath, machineId, instances, status));
   });
 
-  // ── GET /:machineId/:instanceId — Instance detail ────────────────────────
-
-  app.get("/:machineId/:instanceId", async (c) => {
-    const machineId = c.req.param("machineId");
-    const instanceId = c.req.param("instanceId");
-    const durable = machines.get(machineId);
-    if (!durable) return c.notFound();
-
-    const handle = durable.get(instanceId);
-    const [snapshot, steps] = await Promise.all([
-      handle.getState(),
-      handle.getSteps(),
-    ]);
-    if (!snapshot) return c.notFound();
-
-    const data = await buildDetailData(
-      durable,
-      machineId,
-      instanceId,
-      snapshot,
-      steps,
-      handle,
-    );
-
-    return c.html(instanceDetailPage(basePath, restBasePath, data));
-  });
-
-  // ── POST /:machineId/:instanceId/send — Send event (form fallback) ──────
-
-  app.post("/:machineId/:instanceId/send", async (c) => {
-    const machineId = c.req.param("machineId");
-    const instanceId = c.req.param("instanceId");
-    const durable = machines.get(machineId);
-    if (!durable) return c.notFound();
-
-    const body = await c.req.parseBody();
-    const eventType = String(body["eventType"] || "");
-    if (!eventType) return c.redirect(`${basePath}/${machineId}/${instanceId}`);
-
-    let payload: Record<string, unknown> = {};
-    const raw = String(body["payload"] || "").trim();
-    if (raw) {
-      try {
-        payload = JSON.parse(raw);
-      } catch {
-        // Ignore invalid JSON, send just the type
-      }
-    }
-
-    await durable.get(instanceId).send({ type: eventType, ...payload });
-    return c.redirect(`${basePath}/${machineId}/${instanceId}`);
-  });
+  // ── SSE routes (must precede /:machineId/:instanceId to avoid shadowing) ──
 
   // ── SSE: /sse/:machineId — Instance list updates ─────────────────────────
 
@@ -292,6 +241,59 @@ export function createDashboardRoutes(options: DashboardRouteOptions): Hono {
         }
       }
     });
+  });
+
+  // ── GET /:machineId/:instanceId — Instance detail ────────────────────────
+
+  app.get("/:machineId/:instanceId", async (c) => {
+    const machineId = c.req.param("machineId");
+    const instanceId = c.req.param("instanceId");
+    const durable = machines.get(machineId);
+    if (!durable) return c.notFound();
+
+    const handle = durable.get(instanceId);
+    const [snapshot, steps] = await Promise.all([
+      handle.getState(),
+      handle.getSteps(),
+    ]);
+    if (!snapshot) return c.notFound();
+
+    const data = await buildDetailData(
+      durable,
+      machineId,
+      instanceId,
+      snapshot,
+      steps,
+      handle,
+    );
+
+    return c.html(instanceDetailPage(basePath, restBasePath, data));
+  });
+
+  // ── POST /:machineId/:instanceId/send — Send event (form fallback) ──────
+
+  app.post("/:machineId/:instanceId/send", async (c) => {
+    const machineId = c.req.param("machineId");
+    const instanceId = c.req.param("instanceId");
+    const durable = machines.get(machineId);
+    if (!durable) return c.notFound();
+
+    const body = await c.req.parseBody();
+    const eventType = String(body["eventType"] || "");
+    if (!eventType) return c.redirect(`${basePath}/${machineId}/${instanceId}`);
+
+    let payload: Record<string, unknown> = {};
+    const raw = String(body["payload"] || "").trim();
+    if (raw) {
+      try {
+        payload = JSON.parse(raw);
+      } catch {
+        // Ignore invalid JSON, send just the type
+      }
+    }
+
+    await durable.get(instanceId).send({ type: eventType, ...payload });
+    return c.redirect(`${basePath}/${machineId}/${instanceId}`);
   });
 
   return app;

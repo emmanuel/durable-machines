@@ -253,7 +253,7 @@ The instance list page now shows a "Start New Instance" button linking to this p
 ## Implementation Status
 
 All phases implemented. Typecheck clean, all tests passing
-(364 durable-machine, 256 gateway).
+(364 durable-machine, 267 gateway).
 
 ## Verification
 

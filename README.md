@@ -332,6 +332,29 @@ Machine instances are **rows in Postgres**. Zero memory overhead when parked. Ev
 | **Lock strategy** | Implicit (workflow isolation) | `FOR NO KEY UPDATE NOWAIT` with retry |
 | **Best for** | Simple deployments, <1K concurrent instances | Scale-to-zero, >1K instances, queryable state |
 
+### Throughput estimates (single worker)
+
+Assumptions:
+- Single Node.js worker, single Postgres instance, <1ms network RTT
+- **Logic event**: synchronous transition (guard + assign), no I/O — ~2 PG writes (DBOS) or ~2-3 PG writes (PG backend) per event
+- **I/O event**: invoked actor (`fromPromise`) with ~100ms average execution time — ~3-5 PG writes per event
+- **Blended ratio**: 3 logic events per 1 I/O event (typical for approval/orchestration workflows)
+- PG connection pool: 10 connections (default)
+- Transition stream disabled
+
+| Metric | DBOS | PostgreSQL |
+|---|---|---|
+| Logic events/sec (single instance, sequential) | ~100-150 | ~150-250 |
+| Blended events/sec (single instance, 3:1 logic:IO) | ~25-35 | ~30-40 |
+| Aggregate logic events/sec (many instances) | ~500-1,000 | ~1,000-2,000 |
+| Aggregate blended events/sec (many instances) | ~300-600 | ~800-1,500 |
+
+Per-instance throughput is bounded by sequential processing within each machine instance (events for one instance are processed in order). Aggregate throughput scales with concurrent instances since events for different instances are processed in parallel.
+
+The PG backend's advantage in aggregate throughput comes from its split-transaction invocation pattern: DB connections are released during invoke execution, keeping the connection pool available for other instances. The DBOS backend holds a suspended closure per active workflow, so aggregate throughput is bounded by Node.js memory and the DBOS scheduler.
+
+These are order-of-magnitude estimates for planning purposes. Actual throughput depends on PG hardware, query complexity, invoke duration, network latency, and connection pool sizing. Benchmark your workload.
+
 ### Scaling characteristics
 
 **DBOS**: Linear memory scaling. Every active workflow holds a JavaScript closure in memory. Startup replays all pending workflows, so restart latency grows with instance count. Well-suited for moderate scale where the DBOS SDK's simplicity is valued.
@@ -390,8 +413,11 @@ This library is under active development. Both DBOS and PostgreSQL backends are 
 
 ### Planned
 
-- Multi-replica clustering (heartbeat + reaper)
 - KEDA autoscaler manifest generation
+
+### Deferred
+
+- Multi-replica clustering for DBOS backend (heartbeat + reaper) — use PG backend or DBOS Conductor instead; see `docs/plans/dbos-backend-clustering.md`
 
 ## License
 

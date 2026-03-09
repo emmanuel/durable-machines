@@ -1,3 +1,15 @@
+/**
+ * Generic gateway lifecycle — backend-agnostic.
+ *
+ * Naming conventions:
+ * - `*Config`   — env-derived configuration (Zod-validated)
+ * - `*Options`  — programmer-supplied setup parameters
+ * - `*Context`  — live runtime object (servers, clients, metrics)
+ * - `*Handle`   — return value of start functions (has shutdown())
+ *
+ * Backend adapters: DBOS (acronym, all-caps) and Pg (abbreviation, title-case).
+ */
+
 import { z } from "zod";
 import { serve } from "@hono/node-server";
 import type { Hono } from "hono";

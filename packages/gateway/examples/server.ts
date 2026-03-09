@@ -12,7 +12,7 @@ const client: GatewayClient = {
       console.log(`[send] ${workflowId} <- ${JSON.stringify(message)} (topic: ${topic})`);
     }
   },
-  async getEvent(_workflowId, _key, _timeout) {
+  async getState(_workflowId) {
     return null;
   },
 };

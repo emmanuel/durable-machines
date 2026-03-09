@@ -1,4 +1,5 @@
 import type { GatewayClient } from "../../src/types.js";
+import type { DurableStateSnapshot } from "@durable-xstate/durable-machine";
 
 export interface SendCall {
   workflowId: string;
@@ -8,17 +9,17 @@ export interface SendCall {
 
 export interface MockClient extends GatewayClient {
   sends: SendCall[];
-  eventStubs: Map<string, unknown>;
+  stateStubs: Map<string, DurableStateSnapshot>;
   reset(): void;
 }
 
 export function createMockClient(): MockClient {
   const sends: SendCall[] = [];
-  const eventStubs = new Map<string, unknown>();
+  const stateStubs = new Map<string, DurableStateSnapshot>();
 
   return {
     sends,
-    eventStubs,
+    stateStubs,
     async send(workflowId: string, message: unknown, topic: string): Promise<void> {
       sends.push({ workflowId, message, topic });
     },
@@ -27,13 +28,12 @@ export function createMockClient(): MockClient {
         sends.push({ workflowId, message, topic });
       }
     },
-    async getEvent<T>(workflowId: string, key: string, _timeoutSeconds?: number): Promise<T | null> {
-      const stubKey = `${workflowId}:${key}`;
-      return (eventStubs.get(stubKey) as T) ?? null;
+    async getState(workflowId: string): Promise<DurableStateSnapshot | null> {
+      return stateStubs.get(workflowId) ?? null;
     },
     reset() {
       sends.length = 0;
-      eventStubs.clear();
+      stateStubs.clear();
     },
   };
 }

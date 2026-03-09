@@ -1,3 +1,6 @@
+// NOTE: Parallel implementation in @durable-xstate/gateway/src/admin.ts.
+// Keep both in sync if modifying.
+
 import { createServer } from "node:http";
 import type { Server } from "node:http";
 

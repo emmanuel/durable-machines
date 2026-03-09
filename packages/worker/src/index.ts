@@ -1,5 +1,5 @@
 // Lifecycle (generic, backend-agnostic)
-export { createWorkerContext, startWorker } from "./lifecycle.js";
+export { createWorkerContext, startWorker, parseWorkerConfig } from "./lifecycle.js";
 export type { WorkerConfig, WorkerContext, WorkerContextOptions, WorkerHandle } from "./lifecycle.js";
 
 // Types

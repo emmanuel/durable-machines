@@ -8,7 +8,7 @@ describe("createWorkerMetrics", () => {
     const text = await registry.metrics();
 
     expect(text).toContain("worker_machine_registration_duration_seconds");
-    expect(text).toContain("worker_dbos_launch_duration_seconds");
+    expect(text).toContain("worker_backend_start_duration_seconds");
   });
 
   it("uses an existing registry when provided", async () => {
@@ -20,10 +20,10 @@ describe("createWorkerMetrics", () => {
     expect(text).toContain("worker_machine_registration_duration_seconds");
   });
 
-  it("exposes machineRegistrationDuration and launchDuration histograms", () => {
+  it("exposes machineRegistrationDuration and backendStartDuration histograms", () => {
     const metrics = createWorkerMetrics();
 
     expect(metrics.machineRegistrationDuration).toBeDefined();
-    expect(metrics.launchDuration).toBeDefined();
+    expect(metrics.backendStartDuration).toBeDefined();
   });
 });

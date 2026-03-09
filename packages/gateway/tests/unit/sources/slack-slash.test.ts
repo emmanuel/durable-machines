@@ -93,7 +93,7 @@ describe("slashCommandBinding", () => {
 
     it("handles status subcommand inline", async () => {
       client.reset();
-      client.eventStubs.set("wf-456:xstate.state", { value: "active" });
+      client.stateStubs.set("wf-456", { value: "active", context: {}, status: "running" });
 
       const body = "command=/workflow&text=status wf-456&user_id=U1&user_name=bob&trigger_id=t1&channel_id=C1&channel_name=general&team_id=T1&team_domain=test&response_url=https://hooks.slack.com/test";
       const { timestamp, signature } = signBody(body);

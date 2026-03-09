@@ -3,7 +3,7 @@ import { Registry, Histogram, collectDefaultMetrics } from "prom-client";
 export interface WorkerMetrics {
   registry: Registry;
   machineRegistrationDuration: Histogram;
-  launchDuration: Histogram;
+  backendStartDuration: Histogram;
 }
 
 export function createWorkerMetrics(registry?: Registry): WorkerMetrics {
@@ -16,13 +16,13 @@ export function createWorkerMetrics(registry?: Registry): WorkerMetrics {
     registers: [reg],
   });
 
-  const launchDuration = new Histogram({
-    name: "worker_dbos_launch_duration_seconds",
-    help: "Duration of DBOS.launch()",
+  const backendStartDuration = new Histogram({
+    name: "worker_backend_start_duration_seconds",
+    help: "Duration of backend start (DBOS launch, PG schema init, etc.)",
     registers: [reg],
   });
 
   collectDefaultMetrics({ register: reg });
 
-  return { registry: reg, machineRegistrationDuration, launchDuration };
+  return { registry: reg, machineRegistrationDuration, backendStartDuration };
 }

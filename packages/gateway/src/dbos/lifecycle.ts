@@ -81,7 +81,7 @@ export async function createDBOSGatewayContext(
     sendBatch: (messages) => Promise.all(
       messages.map((m) => dbosClient.send(m.workflowId, m.message, m.topic)),
     ).then(() => {}),
-    getEvent: (workflowId, key, timeoutSeconds) => dbosClient.getEvent(workflowId, key, timeoutSeconds),
+    getState: (workflowId) => dbosClient.getEvent(workflowId, "xstate.state", 0.1),
   };
 
   // Gateway doesn't launch DBOS runtime — use generic AppContext with a no-op backend

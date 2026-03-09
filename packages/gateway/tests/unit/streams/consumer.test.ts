@@ -59,7 +59,7 @@ function createMockClient() {
         sends.push({ workflowId, message, topic });
       }
     },
-    async getEvent() { return null; },
+    async getState() { return null; },
   };
 }
 
@@ -276,7 +276,7 @@ describe("startStreamConsumer", () => {
       async sendBatch() {
         throw new Error("batch dispatch failed");
       },
-      async getEvent() { return null; },
+      async getState() { return null; },
     };
     const logger = createLogger();
     const checkpoints = memoryCheckpointStore();

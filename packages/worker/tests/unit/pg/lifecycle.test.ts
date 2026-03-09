@@ -334,3 +334,38 @@ describe("createPgWorkerContext", () => {
     });
   });
 });
+
+// ─── startPgWorker ──────────────────────────────────────────────────────────
+
+import { startPgWorker } from "../../../src/pg/lifecycle.js";
+
+describe("startPgWorker", () => {
+  it("returns merged PgWorkerAppContext & WorkerHandle", async () => {
+    const handle = await startPgWorker(
+      { databaseUrl: "postgres://localhost/test" },
+      { adminPort: undefined, shutdownTimeoutMs: 5_000 },
+      { machines: { order: { machine: fakeMachine("order-sp") } } },
+    );
+
+    // PgWorkerAppContext properties
+    expect(handle.pool).toBe(mockPool);
+    expect(handle.store).toBe(mockStore);
+    expect(typeof handle.register).toBe("function");
+
+    // WorkerHandle properties
+    expect(typeof handle.shutdown).toBe("function");
+  });
+
+  it("shutdown() calls through to AppContext", async () => {
+    const handle = await startPgWorker(
+      { databaseUrl: "postgres://localhost/test" },
+      { shutdownTimeoutMs: 5_000 },
+      { machines: { order: { machine: fakeMachine("order-sp2") } } },
+    );
+
+    void handle.shutdown();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(handle.isShuttingDown()).toBe(true);
+  });
+});

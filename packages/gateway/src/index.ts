@@ -24,6 +24,9 @@ export type { GatewayMetrics } from "./metrics.js";
 export { parseGatewayConfig, createGatewayContext, startGateway } from "./lifecycle.js";
 export type { GatewayConfig, GatewayContext, GatewayContextOptions, GatewayHandle } from "./lifecycle.js";
 
+// Durable machine type (re-exported for consumers using MachineRegistry)
+export type { DurableMachine } from "@durable-xstate/durable-machine";
+
 // Types
 export type {
   XStateEvent,

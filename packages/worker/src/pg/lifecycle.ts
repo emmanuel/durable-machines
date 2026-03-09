@@ -13,6 +13,15 @@ import type { PgStore } from "@durable-xstate/durable-machine/pg";
 import { createDurableMachine } from "@durable-xstate/durable-machine/pg";
 import type { PgDurableMachine } from "@durable-xstate/durable-machine/pg";
 import type { PgConfig } from "@durable-xstate/durable-machine/pg";
+import {
+  createWorkerContext,
+  startWorker,
+} from "../lifecycle.js";
+import type {
+  WorkerConfig,
+  WorkerContextOptions,
+  WorkerHandle,
+} from "../lifecycle.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -225,4 +234,17 @@ export function createPgWorkerContext(config: PgConfig): PgWorkerAppContext {
     pool,
     store,
   };
+}
+
+// ─── Convenience ────────────────────────────────────────────────────────────
+
+export async function startPgWorker(
+  pgConfig: PgConfig,
+  workerConfig: WorkerConfig,
+  options: WorkerContextOptions,
+): Promise<PgWorkerAppContext & WorkerHandle> {
+  const appContext = createPgWorkerContext(pgConfig);
+  const ctx = createWorkerContext(workerConfig, appContext, options);
+  const handle = await startWorker(ctx);
+  return { ...appContext, ...handle };
 }

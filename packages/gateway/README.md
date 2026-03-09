@@ -24,7 +24,7 @@ import {
 import type { StripeWebhookEvent, GatewayClient } from "@durable-xstate/gateway";
 
 // Bring your own client that talks to your backend
-const client: GatewayClient = { send, sendBatch, getEvent };
+const client: GatewayClient = { send, sendBatch, getState };
 
 const config = parseGatewayConfig();
 const ctx = await createGatewayContext(config, client, {
@@ -75,6 +75,21 @@ startPgGateway(ctx);
 ```
 
 Requires `pg` peer dependency.
+
+## `GatewayClient` interface
+
+The gateway talks to backends via a minimal `GatewayClient` interface:
+
+```typescript
+interface GatewayClient {
+  send<T>(workflowId: string, message: T, topic: string): Promise<void>;
+  sendBatch<T>(messages: Array<{ workflowId: string; message: T; topic: string }>): Promise<void>;
+  getState(workflowId: string): Promise<DurableStateSnapshot | null>;
+}
+```
+
+- `send` / `sendBatch` — dispatch events to running workflows.
+- `getState` — retrieve the current durable state snapshot (used by slash command status lookups).
 
 ## Architecture
 

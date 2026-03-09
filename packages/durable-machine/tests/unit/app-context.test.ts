@@ -264,4 +264,29 @@ describe("createAppContext", () => {
 
     expect(ctx.isShuttingDown()).toBe(true);
   });
+
+  it("drains servers BEFORE calling backend.stop()", async () => {
+    const callOrder: string[] = [];
+
+    const backend: AppContextBackend = {
+      start: vi.fn().mockResolvedValue(undefined),
+      stop: vi.fn(async () => { callOrder.push("backend.stop"); }),
+    };
+    const server = {
+      close: vi.fn((cb?: () => void) => {
+        callOrder.push("server.close");
+        cb?.();
+      }),
+      closeIdleConnections: vi.fn(),
+      closeAllConnections: vi.fn(),
+    };
+
+    const ctx = createAppContext(backend);
+    await ctx.start({ servers: [server as never] });
+
+    void ctx.shutdown("test");
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(callOrder).toEqual(["server.close", "backend.stop"]);
+  });
 });

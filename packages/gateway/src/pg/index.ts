@@ -1,5 +1,4 @@
 export {
-  createPgGatewayClient,
   createPgGatewayContext,
   startPgGateway,
 } from "./lifecycle.js";

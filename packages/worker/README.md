@@ -11,14 +11,15 @@ npm install @durable-xstate/worker
 ## Quick start (generic)
 
 ```typescript
-import { createWorkerContext, startWorker } from "@durable-xstate/worker";
+import { parseWorkerConfig, createWorkerContext, startWorker } from "@durable-xstate/worker";
 import type { WorkerAppContext } from "@durable-xstate/worker";
+import { createPgWorkerContext } from "@durable-xstate/worker/pg";
 import { orderMachine } from "./machines/order.js";
 
-// Bring your own WorkerAppContext (e.g. from @durable-xstate/worker/pg)
+const workerConfig = parseWorkerConfig();
 const appContext: WorkerAppContext = createPgWorkerContext(pgConfig);
 
-const ctx = createWorkerContext({ adminPort: 9090 }, appContext, {
+const ctx = createWorkerContext(workerConfig, appContext, {
   machines: {
     orders: { machine: orderMachine },
   },
@@ -40,22 +41,44 @@ const ctx = await createDBOSWorkerContext(config, {
     orders: { machine: orderMachine, options: { channels: [consoleChannel()] } },
   },
 });
-startDBOSWorker(ctx);
+const handle = await startDBOSWorker(ctx);
+
+// Access machines via Map
+const dm = ctx.machines.get("orders")!;
+const instance = await dm.start("order-1", { items: [] });
 ```
 
 Requires `@dbos-inc/dbos-sdk` peer dependency.
 
 ## PG backend
 
+Using the convenience `startPgWorker`:
+
+```typescript
+import { startPgWorker } from "@durable-xstate/worker/pg";
+import { parsePgConfig } from "@durable-xstate/durable-machine/pg";
+import { parseWorkerConfig } from "@durable-xstate/worker";
+
+const pgConfig = parsePgConfig();
+const workerConfig = parseWorkerConfig();
+
+const handle = await startPgWorker(pgConfig, workerConfig, {
+  machines: { orders: { machine: orderMachine } },
+});
+```
+
+Or step by step:
+
 ```typescript
 import { createPgWorkerContext } from "@durable-xstate/worker/pg";
-import { createWorkerContext, startWorker } from "@durable-xstate/worker";
+import { createWorkerContext, startWorker, parseWorkerConfig } from "@durable-xstate/worker";
 import { parsePgConfig } from "@durable-xstate/durable-machine/pg";
 
 const pgConfig = parsePgConfig();
+const workerConfig = parseWorkerConfig();
 const appContext = createPgWorkerContext(pgConfig);
 
-const ctx = createWorkerContext({ adminPort: 9090 }, appContext, {
+const ctx = createWorkerContext(workerConfig, appContext, {
   machines: { orders: { machine: orderMachine } },
 });
 await startWorker(ctx);
@@ -67,9 +90,9 @@ Requires `pg` peer dependency.
 
 | Phase | Function | What it does |
 |-------|----------|--------------|
-| 1. Parse | Backend-specific config parser | Validates env vars, returns typed config |
+| 1. Parse | `parseWorkerConfig()` or backend-specific parser | Validates env vars, returns typed config |
 | 2. Build | `createWorkerContext()` | Creates metrics, registers machines, creates admin server |
-| 3. Run | `startWorker()` | Binds admin port, wires signal handlers, returns shutdown handle |
+| 3. Run | `startWorker()` | Binds admin port, starts backend, wires signal handlers, returns shutdown handle |
 
 ## Configuration
 
@@ -88,6 +111,8 @@ When `ADMIN_PORT` is set, an HTTP server is created with three endpoints:
 | `GET /ready` | Returns `200` when ready, `503` during shutdown |
 | `GET /metrics` | Prometheus text format metrics |
 
+The admin server is optional for the worker (unlike the gateway, which always enables it). Omit `ADMIN_PORT` to disable.
+
 ## Metrics
 
 When the admin server is enabled, the following Prometheus histograms are recorded during startup:
@@ -95,7 +120,7 @@ When the admin server is enabled, the following Prometheus histograms are record
 | Metric | Labels | Description |
 |--------|--------|-------------|
 | `worker_machine_registration_duration_seconds` | `machine_id` | Time to register each machine |
-| `worker_dbos_launch_duration_seconds` | *(none)* | Time for backend launch (DBOS adapter only) |
+| `worker_backend_start_duration_seconds` | *(none)* | Time for backend start (DBOS launch, PG schema init, etc.) |
 
 Default process metrics (CPU, memory, event loop) are also collected via `prom-client`.
 
@@ -120,13 +145,17 @@ On `SIGTERM` or `SIGINT`:
 
 ## API
 
+### `parseWorkerConfig(env?)`
+
+Validates `ADMIN_PORT` and `GRACEFUL_SHUTDOWN_TIMEOUT_MS` from environment variables (or a custom env record). Returns a `WorkerConfig`.
+
 ### `createWorkerContext(config, appContext, options)`
 
 Registers all machines via `appContext.register()`, optionally creates the admin server. Returns a `WorkerContext`.
 
 ### `startWorker(ctx)`
 
-Binds the admin server, wires signal handlers via `appContext.start()`. Returns a `WorkerHandle` with a `shutdown()` method for programmatic shutdown.
+Binds the admin server, starts the backend via `appContext.start()`, wires signal handlers. Returns a `WorkerHandle` with a `shutdown()` method for programmatic shutdown.
 
 ### `createAdminServer(options?)`
 

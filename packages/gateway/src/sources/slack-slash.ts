@@ -151,7 +151,7 @@ export function slashCommandBinding(
         if (!wfId) {
           return c.json({ response_type: "ephemeral", text: "Usage: status <workflowId>" });
         }
-        const state = await client.getEvent<unknown>(wfId, "xstate.state", 0.1);
+        const state = await client.getState(wfId);
         const text = state ? `Workflow \`${wfId}\`: \`${JSON.stringify(state)}\`` : `Workflow \`${wfId}\`: no state found`;
         return c.json({ response_type: "ephemeral", text });
       }

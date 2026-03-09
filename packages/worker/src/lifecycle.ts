@@ -1,3 +1,16 @@
+/**
+ * Generic worker lifecycle — backend-agnostic.
+ *
+ * Naming conventions:
+ * - `*Config`   — env-derived configuration (Zod-validated)
+ * - `*Options`  — programmer-supplied setup parameters
+ * - `*Context`  — live runtime object (servers, clients, metrics)
+ * - `*Handle`   — return value of start functions (has shutdown())
+ *
+ * Backend adapters: DBOS (acronym, all-caps) and Pg (abbreviation, title-case).
+ */
+
+import { z } from "zod";
 import type { Server } from "node:http";
 import type { DurableMachine } from "@durable-xstate/durable-machine";
 import type { WorkerAppContext } from "./types.js";
@@ -16,12 +29,36 @@ export interface WorkerContext {
   config: WorkerConfig;
   appContext: WorkerAppContext;
   machines: ReadonlyMap<string, DurableMachine>;
+  metrics?: WorkerMetrics;
   adminServer?: Server;
 }
 
 export interface WorkerHandle {
   shutdown(): Promise<void>;
   adminServer?: Server;
+}
+
+// ─── Config ─────────────────────────────────────────────────────────────────
+
+const workerConfigSchema = z.object({
+  adminPort: z.coerce.number().int().positive().optional(),
+  shutdownTimeoutMs: z.coerce.number().int().positive().default(30_000),
+});
+
+export function parseWorkerConfig(
+  env: Record<string, string | undefined> = process.env,
+): WorkerConfig {
+  const result = workerConfigSchema.safeParse({
+    adminPort: env.ADMIN_PORT,
+    shutdownTimeoutMs: env.GRACEFUL_SHUTDOWN_TIMEOUT_MS,
+  });
+  if (!result.success) {
+    const messages = result.error.issues.map(
+      (i) => `  ${i.path.join(".")}: ${i.message}`,
+    );
+    throw new Error(`Invalid worker config:\n${messages.join("\n")}`);
+  }
+  return result.data;
 }
 
 // ─── Factory ────────────────────────────────────────────────────────────────
@@ -59,7 +96,7 @@ export function createWorkerContext(
     });
   }
 
-  return { config, appContext, machines, adminServer };
+  return { config, appContext, machines, metrics, adminServer };
 }
 
 // ─── Start ──────────────────────────────────────────────────────────────────
@@ -72,10 +109,12 @@ export async function startWorker(ctx: WorkerContext): Promise<WorkerHandle> {
     servers.push(ctx.adminServer);
   }
 
+  const end = ctx.metrics?.backendStartDuration.startTimer();
   await ctx.appContext.start({
     servers,
     timeoutMs: ctx.config.shutdownTimeoutMs,
   });
+  end?.();
 
   return {
     shutdown: () => ctx.appContext.shutdown("programmatic"),

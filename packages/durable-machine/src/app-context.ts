@@ -73,8 +73,8 @@ export function createAppContext(backend: AppContextBackend): AppContext {
     const deadline = setTimeout(() => process.exit(1), timeoutMs);
     deadline.unref();
 
-    await backend.stop();
     await drainServers(timeoutMs);
+    await backend.stop();
 
     clearTimeout(deadline);
     process.exit(0);

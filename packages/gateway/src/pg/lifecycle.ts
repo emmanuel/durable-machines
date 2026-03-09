@@ -54,10 +54,7 @@ export function createPgGatewayClient(pool: Pool): GatewayClient {
           event: { type: m.topic, ...m.message as object },
         })),
       ),
-    getEvent: async (workflowId, _key, _timeoutSeconds) => {
-      const state = await getMachineState(pool, workflowId);
-      return state as any;
-    },
+    getState: (workflowId) => getMachineState(pool, workflowId),
   };
 }
 

@@ -11,7 +11,7 @@ const ctx = await createDBOSWorkerContext(config, {
   },
 });
 
-const handle = await ctx.machines.approvals.start(`approval-${requestId}`, {
+const handle = await ctx.machines.get("approvals")!.start(`approval-${requestId}`, {
   requestId,
   requester: "alice@example.com",
   description: "Access to production database",

@@ -91,6 +91,14 @@ export interface FormField {
   options?: string[];
   /** Whether the field must be filled before submission. */
   required?: boolean;
+  /** Placeholder text shown inside the empty input field. */
+  placeholder?: string;
+  /** Help text displayed beneath the field. */
+  helpText?: string;
+  /** Default value for the field (always a string; parsed by the client). */
+  defaultValue?: string;
+  /** Visual grouping key. Fields sharing a group are rendered together in a fieldset. */
+  group?: string;
 }
 
 /** A prompt that collects structured data via multiple form fields. */
@@ -304,6 +312,12 @@ export interface SerializedMachine {
   eventSchemas?: Record<string, FormField[]>;
   /** Runtime input schema declared via `durableSetup()`. */
   inputSchema?: FormField[];
+  /** Human-readable label for the machine, declared via `durableSetup()`. */
+  label?: string;
+  /** Description of the machine's purpose, declared via `durableSetup()`. */
+  description?: string;
+  /** Categorization tags, declared via `durableSetup()`. */
+  tags?: string[];
 }
 
 /** Records a single state transition for visualization and debugging. */

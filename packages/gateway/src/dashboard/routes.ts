@@ -17,6 +17,7 @@ import type { GraphData } from "./graph.js";
 import {
   machineListPage,
   instanceListPage,
+  startInstancePage,
   instanceDetailPage,
 } from "./html.js";
 import type { InstanceDetailData } from "./html.js";
@@ -47,10 +48,28 @@ export function createDashboardRoutes(options: DashboardRouteOptions): Hono {
     const items = await Promise.all(
       [...machines.entries()].map(async ([machineId, durable]) => {
         const instances = await durable.list();
-        return { machineId, instanceCount: instances.length };
+        const definition = serializeMachineDefinition(durable.machine);
+        return {
+          machineId,
+          instanceCount: instances.length,
+          label: definition.label,
+          description: definition.description,
+          tags: definition.tags,
+        };
       }),
     );
     return c.html(machineListPage(basePath, items));
+  });
+
+  // ── GET /:machineId/new — Start instance page ───────────────────────────
+
+  app.get("/:machineId/new", async (c) => {
+    const machineId = c.req.param("machineId");
+    const durable = machines.get(machineId);
+    if (!durable) return c.notFound();
+
+    const definition = serializeMachineDefinition(durable.machine);
+    return c.html(startInstancePage(basePath, machineId, definition, restBasePath));
   });
 
   // ── GET /:machineId — Instance list ──────────────────────────────────────
@@ -62,8 +81,7 @@ export function createDashboardRoutes(options: DashboardRouteOptions): Hono {
 
     const status = c.req.query("status");
     const instances = await durable.list(status ? { status } : undefined);
-    const definition = serializeMachineDefinition(durable.machine);
-    return c.html(instanceListPage(basePath, machineId, instances, status, restBasePath, definition.inputSchema));
+    return c.html(instanceListPage(basePath, machineId, instances, status));
   });
 
   // ── GET /:machineId/:instanceId — Instance detail ────────────────────────

@@ -668,4 +668,101 @@ svg .sleep-countdown.firing {
   outline: none;
   border-color: var(--accent);
 }
+
+/* ── Start Button (instance list) ───────────────── */
+
+.btn-start {
+  display: inline-block;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--green);
+  color: var(--bg);
+  font-weight: 600;
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.btn-start:hover { opacity: 0.9; text-decoration: none; }
+
+/* ── Cancel Button (start page) ─────────────────── */
+
+.btn-cancel {
+  display: inline-block;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.btn-cancel:hover { border-color: var(--text-dim); color: var(--text); text-decoration: none; }
+
+/* ── Start Page ─────────────────────────────────── */
+
+.start-page-card { max-width: 600px; }
+
+.machine-description {
+  color: var(--text-dim);
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+
+/* ── Help Text ──────────────────────────────────── */
+
+.help-text {
+  display: block;
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+  margin-bottom: 4px;
+}
+
+/* ── Field Groups ───────────────────────────────── */
+
+.field-group {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  margin-bottom: 8px;
+}
+
+.field-group legend {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  padding: 0 6px;
+}
+
+/* ── Machine Metadata (list page) ───────────────── */
+
+.machine-label { font-weight: 600; color: var(--text-bright); }
+.machine-desc { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+.machine-tags { display: flex; gap: 4px; margin-top: 4px; }
+.machine-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  background: rgba(79,110,247,0.12);
+  color: var(--accent);
+}
+
+.start-form select {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  color: var(--text);
+  padding: 8px 12px;
+}
+
+.start-form select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
 `;

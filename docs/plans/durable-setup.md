@@ -192,10 +192,68 @@ type ResolveEvents<T extends EventSchemaMap> = {
 - `META_KEY = "xstate-durable"` convention for `machine.schemas` key
 - XState's `setup({ schemas })` — runtime storage, `schemas?: unknown`
 
+## Extended Schema — Object-Form Fields
+
+String shorthand remains the primary notation. Object form is opt-in for richer
+field metadata:
+
+```typescript
+const machine = durableSetup({
+  label: "Order Processing",
+  description: "Handles order lifecycle from placement to fulfillment",
+  tags: ["orders", "payments"],
+  events: {
+    PAY: {
+      cardToken: "string",
+      amount: { type: "number", label: "Amount ($)", placeholder: "0.00", helpText: "Total in USD" },
+    },
+  },
+  input: {
+    orderId: "string",
+    priority: { type: "select", options: ["normal", "rush"], defaultValue: "normal" },
+  },
+}).createMachine({ /* ... */ });
+```
+
+Object-form field properties:
+- `type` (required): `"string" | "number" | "boolean" | "date" | "select"`
+- `label?`: Custom display label (defaults to field name)
+- `placeholder?`: Input placeholder text
+- `helpText?`: Description shown beneath the field
+- `defaultValue?`: Pre-populated value (string)
+- `group?`: Visual grouping key (fields sharing a group render in a `<fieldset>`)
+- `options?`: Choices for `type: "select"`
+- `required?`: Whether the field must be filled (defaults to `true`)
+
+## Machine Metadata
+
+`durableSetup()` accepts top-level metadata:
+
+```typescript
+durableSetup({
+  label: "Order Processing",   // Human-readable name
+  description: "...",           // Shown on dashboard
+  tags: ["orders", "payments"], // Categorization badges
+  events: { ... },
+  input: { ... },
+})
+```
+
+Stored on `machine.schemas["xstate-durable"]` alongside events/input.
+Exposed in `SerializedMachine` as `label?`, `description?`, `tags?`.
+
+## Standalone Start Page
+
+`GET /:machineId/new` replaces the inline start form on the instance list page.
+Renders machine label + description, typed input fields from `inputSchema`, and
+a cancel link back to the instance list.
+
+The instance list page now shows a "Start New Instance" button linking to this page.
+
 ## Implementation Status
 
 All phases implemented. Typecheck clean, all tests passing
-(353 durable-machine, 238 gateway).
+(364 durable-machine, 256 gateway).
 
 ## Verification
 
@@ -210,7 +268,11 @@ pnpm --filter gateway test
 
 # Manual: create a machine with durableSetup(), register with gateway,
 # open dashboard, verify:
+# - Machine list shows label, description, tags
+# - "Start New Instance" links to /:machineId/new
+# - Start page renders typed fields with placeholders and help text
+# - Submit creates instance and redirects to detail
+# - Default values pre-populate fields
 # - Event sender shows typed fields when event selected
-# - Start form shows typed fields when inputSchema present
 # - Fallback to JSON textarea when no schema
 ```

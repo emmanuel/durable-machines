@@ -212,6 +212,62 @@ Returned by `start()` and `get()`:
 - **`getSteps()`** — list executed DBOS steps with names, outputs, and timing
 - **`cancel()`** — cancel the workflow
 
+### `durableSetup(options)`
+
+Wraps XState's `setup()` with schema-driven event/input types and machine metadata. Schemas survive to runtime on `machine.schemas` and drive typed form fields in the dashboard.
+
+```typescript
+import { durableSetup, durableState } from "@durable-xstate/durable-machine";
+
+const machine = durableSetup({
+  // Machine metadata — displayed in the dashboard
+  label: "Order Processing",
+  description: "Handles order lifecycle from placement to fulfillment",
+  tags: ["orders", "payments"],
+
+  // Event schemas — drive typed form fields + TypeScript inference
+  events: {
+    PAY: { cardToken: "string", amount: "number" },
+    UPDATE_STATUS: { status: ["draft", "review", "published"] },
+    CANCEL: {},
+  },
+
+  // Input schema — typed start form
+  input: {
+    orderId: "string",
+    total: { type: "number", label: "Total ($)", placeholder: "0.00", helpText: "Amount in USD" },
+    priority: { type: "select", options: ["normal", "rush"], defaultValue: "normal" },
+  },
+
+  // Standard setup() pass-through
+  actors: { /* ... */ },
+}).createMachine({
+  id: "order",
+  initial: "pending",
+  context: ({ input }) => ({ orderId: input.orderId, total: input.total }),
+  states: {
+    pending: {
+      ...durableState(),
+      on: { PAY: "processing", CANCEL: "cancelled" },
+    },
+    processing: { /* ... */ },
+    cancelled: { type: "final" },
+  },
+});
+```
+
+Schema notation (string shorthand):
+- `"string"` → `string` → text input
+- `"number"` → `number` → number input
+- `"boolean"` → `boolean` → checkbox
+- `"date"` → `string` → date input
+- `"string?"`, `"number?"` etc. → optional field
+- `["a", "b", "c"]` → `"a" | "b" | "c"` → select dropdown
+
+Object form (opt-in for richer metadata):
+- `{ type: "number", label: "Amount ($)", placeholder: "0.00", helpText: "Total in USD" }`
+- Additional properties: `defaultValue`, `group`, `options`, `required`
+
 ### Markers
 
 - **`durableState()`** — marks a state as a durable wait point
@@ -236,6 +292,51 @@ Returned by `start()` and `get()`:
 - **`getPromptEvents(config)`** — extract event types from a prompt config
 - **`sendMachineEvent(client, workflowId, event)`** — send event via external client
 - **`getMachineState(client, workflowId)`** — read state via external client
+
+## Backends
+
+Both backends implement the same `DurableMachine` interface. Choose based on your scale and dependency preferences.
+
+### DBOS backend
+
+```typescript
+import { createDurableMachine } from "@durable-xstate/durable-machine";
+const durable = createDurableMachine(machine);
+```
+
+Each machine instance lives as a **suspended async function** in Node.js memory. The DBOS runtime manages persistence transparently — `recv()` for events, `runStep()` for side effects. Simple mental model, minimal code.
+
+### PostgreSQL backend
+
+```typescript
+import { createPgDurableMachine } from "@durable-xstate/durable-machine";
+const durable = createPgDurableMachine(machine, { pool });
+```
+
+Machine instances are **rows in Postgres**. Zero memory overhead when parked. Events arrive via `LISTEN/NOTIFY` (with polling fallback). Invocations use a split-transaction pattern that releases the DB connection during I/O.
+
+### Comparison
+
+| | DBOS | PostgreSQL |
+|---|---|---|
+| **Memory per parked instance** | ~2-10KB (suspended closure) | 0 (just a DB row) |
+| **10K concurrent instances** | 20-100MB resident | ~0MB; instances loaded on-demand |
+| **Cold-start recovery** | O(instances &times; steps) &mdash; replays all pending workflows from step 0 | O(active) &mdash; only loads instances with pending events or expired timeouts |
+| **Invocation model** | Blocks workflow closure during I/O | Split transaction: releases lock during I/O, re-acquires to finalize |
+| **Event delivery** | `DBOS.recv()` (framework push) | `LISTEN/NOTIFY` + polling fallback |
+| **State queryability** | KV store (opaque TEXT) | JSONB &mdash; `WHERE context->>'orderId' = 'x'` |
+| **Timeout tracking** | `DBOS.recv(timeout)` | Indexed `wake_at` column, polled periodically |
+| **Transition history** | Full-array rewrite per transition | Append-only `transition_log` table |
+| **Dependencies** | `@dbos-inc/dbos-sdk` | `pg` only |
+| **Persistence overhead** | 2+ writes/transition (framework-managed) | 1-3 writes/transition (instance + effects + log) |
+| **Lock strategy** | Implicit (workflow isolation) | `FOR NO KEY UPDATE NOWAIT` with retry |
+| **Best for** | Simple deployments, <1K concurrent instances | Scale-to-zero, >1K instances, queryable state |
+
+### Scaling characteristics
+
+**DBOS**: Linear memory scaling. Every active workflow holds a JavaScript closure in memory. Startup replays all pending workflows, so restart latency grows with instance count. Well-suited for moderate scale where the DBOS SDK's simplicity is valued.
+
+**PostgreSQL**: Constant memory. Parked machines cost nothing in the Node.js process. The event processor only loads instances when they have work to do. The split-transaction invocation pattern prevents long-running side effects from holding database connections. Scales to tens of thousands of concurrent instances.
 
 ## How recovery works
 
@@ -264,22 +365,26 @@ pnpm db:down              # Stop Postgres
 
 ## Current status
 
-This library is under active development. The core workflow engine is functional and tested end-to-end.
+This library is under active development. Both DBOS and PostgreSQL backends are functional and tested end-to-end.
 
 ### Implemented
 
 - Core type system and error hierarchy
 - `durableState()` and `prompt()` state markers with four prompt types (`choice`, `confirm`, `text_input`, `form`)
+- `durableSetup()` schema-driven setup with runtime event/input schemas and machine metadata
 - Machine validation at registration time
 - XState utility functions (invocation extraction, delay handling, transient resolution, snapshot serialization)
 - DBOS workflow loop with invoke execution, event reception, and `after` timeout handling
+- PostgreSQL backend with append-only event log, split-transaction invocations, `LISTEN/NOTIFY`
 - `after` transitions with multiple delays, `firedDelays` tracking, `reenter: true` support, and named delays
 - Channel adapter interface with `consoleChannel()` built-in adapter
 - Prompt lifecycle: `sendPrompt` on entry, `resolvePrompt` on transition
+- Transactional effect outbox with retry policies
 - Public API: `createDurableMachine`, `DurableMachineHandle`
 - External client helpers (`sendMachineEvent`, `getMachineState`)
 - Visualization: `serializeMachineDefinition()`, `getVisualizationState()`, opt-in transition stream
-- 86 tests (63 unit + 23 integration)
+- Gateway with REST API, server-rendered dashboard, SSE live updates, and schema-driven forms
+- 620 tests (364 durable-machine + 256 gateway)
 
 ### Planned
 

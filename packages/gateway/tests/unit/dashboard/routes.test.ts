@@ -295,6 +295,77 @@ describe("dashboard routes", () => {
     });
   });
 
+  describe("GET /:machineId/new — start instance page", () => {
+    it("returns start page HTML for a valid machine", async () => {
+      const app = makeApp();
+      const res = await app.request("/order/new");
+
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("start-form");
+      expect(html).toContain("Instance ID");
+    });
+
+    it("returns 404 for unknown machine", async () => {
+      const app = makeApp();
+      const res = await app.request("/nope/new");
+
+      expect(res.status).toBe(404);
+    });
+
+    it("renders textarea fallback when machine has no inputSchema", async () => {
+      const app = makeApp();
+      const html = await (await app.request("/order/new")).text();
+      // No inputSchema → textarea
+      expect(html).toContain("<textarea");
+    });
+
+    it("renders machine label and description when available", async () => {
+      const dm = mockDurable();
+      // Add schemas with label/description to the mock machine
+      (dm.machine as any).schemas = {
+        "xstate-durable": {
+          label: "Order Processing",
+          description: "Handles order lifecycle",
+          events: {},
+        },
+      };
+      const app = makeApp(new Map([["order", dm]]));
+      const html = await (await app.request("/order/new")).text();
+      expect(html).toContain("Order Processing");
+      expect(html).toContain("Handles order lifecycle");
+    });
+  });
+
+  describe("GET / — machine list with metadata", () => {
+    it("shows label, description, and tags when available", async () => {
+      const dm = mockDurable();
+      (dm.machine as any).schemas = {
+        "xstate-durable": {
+          label: "Order Flow",
+          description: "End-to-end orders",
+          tags: ["orders", "payments"],
+          events: {},
+        },
+      };
+      const app = makeApp(new Map([["order", dm]]));
+      const html = await (await app.request("/")).text();
+      expect(html).toContain("Order Flow");
+      expect(html).toContain("End-to-end orders");
+      expect(html).toContain("orders");
+      expect(html).toContain("payments");
+    });
+  });
+
+  describe("GET /:machineId — instance list", () => {
+    it("includes Start New Instance link", async () => {
+      const app = makeApp();
+      const html = await (await app.request("/order")).text();
+      expect(html).toContain("Start New Instance");
+      expect(html).toContain("/dashboard/order/new");
+    });
+  });
+
   describe("POST /:machineId/:instanceId/send — event sender", () => {
     it("sends event to handle and redirects", async () => {
       const handle = mockHandle();

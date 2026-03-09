@@ -79,6 +79,74 @@ describe("schemaToFormFields()", () => {
   it("returns empty array for empty schema", () => {
     expect(schemaToFormFields({})).toEqual([]);
   });
+
+  // Object-form field schemas
+  it("converts object-form field with type only", () => {
+    const fields = schemaToFormFields({ amount: { type: "number" } });
+    expect(fields).toEqual([
+      { name: "amount", label: "amount", type: "number", required: true },
+    ]);
+  });
+
+  it("converts object-form field with all metadata", () => {
+    const fields = schemaToFormFields({
+      amount: {
+        type: "number",
+        label: "Amount ($)",
+        placeholder: "0.00",
+        helpText: "Total in USD",
+        defaultValue: "100",
+        group: "Payment",
+      },
+    });
+    expect(fields).toEqual([
+      {
+        name: "amount",
+        label: "Amount ($)",
+        type: "number",
+        required: true,
+        placeholder: "0.00",
+        helpText: "Total in USD",
+        defaultValue: "100",
+        group: "Payment",
+      },
+    ]);
+  });
+
+  it("converts object-form select with options", () => {
+    const fields = schemaToFormFields({
+      priority: { type: "select", options: ["normal", "rush"], defaultValue: "normal" },
+    });
+    expect(fields).toEqual([
+      {
+        name: "priority",
+        label: "priority",
+        type: "select",
+        options: ["normal", "rush"],
+        required: true,
+        defaultValue: "normal",
+      },
+    ]);
+  });
+
+  it("handles mixed shorthand and object-form fields", () => {
+    const fields = schemaToFormFields({
+      name: "string",
+      amount: { type: "number", placeholder: "0.00" },
+      status: ["draft", "review"],
+    });
+    expect(fields).toHaveLength(3);
+    expect(fields[0]).toEqual({ name: "name", label: "name", type: "text", required: true });
+    expect(fields[1].placeholder).toBe("0.00");
+    expect(fields[2].type).toBe("select");
+  });
+
+  it("handles object-form with required: false", () => {
+    const fields = schemaToFormFields({
+      notes: { type: "string", required: false },
+    });
+    expect(fields[0].required).toBe(false);
+  });
 });
 
 describe("durableSetup()", () => {
@@ -166,6 +234,56 @@ describe("durableSetup()", () => {
     ]);
   });
 
+  it("stores label, description, and tags on machine.schemas", () => {
+    const machine = durableSetup({
+      label: "Order Processing",
+      description: "Handles order lifecycle",
+      tags: ["orders", "payments"],
+    }).createMachine({
+      id: "test",
+      initial: "idle",
+      states: { idle: {} },
+    });
+
+    const schemas = (machine as any).schemas?.["xstate-durable"];
+    expect(schemas.label).toBe("Order Processing");
+    expect(schemas.description).toBe("Handles order lifecycle");
+    expect(schemas.tags).toEqual(["orders", "payments"]);
+  });
+
+  it("omits metadata fields when not provided", () => {
+    const machine = durableSetup({
+      events: { PAY: { amount: "number" } },
+    }).createMachine({
+      id: "test",
+      initial: "idle",
+      states: { idle: {} },
+    });
+
+    const schemas = (machine as any).schemas?.["xstate-durable"];
+    expect(schemas.label).toBeUndefined();
+    expect(schemas.description).toBeUndefined();
+    expect(schemas.tags).toBeUndefined();
+  });
+
+  it("stores object-form event schemas on machine.schemas", () => {
+    const machine = durableSetup({
+      events: {
+        PAY: {
+          amount: { type: "number", placeholder: "0.00", helpText: "Total" },
+        },
+      },
+    }).createMachine({
+      id: "test",
+      initial: "idle",
+      states: { idle: {} },
+    });
+
+    const schemas = (machine as any).schemas?.["xstate-durable"];
+    expect(schemas.events.PAY[0].placeholder).toBe("0.00");
+    expect(schemas.events.PAY[0].helpText).toBe("Total");
+  });
+
   it("can be used with durableState() markers", () => {
     const machine = durableSetup({
       events: {
@@ -235,5 +353,55 @@ describe("serializeMachineDefinition() with schemas", () => {
     const definition = serializeMachineDefinition(machine);
     expect(definition.eventSchemas).toBeUndefined();
     expect(definition.inputSchema).toBeUndefined();
+  });
+
+  it("includes label, description, and tags when set", () => {
+    const machine = durableSetup({
+      label: "Order Processing",
+      description: "Handles orders",
+      tags: ["orders"],
+    }).createMachine({
+      id: "test",
+      initial: "idle",
+      states: { idle: {} },
+    });
+
+    const definition = serializeMachineDefinition(machine);
+    expect(definition.label).toBe("Order Processing");
+    expect(definition.description).toBe("Handles orders");
+    expect(definition.tags).toEqual(["orders"]);
+  });
+
+  it("omits metadata when not set", () => {
+    const machine = durableSetup({}).createMachine({
+      id: "test",
+      initial: "idle",
+      states: { idle: {} },
+    });
+
+    const definition = serializeMachineDefinition(machine);
+    expect(definition.label).toBeUndefined();
+    expect(definition.description).toBeUndefined();
+    expect(definition.tags).toBeUndefined();
+  });
+
+  it("includes object-form field metadata in inputSchema", () => {
+    const machine = durableSetup({
+      input: {
+        amount: { type: "number", placeholder: "0.00", helpText: "USD" },
+      },
+    }).createMachine({
+      id: "test",
+      initial: "idle",
+      states: { idle: {} },
+    });
+
+    const definition = serializeMachineDefinition(machine);
+    expect(definition.inputSchema?.[0]).toMatchObject({
+      name: "amount",
+      type: "number",
+      placeholder: "0.00",
+      helpText: "USD",
+    });
   });
 });

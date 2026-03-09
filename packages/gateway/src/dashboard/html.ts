@@ -7,6 +7,7 @@ import type {
   TransitionRecord,
   StateDuration,
   FormField,
+  SerializedMachine,
 } from "@durable-xstate/durable-machine";
 import type { GraphData } from "./graph.js";
 import { CSS } from "./styles.js";
@@ -57,30 +58,73 @@ function statusBadge(status: string): string {
 /**
  * Render FormField[] as HTML form inputs. Each input uses `data-field="name"`
  * and is named `${prefix}${name}` for collection by client JS.
+ * Supports placeholder, helpText, defaultValue, and group-based fieldsets.
  */
 function renderFormFields(fields: FormField[], prefix = ""): string {
-  return fields
-    .map((f) => {
-      const inputName = `${prefix}${f.name}`;
-      const req = f.required ? " required" : "";
-      const label = `<label for="${esc(inputName)}">${esc(f.label)}</label>`;
-      switch (f.type) {
-        case "select":
-          return `${label}<select name="${esc(inputName)}" id="${esc(inputName)}" data-field="${esc(f.name)}"${req}>
+  // Group fields: ungrouped first, then grouped by group name
+  const grouped = new Map<string | undefined, FormField[]>();
+  for (const f of fields) {
+    const key = f.group;
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key)!.push(f);
+  }
+
+  let html = "";
+  for (const [group, groupFields] of grouped) {
+    const inner = groupFields.map((f) => renderSingleField(f, prefix)).join("\n");
+    if (group) {
+      html += `<fieldset class="field-group"><legend>${esc(group)}</legend>${inner}</fieldset>`;
+    } else {
+      html += inner;
+    }
+  }
+  return html;
+}
+
+function renderSingleField(f: FormField, prefix: string): string {
+  const inputName = `${prefix}${f.name}`;
+  const req = f.required ? " required" : "";
+  const placeholder = f.placeholder ?? f.label;
+  const helpId = f.helpText ? `help-${esc(inputName)}` : "";
+  const ariaDescribed = helpId ? ` aria-describedby="${helpId}"` : "";
+  const helpHtml = f.helpText ? `<small class="help-text" id="${helpId}">${esc(f.helpText)}</small>` : "";
+  const label = `<label for="${esc(inputName)}">${esc(f.label)}</label>`;
+
+  let fieldHtml: string;
+  switch (f.type) {
+    case "select": {
+      const options = (f.options ?? []).map((o) => {
+        const sel = f.defaultValue === o ? " selected" : "";
+        return `<option value="${esc(o)}"${sel}>${esc(o)}</option>`;
+      }).join("");
+      fieldHtml = `${label}<select name="${esc(inputName)}" id="${esc(inputName)}" data-field="${esc(f.name)}"${req}${ariaDescribed}>
             <option value="">-- select --</option>
-            ${(f.options ?? []).map((o) => `<option value="${esc(o)}">${esc(o)}</option>`).join("")}
+            ${options}
           </select>`;
-        case "checkbox":
-          return `<label class="checkbox-label"><input type="checkbox" name="${esc(inputName)}" data-field="${esc(f.name)}" value="true" /> ${esc(f.label)}</label>`;
-        case "number":
-          return `${label}<input type="number" name="${esc(inputName)}" id="${esc(inputName)}" data-field="${esc(f.name)}" placeholder="${esc(f.label)}"${req} />`;
-        case "date":
-          return `${label}<input type="date" name="${esc(inputName)}" id="${esc(inputName)}" data-field="${esc(f.name)}"${req} />`;
-        default:
-          return `${label}<input type="text" name="${esc(inputName)}" id="${esc(inputName)}" data-field="${esc(f.name)}" placeholder="${esc(f.label)}"${req} />`;
-      }
-    })
-    .join("\n");
+      break;
+    }
+    case "checkbox": {
+      const checked = f.defaultValue === "true" ? " checked" : "";
+      fieldHtml = `<label class="checkbox-label"><input type="checkbox" name="${esc(inputName)}" data-field="${esc(f.name)}" value="true"${checked}${ariaDescribed} /> ${esc(f.label)}</label>`;
+      break;
+    }
+    case "number": {
+      const val = f.defaultValue != null ? ` value="${esc(f.defaultValue)}"` : "";
+      fieldHtml = `${label}<input type="number" name="${esc(inputName)}" id="${esc(inputName)}" data-field="${esc(f.name)}" placeholder="${esc(placeholder)}"${val}${req}${ariaDescribed} />`;
+      break;
+    }
+    case "date": {
+      const val = f.defaultValue != null ? ` value="${esc(f.defaultValue)}"` : "";
+      fieldHtml = `${label}<input type="date" name="${esc(inputName)}" id="${esc(inputName)}" data-field="${esc(f.name)}"${val}${req}${ariaDescribed} />`;
+      break;
+    }
+    default: {
+      const val = f.defaultValue != null ? ` value="${esc(f.defaultValue)}"` : "";
+      fieldHtml = `${label}<input type="text" name="${esc(inputName)}" id="${esc(inputName)}" data-field="${esc(f.name)}" placeholder="${esc(placeholder)}"${val}${req}${ariaDescribed} />`;
+      break;
+    }
+  }
+  return fieldHtml + helpHtml;
 }
 
 // ── Layout ───────────────────────────────────────────────────────────────────
@@ -131,9 +175,12 @@ export function layout(options: LayoutOptions, body: string): string {
 
 // ── Machine List Page ────────────────────────────────────────────────────────
 
-interface MachineListItem {
+export interface MachineListItem {
   machineId: string;
   instanceCount: number;
+  label?: string;
+  description?: string;
+  tags?: string[];
 }
 
 export function machineListPage(
@@ -145,8 +192,15 @@ export function machineListPage(
     rows = `<tr><td colspan="2" class="empty">No machines registered</td></tr>`;
   } else {
     for (const m of machines) {
+      const displayName = m.label
+        ? `<span class="machine-label">${esc(m.label)}</span><br/><span class="mono" style="font-size:11px">${esc(m.machineId)}</span>`
+        : `<span class="mono">${esc(m.machineId)}</span>`;
+      const desc = m.description ? `<div class="machine-desc">${esc(m.description)}</div>` : "";
+      const tags = m.tags && m.tags.length > 0
+        ? `<div class="machine-tags">${m.tags.map((t) => `<span class="machine-tag">${esc(t)}</span>`).join("")}</div>`
+        : "";
       rows += `<tr>
-        <td class="mono"><a href="${esc(basePath)}/${esc(m.machineId)}">${esc(m.machineId)}</a></td>
+        <td><a href="${esc(basePath)}/${esc(m.machineId)}">${displayName}</a>${desc}${tags}</td>
         <td>${m.instanceCount}</td>
       </tr>`;
     }
@@ -171,8 +225,6 @@ export function instanceListPage(
   machineId: string,
   instances: DurableMachineStatus[],
   statusFilter?: string,
-  restBasePath?: string,
-  inputSchema?: FormField[],
 ): string {
   const filters = ["all", "PENDING", "SUCCESS", "ERROR", "CANCELLED"];
 
@@ -203,21 +255,13 @@ export function instanceListPage(
   }
 
   const sseUrl = `${basePath}/sse/${machineId}`;
-  const startUrl = `${restBasePath ?? ""}/machines/${machineId}/instances`;
+  const startUrl = `${basePath}/${machineId}/new`;
 
   const body = `
     <script type="application/json" id="base-path">${esc(basePath)}</script>
     <script type="application/json" id="machine-id">${esc(machineId)}</script>
-    <div class="card start-instance-card">
-      <h2>Start Instance</h2>
-      <form id="start-form" class="start-form" data-url="${esc(startUrl)}" data-detail-base="${esc(basePath)}/${esc(machineId)}"${inputSchema ? ' data-has-schema="true"' : ""}>
-        <input type="text" name="instanceId" placeholder="Instance ID (required)" required />
-        ${inputSchema && inputSchema.length > 0 ? renderFormFields(inputSchema, "input-") : '<textarea name="input" placeholder=\'{"key": "value"} (optional initial context)\'></textarea>'}
-        <div class="start-form-row">
-          <button type="submit">Start</button>
-          <span class="form-status" id="start-status"></span>
-        </div>
-      </form>
+    <div style="margin-bottom:16px">
+      <a href="${esc(startUrl)}" class="btn-start">Start New Instance</a>
     </div>
     <div class="card">
       <h2>Instances: ${esc(machineId)}</h2>
@@ -234,6 +278,55 @@ export function instanceListPage(
       basePath,
       breadcrumbs: [{ label: machineId }],
       sseUrl,
+    },
+    body,
+  );
+}
+
+// ── Start Instance Page ──────────────────────────────────────────────────────
+
+export function startInstancePage(
+  basePath: string,
+  machineId: string,
+  definition: SerializedMachine,
+  restBasePath: string,
+): string {
+  const label = definition.label ?? machineId;
+  const description = definition.description;
+  const inputSchema = definition.inputSchema;
+  const startUrl = `${restBasePath}/machines/${machineId}/instances`;
+
+  const descHtml = description
+    ? `<p class="machine-description">${esc(description)}</p>`
+    : "";
+
+  const fieldsHtml = inputSchema && inputSchema.length > 0
+    ? renderFormFields(inputSchema, "input-")
+    : '<textarea name="input" placeholder=\'{"key": "value"} (optional initial context)\'></textarea>';
+
+  const body = `
+    <div class="card start-page-card">
+      <h2>Start New Instance: ${esc(label)}</h2>
+      ${descHtml}
+      <form id="start-form" class="start-form" data-url="${esc(startUrl)}" data-detail-base="${esc(basePath)}/${esc(machineId)}"${inputSchema && inputSchema.length > 0 ? ' data-has-schema="true"' : ""}>
+        <input type="text" name="instanceId" placeholder="Instance ID (required)" required />
+        ${fieldsHtml}
+        <div class="start-form-row">
+          <button type="submit">Start</button>
+          <a href="${esc(basePath)}/${esc(machineId)}" class="btn-cancel">Cancel</a>
+          <span class="form-status" id="start-status"></span>
+        </div>
+      </form>
+    </div>`;
+
+  return layout(
+    {
+      title: `Start ${label} - Dashboard`,
+      basePath,
+      breadcrumbs: [
+        { label: machineId, href: `${basePath}/${machineId}` },
+        { label: "New" },
+      ],
     },
     body,
   );

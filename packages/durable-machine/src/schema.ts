@@ -22,15 +22,34 @@ const SCHEMA_KEY = "xstate-durable";
 
 // ── Schema Notation Types ──────────────────────────────────────────────────
 
+/** Base type names used in both shorthand and object-form schemas. */
+type BaseFieldType = "string" | "number" | "boolean" | "date";
+
+/** Object-form field schema for richer metadata (placeholder, helpText, etc.). */
+export interface ObjectFieldSchema {
+  type: BaseFieldType | "select";
+  label?: string;
+  placeholder?: string;
+  helpText?: string;
+  defaultValue?: string;
+  group?: string;
+  options?: readonly string[];
+  required?: boolean;
+}
+
 /**
  * Schema notation for a single field. Maps to TypeScript types and form controls.
  *
+ * String shorthand:
  * - `"string"` → `string` → text input
  * - `"number"` → `number` → number input
  * - `"boolean"` → `boolean` → checkbox
  * - `"date"` → `string` → date input
  * - `"string?"`, `"number?"` etc. → optional field
  * - `["a", "b", "c"]` → `"a" | "b" | "c"` → select dropdown
+ *
+ * Object form (opt-in for richer metadata):
+ * - `{ type: "number", label: "Amount ($)", placeholder: "0.00" }`
  */
 export type FieldSchema =
   | "string"
@@ -41,12 +60,22 @@ export type FieldSchema =
   | "number?"
   | "boolean?"
   | "date?"
-  | readonly string[];
+  | readonly string[]
+  | ObjectFieldSchema;
 
 /** Maps event type names to their field schemas. */
 export type EventSchemaMap = Record<string, Record<string, FieldSchema>>;
 
 // ── Type Resolution ────────────────────────────────────────────────────────
+
+/** Resolve an ObjectFieldSchema to its TypeScript type. */
+type ResolveObjectField<T extends ObjectFieldSchema> =
+  T["type"] extends "string" ? string :
+  T["type"] extends "number" ? number :
+  T["type"] extends "boolean" ? boolean :
+  T["type"] extends "date" ? string :
+  T["type"] extends "select" ? (T["options"] extends readonly string[] ? T["options"][number] : string) :
+  never;
 
 /** Resolve a single field schema to its TypeScript type. */
 type ResolveField<T extends FieldSchema> = T extends "string"
@@ -67,15 +96,21 @@ type ResolveField<T extends FieldSchema> = T extends "string"
                 ? string | undefined
                 : T extends readonly string[]
                   ? T[number]
-                  : never;
+                  : T extends ObjectFieldSchema
+                    ? ResolveObjectField<T>
+                    : never;
+
+/** Check if a field schema is optional. */
+type IsOptionalField<T extends FieldSchema> =
+  T extends `${string}?` ? true :
+  T extends ObjectFieldSchema ? (T["required"] extends false ? true : false) :
+  false;
 
 /** Resolve an object of field schemas to a typed object with required/optional keys. */
 export type ResolveFields<T extends Record<string, FieldSchema>> = {
-  [K in keyof T as T[K] extends `${string}?` ? never : K]: ResolveField<T[K]>;
+  [K in keyof T as IsOptionalField<T[K]> extends true ? never : K]: ResolveField<T[K]>;
 } & {
-  [K in keyof T as T[K] extends `${string}?` ? K : never]?: ResolveField<
-    T[K]
-  >;
+  [K in keyof T as IsOptionalField<T[K]> extends true ? K : never]?: ResolveField<T[K]>;
 };
 
 /** Resolve an event schema map to an XState event union type. */
@@ -109,6 +144,7 @@ export function schemaToFormFields(
   schema: Record<string, FieldSchema>,
 ): FormField[] {
   return Object.entries(schema).map(([name, fieldSchema]) => {
+    // Array shorthand: ["a", "b", "c"] → select
     if (Array.isArray(fieldSchema)) {
       return {
         name,
@@ -118,7 +154,26 @@ export function schemaToFormFields(
         required: true,
       };
     }
-    // After the Array.isArray guard, fieldSchema is a string literal
+
+    // Object form: { type: "number", placeholder: "0.00", ... }
+    if (typeof fieldSchema === "object" && fieldSchema !== null) {
+      const obj = fieldSchema as ObjectFieldSchema;
+      const formType = obj.type === "select" ? "select" : (FIELD_TYPE_MAP[obj.type] ?? "text");
+      const field: FormField = {
+        name,
+        label: obj.label ?? name,
+        type: formType as FormField["type"],
+        required: obj.required !== false,
+      };
+      if (obj.type === "select" && obj.options) field.options = [...obj.options];
+      if (obj.placeholder) field.placeholder = obj.placeholder;
+      if (obj.helpText) field.helpText = obj.helpText;
+      if (obj.defaultValue) field.defaultValue = obj.defaultValue;
+      if (obj.group) field.group = obj.group;
+      return field;
+    }
+
+    // String shorthand: "string", "number?", etc.
     const str = fieldSchema as string;
     const isOptional = str.endsWith("?");
     const base = isOptional ? str.slice(0, -1) : str;
@@ -175,6 +230,9 @@ export function durableSetup<
     events?: TEvents;
     input?: TInputSchema;
     actors?: { [K in keyof TActors]: TActors[K] };
+    label?: string;
+    description?: string;
+    tags?: string[];
   } = {} as any,
 ): SetupReturn<
   MachineContext,
@@ -190,12 +248,15 @@ export function durableSetup<
   EventObject,
   MetaObject
 > {
-  const { events, input, actors } = options;
+  const { events, input, actors, label, description, tags } = options;
 
   const schemas = {
     [SCHEMA_KEY]: {
       events: events ? eventSchemasToFormFields(events) : {},
       input: input ? schemaToFormFields(input) : undefined,
+      ...(label != null && { label }),
+      ...(description != null && { description }),
+      ...(tags != null && { tags }),
     },
   };
 

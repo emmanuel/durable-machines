@@ -4,7 +4,7 @@ export { prompt, getPromptConfig, getPromptEvents } from "./prompt.js";
 
 // Schema-driven setup
 export { durableSetup, schemaToFormFields } from "./schema.js";
-export type { FieldSchema, EventSchemaMap, ResolveEvents, ResolveFields } from "./schema.js";
+export type { FieldSchema, ObjectFieldSchema, EventSchemaMap, ResolveEvents, ResolveFields } from "./schema.js";
 export { createEffectHandlers, getEffectsConfig } from "./effects.js";
 export type { EffectConfig, ResolvedEffect, EffectHandler, EffectHandlerRegistry } from "./effects.js";
 

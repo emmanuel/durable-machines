@@ -147,6 +147,62 @@ export function throughputConformance(backend: BackendFixture) {
       }
     });
 
+    it("measures concurrent instances at scale (aggregate throughput)", async () => {
+      const INSTANCES = 20;
+      const EVENTS_PER = 100;
+      const handles = await Promise.all(
+        Array.from({ length: INSTANCES }, (_, i) =>
+          logicDurable.start(`tp-agg2-${Date.now()}-${i}`, {}),
+        ),
+      );
+      const start = performance.now();
+      await Promise.all(
+        handles.map(async (h) => {
+          for (let i = 0; i < EVENTS_PER; i++) {
+            await h.send({ type: "NEXT" });
+          }
+        }),
+      );
+      const elapsed = performance.now() - start;
+      const total = INSTANCES * EVENTS_PER;
+      const eventsPerSec = (total / elapsed) * 1000;
+      console.log(
+        `[${backend.name}] Aggregate (${INSTANCES}×${EVENTS_PER}): ${eventsPerSec.toFixed(0)} events/sec (${total} events in ${elapsed.toFixed(0)}ms)`,
+      );
+      for (const h of handles) {
+        const s = await h.getState();
+        expect(s!.context).toMatchObject({ count: EVENTS_PER });
+      }
+    });
+
+    it("measures concurrent instances at XL scale (aggregate throughput)", async () => {
+      const INSTANCES = 20;
+      const EVENTS_PER = 1000;
+      const handles = await Promise.all(
+        Array.from({ length: INSTANCES }, (_, i) =>
+          logicDurable.start(`tp-agg3-${Date.now()}-${i}`, {}),
+        ),
+      );
+      const start = performance.now();
+      await Promise.all(
+        handles.map(async (h) => {
+          for (let i = 0; i < EVENTS_PER; i++) {
+            await h.send({ type: "NEXT" });
+          }
+        }),
+      );
+      const elapsed = performance.now() - start;
+      const total = INSTANCES * EVENTS_PER;
+      const eventsPerSec = (total / elapsed) * 1000;
+      console.log(
+        `[${backend.name}] Aggregate (${INSTANCES}×${EVENTS_PER}): ${eventsPerSec.toFixed(0)} events/sec (${total} events in ${elapsed.toFixed(0)}ms)`,
+      );
+      for (const h of handles) {
+        const s = await h.getState();
+        expect(s!.context).toMatchObject({ count: EVENTS_PER });
+      }
+    }, 60_000);
+
     it("measures blended throughput (3:1 logic:IO)", async () => {
       const ROUNDS = 5;
       const id = `tp-blended-${Date.now()}`;

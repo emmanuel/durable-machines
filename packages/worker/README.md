@@ -58,12 +58,14 @@ Using the convenience `startPgWorker`:
 import { startPgWorker } from "@durable-xstate/worker/pg";
 import { parsePgConfig } from "@durable-xstate/durable-machine/pg";
 import { parseWorkerConfig } from "@durable-xstate/worker";
+import pino from "pino";
 
 const pgConfig = parsePgConfig();
 const workerConfig = parseWorkerConfig();
 
 const handle = await startPgWorker(pgConfig, workerConfig, {
   machines: { orders: { machine: orderMachine } },
+  logger: pino(),  // optional structured logger
 });
 ```
 
@@ -71,20 +73,41 @@ Or step by step:
 
 ```typescript
 import { createPgWorkerContext } from "@durable-xstate/worker/pg";
-import { createWorkerContext, startWorker, parseWorkerConfig } from "@durable-xstate/worker";
+import { createWorkerContext, startWorker, parseWorkerConfig, createWorkerMetrics } from "@durable-xstate/worker";
 import { parsePgConfig } from "@durable-xstate/durable-machine/pg";
 
 const pgConfig = parsePgConfig();
 const workerConfig = parseWorkerConfig();
-const appContext = createPgWorkerContext(pgConfig);
+const metrics = workerConfig.adminPort != null ? createWorkerMetrics() : undefined;
+const appContext = createPgWorkerContext(pgConfig, { metrics, logger: pino() });
 
 const ctx = createWorkerContext(workerConfig, appContext, {
   machines: { orders: { machine: orderMachine } },
+  metrics,
 });
 await startWorker(ctx);
 ```
 
 Requires `pg` peer dependency.
+
+## Typed machine access
+
+After registration, machines are stored in a `ReadonlyMap<string, DurableMachine>`. Use `typedMachines()` for type-safe property access:
+
+```typescript
+import { typedMachines } from "@durable-xstate/worker";
+
+const definitions = {
+  approvals: { machine: approvalMachine },
+  orders: { machine: orderMachine },
+} as const;
+
+const ctx = createWorkerContext(config, appContext, { machines: definitions });
+const m = typedMachines<typeof definitions>(ctx.machines);
+
+m.approvals.start("wf-1", {});  // fully typed
+m.orders.get("order-1");        // fully typed
+```
 
 ## Three-phase startup
 
@@ -115,12 +138,25 @@ The admin server is optional for the worker (unlike the gateway, which always en
 
 ## Metrics
 
-When the admin server is enabled, the following Prometheus histograms are recorded during startup:
+When the admin server is enabled, Prometheus metrics are collected automatically.
 
-| Metric | Labels | Description |
-|--------|--------|-------------|
-| `worker_machine_registration_duration_seconds` | `machine_id` | Time to register each machine |
-| `worker_backend_start_duration_seconds` | *(none)* | Time for backend start (DBOS launch, PG schema init, etc.) |
+### Startup metrics
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `worker_machine_registration_duration_seconds` | Histogram | `machine_id` | Time to register each machine |
+| `worker_backend_start_duration_seconds` | Histogram | *(none)* | Time for backend start (DBOS launch, PG schema init, etc.) |
+
+### Runtime metrics (PG backend)
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `worker_events_processed_total` | Counter | `machine_id`, `status` | Events dispatched and processed |
+| `worker_event_process_duration_seconds` | Histogram | `machine_id` | Duration of event processing |
+| `worker_active_dispatches` | Gauge | *(none)* | Currently in-flight dispatch operations |
+| `worker_effects_executed_total` | Counter | `effect_type`, `status` | Effects claimed and executed |
+| `worker_effect_execution_duration_seconds` | Histogram | `effect_type` | Duration of effect execution |
+| `worker_poll_items_found_total` | Counter | `poll_type` | Items found by adaptive pollers |
 
 Default process metrics (CPU, memory, event loop) are also collected via `prom-client`.
 
@@ -132,6 +168,25 @@ import { createWorkerMetrics } from "@durable-xstate/worker";
 const metrics = createWorkerMetrics();        // creates its own Registry
 const metrics = createWorkerMetrics(registry); // uses an existing Registry
 ```
+
+## Logger
+
+The PG backend accepts an optional Pino-compatible `Logger`:
+
+```typescript
+import type { Logger } from "@durable-xstate/worker";
+
+const logger: Logger = {
+  info(obj, msg) { console.log(msg, obj); },
+  warn(obj, msg) { console.warn(msg, obj); },
+  error(obj, msg) { console.error(msg, obj); },
+  debug(obj, msg) { console.debug(msg, obj); },
+};
+
+const appContext = createPgWorkerContext(pgConfig, { logger });
+```
+
+When omitted, a no-op logger is used. The logger receives structured events for dispatch errors, effect execution failures, and polling errors.
 
 ## Graceful shutdown
 
@@ -157,13 +212,17 @@ Registers all machines via `appContext.register()`, optionally creates the admin
 
 Binds the admin server, starts the backend via `appContext.start()`, wires signal handlers. Returns a `WorkerHandle` with a `shutdown()` method for programmatic shutdown.
 
+### `typedMachines<T>(map)`
+
+Returns a Proxy-based typed accessor over the machine Map. Type parameter `T` should be `typeof machineDefinitions`.
+
 ### `createAdminServer(options?)`
 
 Lower-level: creates the HTTP server without binding a port. Useful when composing with other servers.
 
 ### `createWorkerMetrics(registry?)`
 
-Creates a `WorkerMetrics` object with both startup histograms registered on the given (or new) `Registry`.
+Creates a `WorkerMetrics` object with startup and runtime metrics registered on the given (or new) `Registry`.
 
 ## License
 

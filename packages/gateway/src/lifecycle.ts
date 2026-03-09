@@ -50,6 +50,8 @@ export interface GatewayContext {
   adminServer: Server;
   checkpointPool?: import("pg").Pool;
   streamConsumers?: StreamConsumerHandle[];
+  /** Resource cleanup set by {@link startGateway}. Called by AppContext `backend.stop()` in PG/DBOS adapters to stop streams and close the checkpoint pool during signal-driven shutdown. */
+  cleanup?: () => Promise<void>;
 }
 
 export interface GatewayHandle {
@@ -178,14 +180,24 @@ export function startGateway(ctx: GatewayContext): GatewayHandle {
   }) as unknown as Server;
   ctx.adminServer.listen(ctx.config.adminPort);
 
-  const shutdown = async () => {
-    // Stop stream consumers first (abort → final checkpoint → close)
+  // Resource cleanup: stop streams + close checkpoint pool.
+  // Exposed on ctx so AppContext backend.stop() can call it during signal shutdown.
+  const cleanup = async () => {
     if (ctx.streamConsumers) {
       for (const handle of ctx.streamConsumers) {
         handle.stop();
       }
       await Promise.all(ctx.streamConsumers.map((h) => h.stopped));
     }
+    if (ctx.checkpointPool) {
+      await ctx.checkpointPool.end();
+    }
+  };
+  ctx.cleanup = cleanup;
+
+  // Standalone shutdown for direct callers (without AppContext signal handling)
+  const shutdown = async () => {
+    await cleanup();
 
     // Drain HTTP + admin servers
     const drainTimeout = ctx.config.shutdownTimeoutMs;
@@ -206,11 +218,6 @@ export function startGateway(ctx: GatewayContext): GatewayHandle {
       }),
     ]);
     clearTimeout(forceTimer);
-
-    // End checkpoint pool
-    if (ctx.checkpointPool) {
-      await ctx.checkpointPool.end();
-    }
   };
 
   return {

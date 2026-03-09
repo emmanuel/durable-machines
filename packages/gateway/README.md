@@ -253,11 +253,12 @@ verifyHmac("sha256", secret, body, expectedHex, "my-provider");  // throws on mi
 On `SIGTERM` or `SIGINT`:
 
 1. Readiness probe starts returning `503`
-2. Webhook server stops accepting new connections
-3. In-flight requests drain up to `shutdownTimeoutMs`
-4. Admin server closes
-5. Client disconnects
-6. Process exits
+2. HTTP servers drain (force-close at 80% of `shutdownTimeoutMs`)
+3. Stream consumers stop (final checkpoint saved)
+4. Checkpoint pool closes
+5. Process exits
+
+When using PG or DBOS backends, shutdown is integrated with `AppContext` — signal handlers are wired automatically and stream consumers are stopped during `backend.stop()`. For direct `startGateway()` usage, call `handle.shutdown()` manually.
 
 ## License
 

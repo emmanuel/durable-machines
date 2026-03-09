@@ -41,6 +41,7 @@ export interface DBOSGatewayContext {
   adminServer: Server;
   checkpointPool?: import("pg").Pool;
   streamConsumers?: StreamConsumerHandle[];
+  cleanup?: () => Promise<void>;
 }
 
 export interface DBOSGatewayHandle {
@@ -84,20 +85,23 @@ export async function createDBOSGatewayContext(
     getState: (workflowId) => dbosClient.getEvent(workflowId, "xstate.state", 0.1),
   };
 
-  // Gateway doesn't launch DBOS runtime — use generic AppContext with a no-op backend
-  const appContext = createAppContext({ start: async () => {}, stop: async () => {} });
+  // Late-bound: startGateway sets ctx.cleanup, which backend.stop() invokes
+  // during signal-driven shutdown to stop streams and close the checkpoint pool.
+  // eslint-disable-next-line prefer-const
+  let ctx: DBOSGatewayContext;
+
+  const appContext = createAppContext({
+    start: async () => {},
+    stop: async () => { await ctx.cleanup?.(); },
+  });
 
   const genericCtx = await createGatewayContext(config, client, {
     ...options,
     isShuttingDown: () => appContext.isShuttingDown(),
   });
 
-  return {
-    ...genericCtx,
-    config,
-    dbosClient,
-    appContext,
-  };
+  ctx = { ...genericCtx, config, dbosClient, appContext };
+  return ctx;
 }
 
 export function startDBOSGateway(ctx: DBOSGatewayContext): DBOSGatewayHandle {

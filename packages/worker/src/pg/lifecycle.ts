@@ -1,7 +1,7 @@
 import { Pool } from "pg";
 import type { Pool as PoolType } from "pg";
 import type { AnyStateMachine } from "xstate";
-import type { WorkerAppContext } from "../types.js";
+import type { WorkerAppContext, Logger } from "../types.js";
 import type {
   DurableMachine,
   DurableMachineOptions,
@@ -13,6 +13,8 @@ import type { PgStore } from "@durable-xstate/durable-machine/pg";
 import { createDurableMachine } from "@durable-xstate/durable-machine/pg";
 import type { PgDurableMachine } from "@durable-xstate/durable-machine/pg";
 import type { PgConfig } from "@durable-xstate/durable-machine/pg";
+import type { WorkerMetrics } from "../metrics.js";
+import { createWorkerMetrics } from "../metrics.js";
 import {
   createWorkerContext,
   startWorker,
@@ -32,9 +34,29 @@ export type PgWorkerAppContext = WorkerAppContext & {
   readonly machines: ReadonlyMap<string, DurableMachine>;
 };
 
+export interface PgWorkerContextOptions {
+  /** Pre-created metrics for runtime instrumentation. */
+  metrics?: WorkerMetrics;
+  /** Structured logger for operational events. Uses a no-op logger when omitted. */
+  logger?: Logger;
+}
+
+const noopLogger: Logger = {
+  info() {},
+  warn() {},
+  error() {},
+  debug() {},
+};
+
 // ─── Factory ────────────────────────────────────────────────────────────────
 
-export function createPgWorkerContext(config: PgConfig): PgWorkerAppContext {
+export function createPgWorkerContext(
+  config: PgConfig,
+  options?: PgWorkerContextOptions,
+): PgWorkerAppContext {
+  const metrics = options?.metrics;
+  const logger = options?.logger ?? noopLogger;
+
   const pool = new Pool({
     connectionString: config.databaseUrl,
     max: config.poolSize ?? 20,
@@ -68,8 +90,19 @@ export function createPgWorkerContext(config: PgConfig): PgWorkerAppContext {
 
   function dispatch(instanceId: string, dm: PgDurableMachine): void {
     void acquirePermit().then(async () => {
-      try { await dm.consumeAndProcess(instanceId); }
-      finally { releasePermit(); }
+      metrics?.activeDispatches.inc();
+      const end = metrics?.eventProcessDuration.startTimer({ machine_id: dm.machine.id });
+      try {
+        await dm.consumeAndProcess(instanceId);
+        metrics?.eventsProcessedTotal.inc({ machine_id: dm.machine.id, status: "success" });
+      } catch (err) {
+        metrics?.eventsProcessedTotal.inc({ machine_id: dm.machine.id, status: "error" });
+        logger.error({ instanceId, machineId: dm.machine.id, err: String(err) }, "dispatch failed");
+      } finally {
+        end?.();
+        metrics?.activeDispatches.dec();
+        releasePermit();
+      }
     });
   }
 
@@ -110,8 +143,13 @@ export function createPgWorkerContext(config: PgConfig): PgWorkerAppContext {
   async function pollTimeouts(): Promise<number> {
     try {
       const { rows } = await pool.query(`SELECT fire_due_timeouts() AS cnt`);
-      return Number(rows[0].cnt);
-    } catch {
+      const count = Number(rows[0].cnt);
+      if (count > 0) {
+        metrics?.pollItemsFound.inc({ poll_type: "timeouts" }, count);
+      }
+      return count;
+    } catch (err) {
+      logger.error({ err: String(err) }, "timeout poll failed");
       return 0;
     }
   }
@@ -129,16 +167,23 @@ export function createPgWorkerContext(config: PgConfig): PgWorkerAppContext {
 
     try {
       const rows = await store.claimPendingEffects(50);
+      if (rows.length > 0) {
+        metrics?.pollItemsFound.inc({ poll_type: "effects" }, rows.length);
+      }
       for (const row of rows) {
         const handler = allEffectHandlers.get(row.effectType);
         if (!handler) {
           await store.markEffectFailed(row.id, `No handler for "${row.effectType}"`, null);
+          metrics?.effectsExecutedTotal.inc({ effect_type: row.effectType, status: "no_handler" });
+          logger.warn({ effectType: row.effectType }, "no handler for effect");
           continue;
         }
 
+        const end = metrics?.effectExecutionDuration.startTimer({ effect_type: row.effectType });
         try {
           await handler({ type: row.effectType, ...row.effectPayload } as ResolvedEffect);
           await store.markEffectCompleted(row.id);
+          metrics?.effectsExecutedTotal.inc({ effect_type: row.effectType, status: "success" });
         } catch (err) {
           const exhausted = row.attempts >= row.maxAttempts;
           const nextRetry = exhausted
@@ -149,10 +194,15 @@ export function createPgWorkerContext(config: PgConfig): PgWorkerAppContext {
             err instanceof Error ? err.message : String(err),
             nextRetry,
           );
+          metrics?.effectsExecutedTotal.inc({ effect_type: row.effectType, status: "error" });
+          logger.error({ effectType: row.effectType, err: String(err) }, "effect execution failed");
+        } finally {
+          end?.();
         }
       }
       return rows.length;
-    } catch {
+    } catch (err) {
+      logger.error({ err: String(err) }, "effect poll failed");
       return 0;
     }
   }
@@ -182,9 +232,12 @@ export function createPgWorkerContext(config: PgConfig): PgWorkerAppContext {
         maxMs: config.effectPollingIntervalMs ?? 1000,
         factor: 2,
       });
+
+      logger.info({}, "PG worker backend started");
     },
 
     async stop(): Promise<void> {
+      logger.info({}, "PG worker backend stopping");
       wakePoller?.stop();
       wakePoller = null;
       effectPoller?.stop();
@@ -200,7 +253,7 @@ export function createPgWorkerContext(config: PgConfig): PgWorkerAppContext {
 
   function register<T extends AnyStateMachine>(
     machine: T,
-    options?: DurableMachineOptions,
+    machineOptions?: DurableMachineOptions,
   ): DurableMachine<T> {
     if (machines.has(machine.id)) {
       throw new Error(`Machine "${machine.id}" is already registered`);
@@ -209,14 +262,14 @@ export function createPgWorkerContext(config: PgConfig): PgWorkerAppContext {
     const dm = createDurableMachine(machine, {
       pool,
       store,
-      ...options,
+      ...machineOptions,
     });
 
     machines.set(machine.id, dm);
 
     // Merge effect handlers into the shared handler map
-    if (options?.effectHandlers) {
-      for (const [type, handler] of options.effectHandlers.handlers) {
+    if (machineOptions?.effectHandlers) {
+      for (const [type, handler] of machineOptions.effectHandlers.handlers) {
         allEffectHandlers.set(type, handler);
       }
     }
@@ -241,10 +294,11 @@ export function createPgWorkerContext(config: PgConfig): PgWorkerAppContext {
 export async function startPgWorker(
   pgConfig: PgConfig,
   workerConfig: WorkerConfig,
-  options: WorkerContextOptions,
+  options: WorkerContextOptions & { logger?: Logger },
 ): Promise<PgWorkerAppContext & WorkerHandle> {
-  const appContext = createPgWorkerContext(pgConfig);
-  const ctx = createWorkerContext(workerConfig, appContext, options);
+  const metrics = options.metrics ?? (workerConfig.adminPort != null ? createWorkerMetrics() : undefined);
+  const appContext = createPgWorkerContext(pgConfig, { metrics, logger: options.logger });
+  const ctx = createWorkerContext(workerConfig, appContext, { ...options, metrics });
   const handle = await startWorker(ctx);
   return { ...appContext, ...handle };
 }

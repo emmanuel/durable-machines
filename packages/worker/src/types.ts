@@ -13,3 +13,11 @@ export interface WorkerAppContext extends AppContext {
     options?: DurableMachineOptions,
   ): DurableMachine<T>;
 }
+
+/** Pino-compatible logger interface. */
+export interface Logger {
+  info(obj: Record<string, unknown>, msg: string): void;
+  warn(obj: Record<string, unknown>, msg: string): void;
+  error(obj: Record<string, unknown>, msg: string): void;
+  debug(obj: Record<string, unknown>, msg: string): void;
+}

@@ -32,6 +32,7 @@ export interface PgGatewayContext {
   adminServer: Server;
   checkpointPool?: import("pg").Pool;
   streamConsumers?: StreamConsumerHandle[];
+  cleanup?: () => Promise<void>;
 }
 
 export interface PgGatewayHandle {
@@ -66,18 +67,24 @@ export async function createPgGatewayContext(
   options: PgGatewayContextOptions,
 ): Promise<PgGatewayContext> {
   const client = createPgGatewayClient(pool);
-  const appContext = createAppContext({ start: async () => {}, stop: async () => {} });
+
+  // Late-bound: startGateway sets ctx.cleanup, which backend.stop() invokes
+  // during signal-driven shutdown to stop streams and close the checkpoint pool.
+  // eslint-disable-next-line prefer-const
+  let ctx: PgGatewayContext;
+
+  const appContext = createAppContext({
+    start: async () => {},
+    stop: async () => { await ctx.cleanup?.(); },
+  });
 
   const genericCtx = await createGatewayContext(config, client, {
     ...options,
     isShuttingDown: () => appContext.isShuttingDown(),
   });
 
-  return {
-    ...genericCtx,
-    pool,
-    appContext,
-  };
+  ctx = { ...genericCtx, pool, appContext };
+  return ctx;
 }
 
 export function startPgGateway(ctx: PgGatewayContext): PgGatewayHandle {

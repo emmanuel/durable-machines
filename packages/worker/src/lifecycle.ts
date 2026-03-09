@@ -12,6 +12,7 @@
 
 import { z } from "zod";
 import type { Server } from "node:http";
+import type { AnyStateMachine } from "xstate";
 import type { DurableMachine } from "@durable-xstate/durable-machine";
 import type { WorkerAppContext } from "./types.js";
 import { createAdminServer } from "./admin.js";
@@ -68,6 +69,8 @@ export interface WorkerContextOptions {
     machine: import("xstate").AnyStateMachine;
     options?: import("@durable-xstate/durable-machine").DurableMachineOptions;
   }>;
+  /** Pre-created metrics. If omitted and adminPort is set, created automatically. */
+  metrics?: WorkerMetrics;
 }
 
 export function createWorkerContext(
@@ -75,8 +78,8 @@ export function createWorkerContext(
   appContext: WorkerAppContext,
   options: WorkerContextOptions,
 ): WorkerContext {
-  let metrics: WorkerMetrics | undefined;
-  if (config.adminPort != null) {
+  let metrics: WorkerMetrics | undefined = options.metrics;
+  if (!metrics && config.adminPort != null) {
     metrics = createWorkerMetrics();
   }
 
@@ -120,4 +123,39 @@ export async function startWorker(ctx: WorkerContext): Promise<WorkerHandle> {
     shutdown: () => ctx.appContext.shutdown("programmatic"),
     adminServer: ctx.adminServer,
   };
+}
+
+// ─── Typed machine accessor ─────────────────────────────────────────────────
+
+/** Maps machine definition keys to typed {@link DurableMachine} handles. */
+export type TypedMachines<T extends Record<string, { machine: AnyStateMachine }>> = {
+  readonly [K in keyof T]: DurableMachine<T[K]["machine"]>;
+};
+
+/**
+ * Type-safe wrapper over the machine Map. Property access delegates to
+ * `map.get(key)` at runtime; TypeScript infers the correct DurableMachine
+ * type from the definitions record.
+ *
+ * @example
+ * ```ts
+ * const definitions = {
+ *   approvals: { machine: approvalMachine },
+ *   orders: { machine: orderMachine },
+ * } as const;
+ *
+ * const ctx = createWorkerContext(config, appContext, { machines: definitions });
+ * const m = typedMachines<typeof definitions>(ctx.machines);
+ * m.approvals.start("wf-1", {});  // fully typed
+ * ```
+ */
+export function typedMachines<T extends Record<string, { machine: AnyStateMachine }>>(
+  map: ReadonlyMap<string, DurableMachine>,
+): TypedMachines<T> {
+  return new Proxy({} as TypedMachines<T>, {
+    get(_target, prop) {
+      if (typeof prop !== "string") return undefined;
+      return map.get(prop);
+    },
+  });
 }

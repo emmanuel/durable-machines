@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { parseWorkerConfig } from "../../src/lifecycle.js";
+import { parseWorkerConfig, typedMachines } from "../../src/lifecycle.js";
+import type { DurableMachine } from "@durable-xstate/durable-machine";
 
 describe("parseWorkerConfig", () => {
   it("returns defaults when env is empty", () => {
@@ -37,5 +38,32 @@ describe("parseWorkerConfig", () => {
 
     expect(config.adminPort).toBe(8080);
     expect(config.shutdownTimeoutMs).toBe(30_000);
+  });
+});
+
+describe("typedMachines", () => {
+  it("delegates property access to the underlying Map", () => {
+    const mockDm = { machine: {} } as DurableMachine;
+    const map = new Map<string, DurableMachine>([["orders", mockDm]]);
+
+    const m = typedMachines<{ orders: { machine: any } }>(map);
+
+    expect(m.orders).toBe(mockDm);
+  });
+
+  it("returns undefined for missing keys", () => {
+    const map = new Map<string, DurableMachine>();
+
+    const m = typedMachines<{ missing: { machine: any } }>(map);
+
+    expect(m.missing).toBeUndefined();
+  });
+
+  it("ignores symbol property access", () => {
+    const map = new Map<string, DurableMachine>();
+    const m = typedMachines<Record<string, { machine: any }>>(map);
+
+    // Symbol access should return undefined without throwing
+    expect((m as any)[Symbol.toPrimitive]).toBeUndefined();
   });
 });

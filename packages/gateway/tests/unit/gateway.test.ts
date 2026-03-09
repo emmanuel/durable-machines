@@ -50,7 +50,7 @@ describe("createWebhookGateway", () => {
       type: "APPROVE",
       payload: { workflowId: "wf-1", eventType: "APPROVE" },
     });
-    expect(client.sends[0].topic).toBe("xstate.event");
+    // topic is now an internal implementation detail, not exposed on GatewayClient
   });
 
   it("returns 422 when route returns null", async () => {

@@ -15,10 +15,11 @@ export interface PgConfig {
  * |----------------------------|---------|------------|-------------------------------------------|
  * | `DATABASE_URL`             | string  | *(required)* | Postgres connection URL                 |
  * | `PG_SCHEMA`                | string  | `"public"` | Schema for all tables                     |
- * | `WAKE_POLLING_INTERVAL_MS` | number  | `5000`     | Timeout poll interval                     |
- * | `PG_USE_LISTEN_NOTIFY`     | boolean | `true`     | Set `false` for PgBouncer transaction mode|
- * | `MAX_CONCURRENCY`          | number  | `10`       | Max concurrent instance processing        |
- * | `PG_POOL_SIZE`             | number  | `20`       | PG connection pool max size               |
+ * | `WAKE_POLLING_INTERVAL_MS`   | number  | `5000`     | Timeout poll interval                     |
+ * | `EFFECT_POLLING_INTERVAL_MS` | number  | `1000`     | Effect outbox poll interval               |
+ * | `PG_USE_LISTEN_NOTIFY`       | boolean | `true`     | Set `false` for PgBouncer transaction mode|
+ * | `MAX_CONCURRENCY`            | number  | `10`       | Max concurrent instance processing        |
+ * | `PG_POOL_SIZE`               | number  | `20`       | PG connection pool max size               |
  */
 export function parsePgConfig(
   env: Record<string, string | undefined> = process.env,
@@ -42,6 +43,16 @@ export function parsePgConfig(
       );
     }
     config.wakePollingIntervalMs = val;
+  }
+
+  if (env.EFFECT_POLLING_INTERVAL_MS) {
+    const val = Number(env.EFFECT_POLLING_INTERVAL_MS);
+    if (Number.isNaN(val) || val <= 0) {
+      throw new Error(
+        `EFFECT_POLLING_INTERVAL_MS must be a positive number, got "${env.EFFECT_POLLING_INTERVAL_MS}"`,
+      );
+    }
+    config.effectPollingIntervalMs = val;
   }
 
   if (env.PG_USE_LISTEN_NOTIFY !== undefined) {

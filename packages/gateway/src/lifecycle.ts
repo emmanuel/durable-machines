@@ -43,11 +43,15 @@ export interface GatewayConfig {
 }
 
 export interface GatewayContext {
-  config: GatewayConfig;
-  client: GatewayClient;
-  metrics: GatewayMetrics;
-  gateway: Hono;
-  adminServer: Server;
+  readonly config: GatewayConfig;
+  readonly client: GatewayClient;
+  readonly metrics: GatewayMetrics;
+  readonly gateway: Hono;
+  readonly adminServer: Server;
+}
+
+/** @internal Full context including internal fields used by lifecycle management. */
+export interface InternalGatewayContext extends GatewayContext {
   checkpointPool?: import("pg").Pool;
   streamConsumers?: StreamConsumerHandle[];
   /** Resource cleanup set by {@link startGateway}. Called by AppContext `backend.stop()` in PG/DBOS adapters to stop streams and close the checkpoint pool during signal-driven shutdown. */
@@ -80,6 +84,14 @@ export function parseGatewayConfig(
   return result.data;
 }
 
+/** Minimal store interface for NOTIFY-driven dashboard SSE. */
+export interface GatewayStoreAdapter {
+  startListening(
+    callback: (machineName: string, instanceId: string, topic: string) => void,
+  ): Promise<void>;
+  stopListening(): Promise<void>;
+}
+
 export interface GatewayContextOptions {
   bindings: WebhookBinding<any>[];
   /** Register durable machines to expose via the REST API with HATEOAS responses. */
@@ -91,12 +103,7 @@ export interface GatewayContextOptions {
   /** Mount the server-rendered dashboard at this path. Set to `false` to disable. @defaultValue `"/dashboard"` */
   dashboardPath?: string | false;
   /** Optional PgStore — enables NOTIFY-driven SSE for the dashboard instead of polling. */
-  store?: {
-    startListening(
-      callback: (machineName: string, instanceId: string, topic: string) => void,
-    ): Promise<void>;
-    stopListening(): Promise<void>;
-  };
+  store?: GatewayStoreAdapter;
   streams?: Array<{
     binding: StreamBinding<any, any>;
     checkpointInterval?: number;
@@ -110,7 +117,7 @@ export async function createGatewayContext(
   config: GatewayConfig,
   client: GatewayClient,
   options: GatewayContextOptions,
-): Promise<GatewayContext> {
+): Promise<InternalGatewayContext> {
   const metrics = createGatewayMetrics();
   const gateway = createWebhookGateway({ client, bindings: options.bindings, metrics });
 
@@ -142,7 +149,7 @@ export async function createGatewayContext(
     isReady: () => !isShuttingDown(),
   });
 
-  const ctx: GatewayContext = { config, client, metrics, gateway, adminServer };
+  const ctx: InternalGatewayContext = { config, client, metrics, gateway, adminServer };
 
   if (options.streams && options.streams.length > 0) {
     if (!config.dbUrl) {
@@ -173,7 +180,7 @@ export async function createGatewayContext(
   return ctx;
 }
 
-export function startGateway(ctx: GatewayContext): GatewayHandle {
+export function startGateway(ctx: InternalGatewayContext): GatewayHandle {
   const server = serve({
     fetch: ctx.gateway.fetch,
     port: ctx.config.port,

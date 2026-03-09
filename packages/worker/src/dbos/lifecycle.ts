@@ -1,12 +1,9 @@
-import { z } from "zod";
 import { DBOS } from "@dbos-inc/dbos-sdk";
-import type { AnyStateMachine } from "xstate";
 import {
   createDurableMachine,
 } from "@durable-xstate/durable-machine/dbos";
 import type {
   DurableMachine,
-  DurableMachineOptions,
 } from "@durable-xstate/durable-machine";
 import { createAppContext } from "@durable-xstate/durable-machine";
 import type { AppContextBackend } from "@durable-xstate/durable-machine";
@@ -15,27 +12,16 @@ import {
   createWorkerContext,
   startWorker,
 } from "../lifecycle.js";
-import type { WorkerHandle } from "../lifecycle.js";
+import type {
+  WorkerConfig,
+  WorkerContextOptions,
+  WorkerHandle,
+} from "../lifecycle.js";
 
-// ─── Config ─────────────────────────────────────────────────────────────────
-
-const workerConfigSchema = z.object({
-  adminPort: z.coerce.number().int().positive().optional(),
-  shutdownTimeoutMs: z.coerce.number().int().positive().default(30_000),
-});
-
-export interface DBOSWorkerConfig {
-  adminPort?: number;
-  shutdownTimeoutMs: number;
-}
-
-export type MachineDefinitions = Record<string, {
-  machine: AnyStateMachine;
-  options?: DurableMachineOptions;
-}>;
+// ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface DBOSWorkerContext {
-  config: DBOSWorkerConfig;
+  config: WorkerConfig;
   appContext: WorkerAppContext;
   machines: ReadonlyMap<string, DurableMachine>;
   metrics?: import("../metrics.js").WorkerMetrics;
@@ -43,24 +29,6 @@ export interface DBOSWorkerContext {
 }
 
 export type DBOSWorkerHandle = WorkerHandle;
-
-export function parseDBOSWorkerConfig(
-  env: Record<string, string | undefined> = process.env,
-): DBOSWorkerConfig {
-  const result = workerConfigSchema.safeParse({
-    adminPort: env.ADMIN_PORT,
-    shutdownTimeoutMs: env.GRACEFUL_SHUTDOWN_TIMEOUT_MS,
-  });
-
-  if (!result.success) {
-    const messages = result.error.issues.map(
-      (i) => `  ${i.path.join(".")}: ${i.message}`,
-    );
-    throw new Error(`Invalid worker config:\n${messages.join("\n")}`);
-  }
-
-  return result.data;
-}
 
 // ─── AppContext Factory ─────────────────────────────────────────────────────
 
@@ -80,10 +48,10 @@ export function createDBOSWorkerAppContext(): WorkerAppContext {
 
 // ─── Context + Start ────────────────────────────────────────────────────────
 
-export async function createDBOSWorkerContext<T extends MachineDefinitions>(
-  config: DBOSWorkerConfig,
-  options: { machines: T },
-): Promise<DBOSWorkerContext> {
+export function createDBOSWorkerContext(
+  config: WorkerConfig,
+  options: { machines: WorkerContextOptions["machines"] },
+): DBOSWorkerContext {
   const appContext = createDBOSWorkerAppContext();
   const workerCtx = createWorkerContext(config, appContext, {
     machines: options.machines,

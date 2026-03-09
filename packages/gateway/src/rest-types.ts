@@ -1,4 +1,4 @@
-import type { DurableMachine } from "@durable-xstate/durable-machine";
+import type { DurableMachine, InstanceStatus } from "@durable-xstate/durable-machine";
 
 /** Map of machine name → DurableMachine instance. */
 export type MachineRegistry = Map<string, DurableMachine>;
@@ -39,8 +39,8 @@ export interface StateResponse {
   state: unknown;
   /** Current context. */
   context: Record<string, unknown>;
-  /** Workflow status: `"running"`, `"done"`, or `"error"`. */
-  status: string;
+  /** Workflow lifecycle status. */
+  status: InstanceStatus;
   /** HATEOAS navigation links. */
   links: HateoasLinks;
 }
@@ -49,4 +49,11 @@ export interface StateResponse {
 export interface ErrorResponse {
   error: string;
   detail?: string;
+}
+
+/** Value object identifying a specific machine instance within the REST API. */
+export interface InstanceRef {
+  basePath: string;
+  machineId: string;
+  instanceId: string;
 }

@@ -132,5 +132,13 @@ function createHandle(
       );
       return transitions ?? [];
     },
+
+    async listEffects() {
+      return [];
+    },
+
+    async getEventLog() {
+      return [];
+    },
   };
 }

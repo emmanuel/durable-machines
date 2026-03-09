@@ -1,12 +1,13 @@
 export {
-  parseDBOSWorkerConfig,
   createDBOSWorkerAppContext,
   createDBOSWorkerContext,
   startDBOSWorker,
 } from "./lifecycle.js";
 export type {
-  DBOSWorkerConfig,
   DBOSWorkerContext,
   DBOSWorkerHandle,
-  MachineDefinitions,
 } from "./lifecycle.js";
+
+// Re-export generic worker types for consumers migrating from DBOS-specific types
+export { parseWorkerConfig } from "../lifecycle.js";
+export type { WorkerConfig, WorkerContextOptions } from "../lifecycle.js";

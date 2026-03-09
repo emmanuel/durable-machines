@@ -27,7 +27,7 @@ export function serializeMachineDefinition(
   for (const [path, stateNode] of walkStateNodes(machine.root)) {
     const node: SerializedStateNode = {
       path,
-      type: stateNode.type,
+      type: stateNode.type as SerializedStateNode["type"],
     };
 
     // Durable marker
@@ -49,7 +49,7 @@ export function serializeMachineDefinition(
     }
 
     // Invoke definitions
-    const invokeList: any[] = stateNode.invoke ?? [];
+    const invokeList = stateNode.invoke ?? [];
     if (invokeList.length > 0) {
       node.invoke = invokeList.map((inv: any) => ({
         id: inv.id,
@@ -61,7 +61,7 @@ export function serializeMachineDefinition(
     }
 
     // After transitions
-    const afterDefs: any[] = stateNode.after ?? [];
+    const afterDefs = stateNode.after ?? [];
     if (afterDefs.length > 0) {
       node.after = afterDefs.map((def: any) => {
         const entry: {
@@ -84,7 +84,7 @@ export function serializeMachineDefinition(
     }
 
     // Always transitions
-    const alwaysList: any[] = stateNode.always ?? [];
+    const alwaysList = stateNode.always ?? [];
     if (alwaysList.length > 0) {
       node.always = alwaysList.map((def: any) => {
         const entry: { target?: string; guard?: string } = {};
@@ -179,6 +179,7 @@ export function serializeMachineDefinition(
  */
 export function computeStateDurations(
   transitions: TransitionRecord[],
+  now?: number,
 ): StateDuration[] {
   if (transitions.length === 0) return [];
 
@@ -189,7 +190,7 @@ export function computeStateDurations(
     const exitedAt =
       i + 1 < transitions.length ? transitions[i + 1].ts : null;
     const durationMs =
-      exitedAt !== null ? exitedAt - enteredAt : Date.now() - enteredAt;
+      exitedAt !== null ? exitedAt - enteredAt : (now ?? Date.now()) - enteredAt;
 
     durations.push({
       state: transitions[i].to,

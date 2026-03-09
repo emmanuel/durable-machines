@@ -215,6 +215,7 @@ export function createMachineLoop(
           `State "${JSON.stringify(snapshot.value)}" is not a durable state, ` +
             `has no invocation, and has no transient transition. ` +
             `This should have been caught by validation.`,
+          "INTERNAL",
         );
       }
 
@@ -249,6 +250,7 @@ async function executeInvocation(
     throw new DurableMachineError(
       `No actor implementation found for "${invocation.src}". ` +
         `Ensure it is registered in setup({ actors: { ... } }).`,
+      "INTERNAL",
     );
   }
 
@@ -371,6 +373,7 @@ function resolveActorCreator(impl: any): (params: { input: unknown }) => Promise
   throw new DurableMachineError(
     `Cannot resolve actor creator. The actor implementation must be created ` +
       `with fromPromise(). Got: ${typeof impl}`,
+    "INTERNAL",
   );
 }
 

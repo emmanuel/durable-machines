@@ -31,6 +31,9 @@ function mockHandle(
     getResult: vi.fn().mockResolvedValue({}),
     getSteps: vi.fn().mockResolvedValue([]),
     cancel: vi.fn().mockResolvedValue(undefined),
+    getTransitions: vi.fn().mockResolvedValue([]),
+    listEffects: vi.fn().mockResolvedValue([]),
+    getEventLog: vi.fn().mockResolvedValue([]),
     ...overrides,
   };
 }

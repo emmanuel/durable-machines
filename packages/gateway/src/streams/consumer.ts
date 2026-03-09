@@ -99,7 +99,7 @@ async function run<TRaw, TItem>(
         continue;
       }
 
-      const batch: Array<{ workflowId: string; message: { type: string; [key: string]: unknown }; topic: string }> = [];
+      const batch: Array<{ workflowId: string; message: { type: string; [key: string]: unknown } }> = [];
 
       for (const item of items) {
         const routeResult = await router.route(item);
@@ -108,7 +108,7 @@ async function run<TRaw, TItem>(
 
         const event = transform.transform(item);
         for (const workflowId of ids) {
-          batch.push({ workflowId, message: event, topic: "xstate.event" });
+          batch.push({ workflowId, message: event });
         }
       }
 
@@ -125,9 +125,9 @@ async function run<TRaw, TItem>(
             "Failed to dispatch batch, falling back to individual sends",
           );
           // Sequential fallback with per-item error handling
-          for (const { workflowId, message, topic } of batch) {
+          for (const { workflowId, message } of batch) {
             try {
-              await client.send(workflowId, message, topic);
+              await client.send(workflowId, message);
               metrics?.streamItemsDispatched?.inc({ streamId });
             } catch (sendErr: unknown) {
               logger.error(

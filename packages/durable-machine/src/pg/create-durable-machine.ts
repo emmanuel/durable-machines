@@ -45,7 +45,7 @@ function rowToSnapshot(row: MachineRow): DurableStateSnapshot {
   return {
     value: row.stateValue,
     context: row.context,
-    status: row.status === "done" ? "done" : row.status === "error" ? "error" : "running",
+    status: row.status,
   };
 }
 
@@ -119,6 +119,7 @@ export function createDurableMachine<T extends AnyStateMachine>(
             if (!row) {
               throw new DurableMachineError(
                 `Instance ${workflowId} not found`,
+                "NOT_FOUND",
               );
             }
             if (row.status === "done")
@@ -126,16 +127,31 @@ export function createDurableMachine<T extends AnyStateMachine>(
             if (row.status === "error")
               throw new DurableMachineError(
                 `Instance ${workflowId} errored`,
+                "ERRORED",
               );
             if (row.status === "cancelled")
               throw new DurableMachineError(
                 `Instance ${workflowId} cancelled`,
+                "CANCELLED",
               );
             return new Promise<void>((resolve) =>
               setTimeout(resolve, 200),
             ).then(poll);
           });
-        return poll();
+
+        const maxWaitMs = options.maxWaitSeconds != null
+          ? options.maxWaitSeconds * 1000
+          : 30_000;
+        const timeout = new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new DurableMachineError(
+              `getResult() timed out after ${maxWaitMs}ms for instance ${workflowId}`,
+              "NOT_RUNNING",
+            )),
+            maxWaitMs,
+          ),
+        );
+        return Promise.race([poll(), timeout]);
       },
 
       async getSteps() {
@@ -152,7 +168,7 @@ export function createDurableMachine<T extends AnyStateMachine>(
           id: r.id,
           effectType: r.effectType,
           effectPayload: r.effectPayload,
-          status: r.status as EffectStatus["status"],
+          status: r.status,
           attempts: r.attempts,
           maxAttempts: r.maxAttempts,
           lastError: r.lastError,
@@ -187,6 +203,7 @@ export function createDurableMachine<T extends AnyStateMachine>(
         if (err?.code === "23505") {
           throw new DurableMachineError(
             `Instance ${workflowId} already exists`,
+            "ALREADY_EXISTS",
           );
         }
         throw err;

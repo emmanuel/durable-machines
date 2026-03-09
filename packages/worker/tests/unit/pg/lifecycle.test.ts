@@ -172,11 +172,10 @@ describe("createPgWorkerContext", () => {
       expect(dm2.machine).toBe(m2);
     });
 
-    it("exposes pool and store on the returned context", () => {
+    it("exposes pool on the returned context", () => {
       const ctx = createPgWorkerContext({ databaseUrl: "postgres://localhost/test" });
 
       expect(ctx.pool).toBe(mockPool);
-      expect(ctx.store).toBe(mockStore);
     });
   });
 
@@ -341,15 +340,14 @@ import { startPgWorker } from "../../../src/pg/lifecycle.js";
 
 describe("startPgWorker", () => {
   it("returns merged PgWorkerAppContext & WorkerHandle", async () => {
-    const handle = await startPgWorker(
-      { databaseUrl: "postgres://localhost/test" },
-      { adminPort: undefined, shutdownTimeoutMs: 5_000 },
-      { machines: { order: { machine: fakeMachine("order-sp") } } },
-    );
+    const handle = await startPgWorker({
+      pg: { databaseUrl: "postgres://localhost/test" },
+      worker: { adminPort: undefined, shutdownTimeoutMs: 5_000 },
+      machines: { order: { machine: fakeMachine("order-sp") } },
+    });
 
     // PgWorkerAppContext properties
     expect(handle.pool).toBe(mockPool);
-    expect(handle.store).toBe(mockStore);
     expect(typeof handle.register).toBe("function");
 
     // WorkerHandle properties
@@ -357,11 +355,11 @@ describe("startPgWorker", () => {
   });
 
   it("shutdown() calls through to AppContext", async () => {
-    const handle = await startPgWorker(
-      { databaseUrl: "postgres://localhost/test" },
-      { shutdownTimeoutMs: 5_000 },
-      { machines: { order: { machine: fakeMachine("order-sp2") } } },
-    );
+    const handle = await startPgWorker({
+      pg: { databaseUrl: "postgres://localhost/test" },
+      worker: { shutdownTimeoutMs: 5_000 },
+      machines: { order: { machine: fakeMachine("order-sp2") } },
+    });
 
     void handle.shutdown();
     await vi.advanceTimersByTimeAsync(0);

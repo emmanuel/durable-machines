@@ -13,6 +13,22 @@ export interface ValidateOptions {
 }
 
 /**
+ * Minimal structural type for XState state nodes used by {@link walkStateNodes}.
+ *
+ * Captures the properties accessed by validation and serialization code:
+ * `.type`, `.meta`, `.invoke`, `.always`, `.after`, `.on`, `.states`.
+ */
+export interface StateNodeLike {
+  readonly type: string;
+  readonly meta?: Record<string, unknown>;
+  readonly states?: Record<string, StateNodeLike>;
+  readonly invoke?: readonly unknown[];
+  readonly always?: readonly unknown[];
+  readonly after?: readonly unknown[];
+  readonly on?: Record<string, unknown>;
+}
+
+/**
  * Walks all state nodes in a machine recursively, yielding
  * the dot-separated path and the state node object.
  *
@@ -22,14 +38,15 @@ export interface ValidateOptions {
  * @param parentPath - Dot-separated path prefix for the current subtree (default: `""`)
  * @yields `[path, stateNode]` tuples for every descendant state node
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function* walkStateNodes(
   stateNode: any,
   parentPath = "",
-): Generator<[string, any]> {
+): Generator<[string, StateNodeLike]> {
   const states = stateNode.states ?? {};
   for (const [key, child] of Object.entries(states)) {
     const path = parentPath ? `${parentPath}.${key}` : key;
-    yield [path, child];
+    yield [path, child as StateNodeLike];
     yield* walkStateNodes(child, path);
   }
 }
@@ -83,11 +100,11 @@ export function validateMachineForDurability(
     // Only validate leaf (atomic) states.
     if (type === "compound" || type === "parallel") continue;
 
-    const invokeList: any[] = stateNode.invoke ?? [];
+    const invokeList = stateNode.invoke ?? [];
     const hasInvoke = invokeList.length > 0;
-    const alwaysList: any[] = stateNode.always ?? [];
+    const alwaysList = stateNode.always ?? [];
     const hasAlways = alwaysList.length > 0;
-    const meta: Record<string, any> | undefined = stateNode.meta;
+    const meta = stateNode.meta as Record<string, any> | undefined;
     const markedDurable: boolean = meta?.[META_KEY]?.durable === true;
     const promptConfig = getPromptConfig(meta);
 

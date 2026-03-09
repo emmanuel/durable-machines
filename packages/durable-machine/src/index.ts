@@ -5,7 +5,7 @@ export { prompt, getPromptConfig, getPromptEvents } from "./prompt.js";
 // Schema-driven setup
 export { durableSetup, schemaToFormFields } from "./schema.js";
 export type { FieldSchema, ObjectFieldSchema, EventSchemaMap, ResolveEvents, ResolveFields } from "./schema.js";
-export { createEffectHandlers, getEffectsConfig } from "./effects.js";
+export { createEffectHandlerRegistry, createEffectHandlers, getEffectsConfig } from "./effects.js";
 export type { EffectConfig, ResolvedEffect, EffectHandler, EffectHandlerRegistry } from "./effects.js";
 
 // Effect collector
@@ -13,7 +13,7 @@ export { collectAndResolveEffects } from "./effect-collector.js";
 
 // Validation
 export { validateMachineForDurability, walkStateNodes } from "./validate.js";
-export type { ValidateOptions } from "./validate.js";
+export type { ValidateOptions, StateNodeLike } from "./validate.js";
 
 // XState utilities (advanced)
 export {
@@ -53,6 +53,9 @@ export * from "./definition/index.js";
 
 // Types
 export type {
+  Logger,
+  InstanceStatus,
+  EffectOutboxStatus,
   AppContext,
   AppContextOptions,
   DurableMachine,
@@ -82,6 +85,8 @@ export type {
   ResolvePromptParams,
   UpdatePromptParams,
 } from "./types.js";
+
+export type { DurableMachineErrorCode } from "./types.js";
 
 export {
   DurableMachineError,

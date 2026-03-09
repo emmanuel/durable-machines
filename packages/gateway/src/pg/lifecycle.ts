@@ -1,6 +1,7 @@
 import type { Pool } from "pg";
 import type { Server } from "node:http";
 import type { Hono } from "hono";
+import type { AnyEventObject } from "xstate";
 import type { GatewayMetrics } from "../metrics.js";
 import {
   createGatewayContext,
@@ -23,13 +24,17 @@ import type { AppContext } from "@durable-xstate/durable-machine";
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface PgGatewayContext {
-  config: GatewayConfig;
-  client: GatewayClient;
-  pool: Pool;
+  readonly config: GatewayConfig;
+  readonly client: GatewayClient;
+  readonly pool: Pool;
+  readonly metrics: GatewayMetrics;
+  readonly gateway: Hono;
+  readonly adminServer: Server;
+}
+
+/** @internal Full PG gateway context with internal lifecycle fields. */
+interface InternalPgGatewayContext extends PgGatewayContext {
   appContext: AppContext;
-  metrics: GatewayMetrics;
-  gateway: Hono;
-  adminServer: Server;
   checkpointPool?: import("pg").Pool;
   streamConsumers?: StreamConsumerHandle[];
   cleanup?: () => Promise<void>;
@@ -45,14 +50,14 @@ export interface PgGatewayHandle {
 
 export function createPgGatewayClient(pool: Pool): GatewayClient {
   return {
-    send: (workflowId, message, topic) =>
-      sendMachineEvent(pool, workflowId, { type: topic, ...message as object }),
+    send: (workflowId, message) =>
+      sendMachineEvent(pool, workflowId, message as AnyEventObject),
     sendBatch: (messages) =>
       sendMachineEventBatch(
         pool,
         messages.map((m) => ({
           workflowId: m.workflowId,
-          event: { type: m.topic, ...m.message as object },
+          event: m.message as AnyEventObject,
         })),
       ),
     getState: (workflowId) => getMachineState(pool, workflowId),
@@ -71,7 +76,7 @@ export async function createPgGatewayContext(
   // Late-bound: startGateway sets ctx.cleanup, which backend.stop() invokes
   // during signal-driven shutdown to stop streams and close the checkpoint pool.
   // eslint-disable-next-line prefer-const
-  let ctx: PgGatewayContext;
+  let ctx: InternalPgGatewayContext;
 
   const appContext = createAppContext({
     start: async () => {},
@@ -88,10 +93,11 @@ export async function createPgGatewayContext(
 }
 
 export function startPgGateway(ctx: PgGatewayContext): PgGatewayHandle {
-  const handle = startGateway(ctx);
+  const internal = ctx as InternalPgGatewayContext;
+  const handle = startGateway(internal);
 
   // Wire signal handlers via AppContext
-  void ctx.appContext.start({
+  void internal.appContext.start({
     servers: [handle.server, ctx.adminServer],
     timeoutMs: ctx.config.shutdownTimeoutMs,
   });

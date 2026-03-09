@@ -167,14 +167,12 @@ export function createDashboardRoutes(options: DashboardRouteOptions): Hono {
 
           const availableEvents = getAvailableEvents(durable.machine, snapshot);
           const eventSchemas = getAvailableEventSchemas(durable.machine, snapshot);
-          const effects = handle.listEffects ? await handle.listEffects() : undefined;
-          const eventLog = handle.getEventLog ? await handle.getEventLog({ limit: 50 }) : undefined;
+          const effects = await handle.listEffects();
+          const eventLog = await handle.getEventLog({ limit: 50 });
 
           // Compute active sleep for SSE updates
           const sseActiveStates = resolveActiveStates(snapshot);
-          const sseTransitions: TransitionRecord[] = handle.getTransitions
-            ? await handle.getTransitions()
-            : buildTransitionsFromSteps(steps, snapshot);
+          const sseTransitions: TransitionRecord[] = await handle.getTransitions();
           const sseStateDurations = computeStateDurations(sseTransitions);
           const sseSleep = computeActiveSleep(sseGraphData, sseActiveStates, sseStateDurations);
 
@@ -314,14 +312,11 @@ async function buildDetailData(
   const availableEvents = getAvailableEvents(durable.machine, snapshot);
   const eventSchemas = getAvailableEventSchemas(durable.machine, snapshot);
 
-  // Use real transitions if available, otherwise fall back to a single-entry stub
-  const transitions: TransitionRecord[] = handle.getTransitions
-    ? await handle.getTransitions()
-    : buildTransitionsFromSteps(steps, snapshot);
+  const transitions: TransitionRecord[] = await handle.getTransitions();
   const stateDurations = computeStateDurations(transitions);
 
-  const effects = handle.listEffects ? await handle.listEffects() : undefined;
-  const eventLog = handle.getEventLog ? await handle.getEventLog({ limit: 50 }) : undefined;
+  const effects = await handle.listEffects();
+  const eventLog = await handle.getEventLog({ limit: 50 });
 
   // Determine active/visited states from snapshot
   const activeStates = resolveActiveStates(snapshot);
@@ -346,28 +341,6 @@ async function buildDetailData(
     visitedStates,
     activeSleep,
   };
-}
-
-/**
- * Build transition records from step timing info.
- * This is a best-effort reconstruction for non-PG backends.
- */
-function buildTransitionsFromSteps(
-  steps: import("@durable-xstate/durable-machine").StepInfo[],
-  snapshot: DurableStateSnapshot,
-): TransitionRecord[] {
-  // Without PG store's getTransitions(), we have limited data.
-  // At minimum, show the current state as a single "transition".
-  const now = Date.now();
-  const firstStepTs = steps.length > 0 && steps[0].startedAtEpochMs
-    ? steps[0].startedAtEpochMs
-    : now;
-
-  return [{
-    from: null,
-    to: snapshot.value,
-    ts: firstStepTs,
-  }];
 }
 
 /**

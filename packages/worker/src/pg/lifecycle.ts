@@ -29,7 +29,6 @@ import type {
 
 export type PgWorkerAppContext = WorkerAppContext & {
   readonly pool: PoolType;
-  readonly store: PgStore;
   /** Live registry of all machines registered via {@link WorkerAppContext.register}. Entries are added dynamically; consumers see updates immediately. */
   readonly machines: ReadonlyMap<string, DurableMachine>;
 };
@@ -285,20 +284,26 @@ export function createPgWorkerContext(
     register,
     machines,
     pool,
-    store,
-  };
+  } satisfies PgWorkerAppContext;
 }
 
 // ─── Convenience ────────────────────────────────────────────────────────────
 
+export interface PgWorkerStartOptions {
+  pg: PgConfig;
+  worker: WorkerConfig;
+  machines: WorkerContextOptions["machines"];
+  metrics?: WorkerMetrics;
+  logger?: Logger;
+}
+
 export async function startPgWorker(
-  pgConfig: PgConfig,
-  workerConfig: WorkerConfig,
-  options: WorkerContextOptions & { logger?: Logger },
+  options: PgWorkerStartOptions,
 ): Promise<PgWorkerAppContext & WorkerHandle> {
-  const metrics = options.metrics ?? (workerConfig.adminPort != null ? createWorkerMetrics() : undefined);
-  const appContext = createPgWorkerContext(pgConfig, { metrics, logger: options.logger });
-  const ctx = createWorkerContext(workerConfig, appContext, { ...options, metrics });
+  const { pg, worker, machines, logger } = options;
+  const metrics = options.metrics ?? (worker.adminPort != null ? createWorkerMetrics() : undefined);
+  const appContext = createPgWorkerContext(pg, { metrics, logger });
+  const ctx = createWorkerContext(worker, appContext, { machines, metrics });
   const handle = await startWorker(ctx);
   return { ...appContext, ...handle };
 }

@@ -9,8 +9,9 @@ export type {
   HateoasLinks,
   StateResponse,
   ErrorResponse,
+  InstanceRef,
 } from "./rest-types.js";
-export { getAvailableEvents, buildLinks, toStateResponse } from "./hateoas.js";
+export { getAvailableEvents, getAvailableEventSchemas, buildLinks, toStateResponse } from "./hateoas.js";
 
 // Admin server
 export { createAdminServer } from "./admin.js";
@@ -22,7 +23,7 @@ export type { GatewayMetrics } from "./metrics.js";
 
 // Lifecycle (generic, backend-agnostic)
 export { parseGatewayConfig, createGatewayContext, startGateway } from "./lifecycle.js";
-export type { GatewayConfig, GatewayContext, GatewayContextOptions, GatewayHandle } from "./lifecycle.js";
+export type { GatewayConfig, GatewayContext, InternalGatewayContext, GatewayContextOptions, GatewayStoreAdapter, GatewayHandle } from "./lifecycle.js";
 
 // Durable machine type (re-exported for consumers using MachineRegistry)
 export type { DurableMachine } from "@durable-xstate/durable-machine";

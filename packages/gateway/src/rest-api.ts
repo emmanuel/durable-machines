@@ -34,13 +34,15 @@ export function createRestApi(options: RestApiOptions): Hono {
 
   app.onError((err, c) => {
     if (err instanceof DurableMachineError) {
-      const msg = err.message;
-      const status = msg.includes("not found") ? 404
-        : msg.includes("already exists") ? 409
-        : msg.includes("not running") ? 409
-        : msg.includes("cancelled") ? 410
-        : 500;
-      return c.json({ error: msg }, status);
+      const status = ({
+        NOT_FOUND: 404,
+        ALREADY_EXISTS: 409,
+        NOT_RUNNING: 409,
+        CANCELLED: 410,
+        ERRORED: 422,
+        INTERNAL: 500,
+      } as const)[err.code] ?? 500;
+      return c.json({ error: err.message, code: err.code }, status);
     }
 
     return c.json({ error: "Internal server error" }, 500);
@@ -57,11 +59,14 @@ export function createRestApi(options: RestApiOptions): Hono {
     if (!durable) return c.json({ error: "Machine not found" }, 404);
 
     const { instanceId, input } = await c.req.json<{ instanceId: string; input?: Record<string, unknown> }>();
+    if (!instanceId || typeof instanceId !== "string") {
+      return c.json({ error: "instanceId is required" }, 400);
+    }
     const handle = await durable.start(instanceId, input ?? {});
     const snapshot = await handle.getState();
     if (!snapshot) return c.json({ error: "Instance not found" }, 404);
 
-    return c.json(toStateResponse(durable, basePath, machineId, instanceId, snapshot), 201);
+    return c.json(toStateResponse(durable, { basePath, machineId, instanceId }, snapshot), 201);
   });
 
   // GET /machines/:machineId/instances — list instances
@@ -71,6 +76,9 @@ export function createRestApi(options: RestApiOptions): Hono {
     if (!durable) return c.json({ error: "Machine not found" }, 404);
 
     const status = c.req.query("status");
+    if (status && !["running", "done", "error", "cancelled"].includes(status)) {
+      return c.json({ error: `Invalid status filter: "${status}". Must be one of: running, done, error, cancelled` }, 400);
+    }
     const list = await durable.list(status ? { status } : undefined);
     return c.json(list);
   });
@@ -85,7 +93,7 @@ export function createRestApi(options: RestApiOptions): Hono {
     const snapshot = await durable.get(instanceId).getState();
     if (!snapshot) return c.json({ error: "Instance not found" }, 404);
 
-    return c.json(toStateResponse(durable, basePath, machineId, instanceId, snapshot));
+    return c.json(toStateResponse(durable, { basePath, machineId, instanceId }, snapshot));
   });
 
   // POST /machines/:machineId/instances/:instanceId/events — send event
@@ -96,13 +104,16 @@ export function createRestApi(options: RestApiOptions): Hono {
     if (!durable) return c.json({ error: "Machine not found" }, 404);
 
     const event = await c.req.json();
+    if (!event?.type || typeof event.type !== "string") {
+      return c.json({ error: "event.type is required" }, 400);
+    }
     const handle = durable.get(instanceId);
     await handle.send(event);
 
     const snapshot = await handle.getState();
     if (!snapshot) return c.json({ error: "Instance not found" }, 404);
 
-    return c.json(toStateResponse(durable, basePath, machineId, instanceId, snapshot));
+    return c.json(toStateResponse(durable, { basePath, machineId, instanceId }, snapshot));
   });
 
   // GET /machines/:machineId/instances/:instanceId/result — read result
@@ -144,10 +155,6 @@ export function createRestApi(options: RestApiOptions): Hono {
     if (!durable) return c.json({ error: "Machine not found" }, 404);
 
     const handle = durable.get(instanceId);
-    if (!handle.listEffects) {
-      return c.json({ error: "Effects not supported by this backend" }, 501);
-    }
-
     const effects = await handle.listEffects();
     return c.json(effects);
   });
@@ -160,9 +167,6 @@ export function createRestApi(options: RestApiOptions): Hono {
     if (!durable) return c.json({ error: "Machine not found" }, 404);
 
     const handle = durable.get(instanceId);
-    if (!handle.getEventLog) {
-      return c.json({ error: "Event log not supported by this backend" }, 501);
-    }
 
     const limit = c.req.query("limit");
     const after = c.req.query("after");
@@ -203,7 +207,7 @@ export function createRestApi(options: RestApiOptions): Hono {
       const instanceId = c.req.param("instanceId")!;
       const snapshot = await durable.get(instanceId).getState();
       if (!snapshot) return c.json({ error: "Not found" }, 404);
-      return c.json(toStateResponse(durable, sp, machineId, instanceId, snapshot));
+      return c.json(toStateResponse(durable, { basePath: sp, machineId, instanceId }, snapshot));
     });
 
     // POST /:instanceId/:event — send event
@@ -214,7 +218,7 @@ export function createRestApi(options: RestApiOptions): Hono {
       await handle.send({ type: event });
       const snapshot = await handle.getState();
       if (!snapshot) return c.json({ error: "Not found" }, 404);
-      return c.json(toStateResponse(durable, sp, machineId, instanceId, snapshot));
+      return c.json(toStateResponse(durable, { basePath: sp, machineId, instanceId }, snapshot));
     });
 
     // POST /:instanceId — start instance
@@ -224,7 +228,7 @@ export function createRestApi(options: RestApiOptions): Hono {
       const handle = await durable.start(instanceId, input ?? {});
       const snapshot = await handle.getState();
       if (!snapshot) return c.json({ error: "Not found" }, 404);
-      return c.json(toStateResponse(durable, sp, machineId, instanceId, snapshot), 201);
+      return c.json(toStateResponse(durable, { basePath: sp, machineId, instanceId }, snapshot), 201);
     });
   }
 

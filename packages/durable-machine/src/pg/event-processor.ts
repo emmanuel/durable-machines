@@ -45,6 +45,7 @@ function resolveActorCreator(
   throw new DurableMachineError(
     `Cannot resolve actor creator. The actor implementation must be created ` +
       `with fromPromise(). Got: ${typeof impl}`,
+    "INTERNAL",
   );
 }
 
@@ -80,7 +81,7 @@ async function enqueueEffects(
   const retryPolicy = deps.options.effectRetryPolicy;
   const maxAttempts = retryPolicy?.maxAttempts ?? 3;
 
-  await deps.store.insertEffects(client, instanceId, nextSnapshot.value, effects, maxAttempts);
+  await deps.store.insertEffects({ client, instanceId, stateValue: nextSnapshot.value, effects, maxAttempts });
 }
 
 // ─── Core: Execute Invocations Inline ───────────────────────────────────────
@@ -119,6 +120,7 @@ async function executeInvocationsInline(
         throw new DurableMachineError(
           `No actor implementation found for "${invocation.src}". ` +
             `Ensure it is registered in setup({ actors: { ... } }).`,
+          "INTERNAL",
         );
       }
 
@@ -133,14 +135,14 @@ async function executeInvocationsInline(
       output = result.output;
       error = result.error;
 
-      await store.recordInvokeResult(
+      await store.recordInvokeResult({
         instanceId,
         stepKey,
         output,
         error,
         startedAt,
-        Date.now(),
-      );
+        completedAt: Date.now(),
+      });
     }
 
     // Transition based on result
@@ -190,14 +192,13 @@ async function handlePromptEntry(
     handles.push(handle);
   }
 
-  await deps.store.recordInvokeResult(
+  await deps.store.recordInvokeResult({
     instanceId,
     stepKey,
-    handles,
-    undefined,
-    Date.now(),
-    Date.now(),
-  );
+    output: handles,
+    startedAt: Date.now(),
+    completedAt: Date.now(),
+  });
 }
 
 async function handlePromptExit(
@@ -228,14 +229,13 @@ async function handlePromptExit(
     });
   }
 
-  await deps.store.recordInvokeResult(
+  await deps.store.recordInvokeResult({
     instanceId,
-    resolveKey,
-    true,
-    undefined,
-    Date.now(),
-    Date.now(),
-  );
+    stepKey: resolveKey,
+    output: true,
+    startedAt: Date.now(),
+    completedAt: Date.now(),
+  });
 }
 
 // ─── Process Startup ────────────────────────────────────────────────────────
@@ -268,17 +268,17 @@ export async function processStartup(
   try {
     await client.query("BEGIN");
 
-    await store.createInstance(
-      instanceId,
-      machine.id,
-      snapshot.value,
-      snapshot.context as Record<string, unknown>,
+    await store.createInstance({
+      id: instanceId,
+      machineName: machine.id,
+      stateValue: snapshot.value,
+      context: snapshot.context as Record<string, unknown>,
       input,
       wakeAt,
-      [],
-      client,
+      firedDelays: [],
+      queryable: client,
       wakeEvent,
-    );
+    });
 
     if (deps.options.effectHandlers) {
       const emptyPrev = { _nodes: [] } as unknown as AnyMachineSnapshot;
@@ -351,18 +351,18 @@ async function finalize(
 
   // Atomic: state change + cursor advance (+ transition log if applicable)
   if (enableTransitionStream && stateChanged) {
-    await store.finalizeWithTransition(
+    await store.finalizeWithTransition({
       client, instanceId,
-      current.value, current.context as Record<string, unknown>,
-      wakeAt, wakeEvent, firedDelays, status, eventSeq,
-      prevStateValue, current.value, event.type, Date.now(),
-    );
+      stateValue: current.value, context: current.context as Record<string, unknown>,
+      wakeAt, wakeEvent, firedDelays, status, eventCursor: eventSeq,
+      fromState: prevStateValue, toState: current.value, event: event.type, ts: Date.now(),
+    });
   } else {
-    await store.finalizeInstance(
+    await store.finalizeInstance({
       client, instanceId,
-      current.value, current.context as Record<string, unknown>,
-      wakeAt, wakeEvent, firedDelays, status, eventSeq,
-    );
+      stateValue: current.value, context: current.context as Record<string, unknown>,
+      wakeAt, wakeEvent, firedDelays, status, eventCursor: eventSeq,
+    });
   }
 
   // Prompt lifecycle, effects

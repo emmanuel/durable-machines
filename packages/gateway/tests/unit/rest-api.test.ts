@@ -20,6 +20,9 @@ function mockHandle(overrides: Partial<DurableMachineHandle> = {}): DurableMachi
     getResult: vi.fn().mockResolvedValue({ orderId: "123" }),
     getSteps: vi.fn().mockResolvedValue([{ name: "step1", output: "ok", error: undefined }]),
     cancel: vi.fn().mockResolvedValue(undefined),
+    getTransitions: vi.fn().mockResolvedValue([]),
+    listEffects: vi.fn().mockResolvedValue([]),
+    getEventLog: vi.fn().mockResolvedValue([]),
     ...overrides,
   };
 }
@@ -230,15 +233,6 @@ describe("createRestApi", () => {
       expect(body).toEqual(effects);
     });
 
-    it("returns 501 when backend does not support effects", async () => {
-      const { app } = makeApp();
-
-      const res = await app.request("/machines/order/instances/inst-1/effects");
-
-      expect(res.status).toBe(501);
-      const body = await res.json() as any;
-      expect(body.error).toContain("not supported");
-    });
   });
 
   describe("DELETE /machines/:machineId/instances/:instanceId — cancel", () => {
@@ -279,7 +273,7 @@ describe("createRestApi", () => {
   describe("error handler", () => {
     it("maps DurableMachineError 'not found' to 404", async () => {
       const handle = mockHandle({
-        getState: vi.fn().mockRejectedValue(new DurableMachineError("Instance not found")),
+        getState: vi.fn().mockRejectedValue(new DurableMachineError("Instance not found", "NOT_FOUND")),
       });
       const dm = mockDurable({ get: vi.fn().mockReturnValue(handle) });
       const { app } = makeApp(dm);
@@ -291,7 +285,7 @@ describe("createRestApi", () => {
 
     it("maps DurableMachineError 'already exists' to 409", async () => {
       const dm = mockDurable({
-        start: vi.fn().mockRejectedValue(new DurableMachineError("Instance already exists")),
+        start: vi.fn().mockRejectedValue(new DurableMachineError("Instance already exists", "ALREADY_EXISTS")),
       });
       const { app } = makeApp(dm);
 

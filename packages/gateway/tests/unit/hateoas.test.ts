@@ -66,7 +66,7 @@ describe("getAvailableEvents", () => {
 
 describe("buildLinks", () => {
   it("builds correct HATEOAS links", () => {
-    const links = buildLinks("/api/v1", "order", "ord-123", ["PAY", "CANCEL"]);
+    const links = buildLinks({ basePath: "/api/v1", machineId: "order", instanceId: "ord-123" }, ["PAY", "CANCEL"]);
 
     expect(links).toEqual({
       self: "/api/v1/machines/order/instances/ord-123",
@@ -80,7 +80,7 @@ describe("buildLinks", () => {
   });
 
   it("works with empty basePath", () => {
-    const links = buildLinks("", "order", "ord-1", []);
+    const links = buildLinks({ basePath: "", machineId: "order", instanceId: "ord-1" }, []);
 
     expect(links.self).toBe("/machines/order/instances/ord-1");
   });
@@ -96,7 +96,7 @@ describe("toStateResponse", () => {
       status: "running",
     };
 
-    const response = toStateResponse(durable, "", "order", "ord-1", snapshot);
+    const response = toStateResponse(durable, { basePath: "", machineId: "order", instanceId: "ord-1" }, snapshot);
 
     expect(response.instanceId).toBe("ord-1");
     expect(response.state).toBe("pending");

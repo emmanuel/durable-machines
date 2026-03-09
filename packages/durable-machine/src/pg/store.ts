@@ -1,6 +1,6 @@
 import type { Pool, PoolClient, Client as PgClient } from "pg";
 import type { StateValue } from "xstate";
-import type { StepInfo, TransitionRecord } from "../types.js";
+import type { StepInfo, TransitionRecord, InstanceStatus, EffectOutboxStatus } from "../types.js";
 import type { ResolvedEffect } from "../effects.js";
 
 const SCHEMA_SQL = `
@@ -139,7 +139,7 @@ export interface MachineRow {
   machineName: string;
   stateValue: StateValue;
   context: Record<string, unknown>;
-  status: string;
+  status: InstanceStatus;
   firedDelays: Array<string | number>;
   wakeAt: number | null;
   wakeEvent: unknown | null;
@@ -163,7 +163,7 @@ export interface EffectOutboxRow {
   stateValue: StateValue;
   effectType: string;
   effectPayload: Record<string, unknown>;
-  status: string;
+  status: EffectOutboxStatus;
   attempts: number;
   maxAttempts: number;
   lastError: string | null;
@@ -171,24 +171,64 @@ export interface EffectOutboxRow {
   completedAt: number | null;
 }
 
+// ─── Param Interfaces ────────────────────────────────────────────────────────
+
+export interface CreateInstanceParams {
+  id: string;
+  machineName: string;
+  stateValue: StateValue;
+  context: Record<string, unknown>;
+  input: Record<string, unknown> | null;
+  wakeAt?: number | null;
+  firedDelays?: Array<string | number>;
+  queryable?: PoolClient;
+  wakeEvent?: unknown;
+}
+
+export interface FinalizeParams {
+  client: PoolClient;
+  instanceId: string;
+  stateValue: StateValue;
+  context: Record<string, unknown>;
+  wakeAt: number | null;
+  wakeEvent: unknown | null;
+  firedDelays: Array<string | number>;
+  status: InstanceStatus;
+  eventCursor: number;
+}
+
+export interface TransitionData {
+  fromState: StateValue | null;
+  toState: StateValue;
+  event: string | null;
+  ts: number;
+}
+
+export interface RecordInvokeResultParams {
+  instanceId: string;
+  stepKey: string;
+  output: unknown;
+  error?: unknown;
+  startedAt?: number;
+  completedAt?: number;
+}
+
+export interface InsertEffectsParams {
+  client: PoolClient;
+  instanceId: string;
+  stateValue: StateValue;
+  effects: ResolvedEffect[];
+  maxAttempts?: number;
+}
+
 export interface PgStore {
   // Schema
   ensureSchema(): Promise<void>;
 
   // Instance CRUD
-  createInstance(
-    id: string,
-    machineName: string,
-    stateValue: StateValue,
-    context: Record<string, unknown>,
-    input: Record<string, unknown> | null,
-    wakeAt?: number | null,
-    firedDelays?: Array<string | number>,
-    queryable?: PoolClient,
-    wakeEvent?: unknown,
-  ): Promise<void>;
+  createInstance(params: CreateInstanceParams): Promise<void>;
   getInstance(id: string): Promise<MachineRow | null>;
-  updateInstanceStatus(id: string, status: string): Promise<void>;
+  updateInstanceStatus(id: string, status: InstanceStatus): Promise<void>;
   updateInstanceSnapshot(
     client: PoolClient,
     id: string,
@@ -197,7 +237,7 @@ export interface PgStore {
   ): Promise<void>;
   listInstances(filter?: {
     machineName?: string;
-    status?: string;
+    status?: InstanceStatus | string;
   }): Promise<MachineRow[]>;
 
   // Locking
@@ -241,43 +281,12 @@ export interface PgStore {
     instanceId: string,
     stepKey: string,
   ): Promise<{ output: unknown; error: unknown } | null>;
-  recordInvokeResult(
-    instanceId: string,
-    stepKey: string,
-    output: unknown,
-    error?: unknown,
-    startedAt?: number,
-    completedAt?: number,
-  ): Promise<void>;
+  recordInvokeResult(params: RecordInvokeResultParams): Promise<void>;
   listInvokeResults(instanceId: string): Promise<StepInfo[]>;
 
   // CTE finalize
-  finalizeInstance(
-    client: PoolClient,
-    instanceId: string,
-    stateValue: StateValue,
-    context: Record<string, unknown>,
-    wakeAt: number | null,
-    wakeEvent: unknown | null,
-    firedDelays: Array<string | number>,
-    status: string,
-    eventCursor: number,
-  ): Promise<void>;
-  finalizeWithTransition(
-    client: PoolClient,
-    instanceId: string,
-    stateValue: StateValue,
-    context: Record<string, unknown>,
-    wakeAt: number | null,
-    wakeEvent: unknown | null,
-    firedDelays: Array<string | number>,
-    status: string,
-    eventCursor: number,
-    fromState: StateValue | null,
-    toState: StateValue,
-    event: string | null,
-    ts: number,
-  ): Promise<void>;
+  finalizeInstance(params: FinalizeParams): Promise<void>;
+  finalizeWithTransition(params: FinalizeParams & TransitionData): Promise<void>;
 
   // Transition log
   appendTransition(
@@ -290,13 +299,7 @@ export interface PgStore {
   getTransitions(instanceId: string): Promise<TransitionRecord[]>;
 
   // Effect outbox
-  insertEffects(
-    client: PoolClient,
-    instanceId: string,
-    stateValue: StateValue,
-    effects: ResolvedEffect[],
-    maxAttempts?: number,
-  ): Promise<void>;
+  insertEffects(params: InsertEffectsParams): Promise<void>;
   claimPendingEffects(limit?: number): Promise<EffectOutboxRow[]>;
   markEffectCompleted(effectId: string): Promise<void>;
   markEffectFailed(effectId: string, error: string, nextRetryAt: number | null): Promise<void>;
@@ -320,7 +323,7 @@ function rowToMachine(row: any): MachineRow {
     machineName: row.machine_name,
     stateValue: row.state_value as StateValue,
     context: row.context as Record<string, unknown>,
-    status: row.status,
+    status: row.status as InstanceStatus,
     firedDelays: row.fired_delays as Array<string | number>,
     wakeAt: row.wake_at != null ? Number(row.wake_at) : null,
     wakeEvent: row.wake_event ?? null,
@@ -347,17 +350,8 @@ export function createStore(options: PgStoreOptions): PgStore {
 
   // ── Instance CRUD ───────────────────────────────────────────────────────
 
-  async function createInstance(
-    id: string,
-    machineName: string,
-    stateValue: StateValue,
-    context: Record<string, unknown>,
-    input: Record<string, unknown> | null,
-    wakeAt?: number | null,
-    firedDelays?: Array<string | number>,
-    queryable?: PoolClient,
-    wakeEvent?: unknown,
-  ): Promise<void> {
+  async function createInstance(params: CreateInstanceParams): Promise<void> {
+    const { id, machineName, stateValue, context, input, wakeAt, firedDelays, queryable, wakeEvent } = params;
     const q = queryable ?? pool;
     const now = Date.now();
     await q.query(
@@ -389,7 +383,7 @@ export function createStore(options: PgStoreOptions): PgStore {
 
   async function updateInstanceStatus(
     id: string,
-    status: string,
+    status: InstanceStatus,
   ): Promise<void> {
     await pool.query({
       name: "dm_update_instance_status",
@@ -583,14 +577,8 @@ export function createStore(options: PgStoreOptions): PgStore {
     return { output: rows[0].output, error: rows[0].error };
   }
 
-  async function recordInvokeResult(
-    instanceId: string,
-    stepKey: string,
-    output: unknown,
-    error?: unknown,
-    startedAt?: number,
-    completedAt?: number,
-  ): Promise<void> {
+  async function recordInvokeResult(params: RecordInvokeResultParams): Promise<void> {
+    const { instanceId, stepKey, output, error, startedAt, completedAt } = params;
     await pool.query({
       name: "dm_record_invoke_result",
       text: `INSERT INTO invoke_results (instance_id, step_key, output, error, started_at, completed_at)
@@ -627,17 +615,8 @@ export function createStore(options: PgStoreOptions): PgStore {
 
   // ── CTE Finalize ───────────────────────────────────────────────────────
 
-  async function finalizeInstance(
-    client: PoolClient,
-    instanceId: string,
-    stateValue: StateValue,
-    context: Record<string, unknown>,
-    wakeAt: number | null,
-    wakeEvent: unknown | null,
-    firedDelays: Array<string | number>,
-    status: string,
-    eventCursor: number,
-  ): Promise<void> {
+  async function finalizeInstance(params: FinalizeParams): Promise<void> {
+    const { client, instanceId, stateValue, context, wakeAt, wakeEvent, firedDelays, status, eventCursor } = params;
     await client.query({
       name: "dm_finalize_instance",
       text: `UPDATE machine_instances
@@ -658,21 +637,8 @@ export function createStore(options: PgStoreOptions): PgStore {
     });
   }
 
-  async function finalizeWithTransition(
-    client: PoolClient,
-    instanceId: string,
-    stateValue: StateValue,
-    context: Record<string, unknown>,
-    wakeAt: number | null,
-    wakeEvent: unknown | null,
-    firedDelays: Array<string | number>,
-    status: string,
-    eventCursor: number,
-    fromState: StateValue | null,
-    toState: StateValue,
-    event: string | null,
-    ts: number,
-  ): Promise<void> {
+  async function finalizeWithTransition(params: FinalizeParams & TransitionData): Promise<void> {
+    const { client, instanceId, stateValue, context, wakeAt, wakeEvent, firedDelays, status, eventCursor, fromState, toState, event, ts } = params;
     await client.query({
       name: "dm_finalize_with_transition",
       text: `WITH upd AS (
@@ -749,7 +715,7 @@ export function createStore(options: PgStoreOptions): PgStore {
       stateValue: row.state_value as StateValue,
       effectType: row.effect_type,
       effectPayload: row.effect_payload as Record<string, unknown>,
-      status: row.status,
+      status: row.status as EffectOutboxStatus,
       attempts: Number(row.attempts),
       maxAttempts: Number(row.max_attempts),
       lastError: row.last_error ?? null,
@@ -758,13 +724,8 @@ export function createStore(options: PgStoreOptions): PgStore {
     };
   }
 
-  async function insertEffects(
-    client: PoolClient,
-    instanceId: string,
-    stateValue: StateValue,
-    effects: ResolvedEffect[],
-    maxAttempts = 3,
-  ): Promise<void> {
+  async function insertEffects(params: InsertEffectsParams): Promise<void> {
+    const { client, instanceId, stateValue, effects, maxAttempts = 3 } = params;
     if (effects.length === 0) return;
     const now = Date.now();
     const stateJson = JSON.stringify(stateValue);

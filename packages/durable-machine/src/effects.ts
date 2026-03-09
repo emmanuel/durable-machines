@@ -37,13 +37,16 @@ export interface EffectHandlerRegistry {
  * @param handlers - Record mapping effect type names to handler functions
  * @returns A frozen registry with a `Map`-based lookup
  */
-export function createEffectHandlers(
+export function createEffectHandlerRegistry(
   handlers: Record<string, EffectHandler>,
 ): EffectHandlerRegistry {
   const map = new Map(Object.entries(handlers));
   const registry: EffectHandlerRegistry = { handlers: map };
   return Object.freeze(registry);
 }
+
+/** @deprecated Use {@link createEffectHandlerRegistry}. */
+export const createEffectHandlers = createEffectHandlerRegistry;
 
 /**
  * Extracts the effects config array from a state node's metadata, if present.

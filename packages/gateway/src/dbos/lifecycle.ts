@@ -32,13 +32,17 @@ export interface DBOSGatewayConfig {
 }
 
 export interface DBOSGatewayContext {
-  config: DBOSGatewayConfig;
-  client: GatewayClient;
+  readonly config: DBOSGatewayConfig;
+  readonly client: GatewayClient;
+  readonly metrics: GatewayMetrics;
+  readonly gateway: Hono;
+  readonly adminServer: Server;
+}
+
+/** @internal Full DBOS gateway context with internal lifecycle fields. */
+interface InternalDBOSGatewayContext extends DBOSGatewayContext {
   dbosClient: Awaited<ReturnType<typeof DBOSClient.create>>;
   appContext: AppContext;
-  metrics: GatewayMetrics;
-  gateway: Hono;
-  adminServer: Server;
   checkpointPool?: import("pg").Pool;
   streamConsumers?: StreamConsumerHandle[];
   cleanup?: () => Promise<void>;
@@ -78,9 +82,9 @@ export async function createDBOSGatewayContext(
 ): Promise<DBOSGatewayContext> {
   const dbosClient = await DBOSClient.create({ systemDatabaseUrl: config.dbUrl });
   const client: GatewayClient = {
-    send: (workflowId, message, topic) => dbosClient.send(workflowId, message, topic),
+    send: (workflowId, message) => dbosClient.send(workflowId, message, "xstate.event"),
     sendBatch: (messages) => Promise.all(
-      messages.map((m) => dbosClient.send(m.workflowId, m.message, m.topic)),
+      messages.map((m) => dbosClient.send(m.workflowId, m.message, "xstate.event")),
     ).then(() => {}),
     getState: (workflowId) => dbosClient.getEvent(workflowId, "xstate.state", 0.1),
   };
@@ -88,7 +92,7 @@ export async function createDBOSGatewayContext(
   // Late-bound: startGateway sets ctx.cleanup, which backend.stop() invokes
   // during signal-driven shutdown to stop streams and close the checkpoint pool.
   // eslint-disable-next-line prefer-const
-  let ctx: DBOSGatewayContext;
+  let ctx: InternalDBOSGatewayContext;
 
   const appContext = createAppContext({
     start: async () => {},
@@ -105,10 +109,11 @@ export async function createDBOSGatewayContext(
 }
 
 export function startDBOSGateway(ctx: DBOSGatewayContext): DBOSGatewayHandle {
-  const handle = startGateway(ctx);
+  const internal = ctx as InternalDBOSGatewayContext;
+  const handle = startGateway(internal);
 
   // Wire signal handlers via AppContext
-  void ctx.appContext.start({
+  void internal.appContext.start({
     servers: [handle.server, ctx.adminServer],
     timeoutMs: ctx.config.shutdownTimeoutMs,
   });

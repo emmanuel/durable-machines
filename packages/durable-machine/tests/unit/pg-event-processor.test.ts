@@ -42,17 +42,18 @@ function createMockStore(): PgStore & {
 
     async ensureSchema() {},
 
-    async createInstance(
-      id: string,
-      machineName: string,
-      stateValue: unknown,
-      context: Record<string, unknown>,
-      input: Record<string, unknown> | null,
-      wakeAt?: number | null,
-      firedDelays?: Array<string | number>,
-      _queryable?: unknown,
-      wakeEvent?: unknown,
-    ) {
+    async createInstance(params: {
+      id: string;
+      machineName: string;
+      stateValue: unknown;
+      context: Record<string, unknown>;
+      input: Record<string, unknown> | null;
+      wakeAt?: number | null;
+      firedDelays?: Array<string | number>;
+      queryable?: unknown;
+      wakeEvent?: unknown;
+    }) {
+      const { id, machineName, stateValue, context, input, wakeAt, firedDelays, wakeEvent } = params;
       const now = Date.now();
       instances.set(id, {
         id,
@@ -74,7 +75,7 @@ function createMockStore(): PgStore & {
       return instances.get(id) ?? null;
     },
 
-    async updateInstanceStatus(id: string, status: string) {
+    async updateInstanceStatus(id: string, status: any) {
       const row = instances.get(id);
       if (!row) return;
       row.status = status;
@@ -147,12 +148,13 @@ function createMockStore(): PgStore & {
       return invokeResults.get(`${instanceId}:${stepKey}`) ?? null;
     },
 
-    async recordInvokeResult(
-      instanceId: string,
-      stepKey: string,
-      output: unknown,
-      error?: unknown,
-    ) {
+    async recordInvokeResult(params: {
+      instanceId: string;
+      stepKey: string;
+      output: unknown;
+      error?: unknown;
+    }) {
+      const { instanceId, stepKey, output, error } = params;
       const key = `${instanceId}:${stepKey}`;
       if (!invokeResults.has(key)) {
         invokeResults.set(key, { output, error: error ?? null });
@@ -173,42 +175,44 @@ function createMockStore(): PgStore & {
       return results;
     },
 
-    async finalizeInstance(
-      _client: any, instanceId: string,
-      stateValue: unknown, context: Record<string, unknown>,
-      wakeAt: unknown, _wakeEvent: unknown,
-      firedDelays: unknown, status: string, eventCursor: number,
-    ) {
+    async finalizeInstance(params: {
+      client: any; instanceId: string;
+      stateValue: unknown; context: Record<string, unknown>;
+      wakeAt: unknown; wakeEvent: unknown;
+      firedDelays: unknown; status: string; eventCursor: number;
+    }) {
+      const { instanceId, stateValue, context, wakeAt, firedDelays, status, eventCursor } = params;
       const row = instances.get(instanceId);
       if (row) {
         row.stateValue = stateValue as any;
         row.context = context;
         row.wakeAt = wakeAt as any;
         row.firedDelays = firedDelays as any;
-        row.status = status;
+        row.status = status as any;
         row.eventCursor = eventCursor;
         row.updatedAt = Date.now();
       }
     },
 
-    async finalizeWithTransition(
-      _client: any, instanceId: string,
-      stateValue: unknown, context: Record<string, unknown>,
-      wakeAt: unknown, _wakeEvent: unknown,
-      firedDelays: unknown, status: string, eventCursor: number,
-      from: unknown, to: unknown, event: string | null, ts: number,
-    ) {
+    async finalizeWithTransition(params: {
+      client: any; instanceId: string;
+      stateValue: unknown; context: Record<string, unknown>;
+      wakeAt: unknown; wakeEvent: unknown;
+      firedDelays: unknown; status: string; eventCursor: number;
+      fromState: unknown; toState: unknown; event: string | null; ts: number;
+    }) {
+      const { instanceId, stateValue, context, wakeAt, firedDelays, status, eventCursor, fromState, toState, event, ts } = params;
       const row = instances.get(instanceId);
       if (row) {
         row.stateValue = stateValue as any;
         row.context = context;
         row.wakeAt = wakeAt as any;
         row.firedDelays = firedDelays as any;
-        row.status = status;
+        row.status = status as any;
         row.eventCursor = eventCursor;
         row.updatedAt = Date.now();
       }
-      transitions.push({ instanceId, from, to, event, ts });
+      transitions.push({ instanceId, from: fromState, to: toState, event, ts });
     },
 
     async appendTransition(instanceId: string, from: unknown, to: unknown, event: string | null, ts: number) {

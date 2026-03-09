@@ -29,13 +29,13 @@ describe("PgStore", () => {
   // ── Instance CRUD ─────────────────────────────────────────────────────
 
   it("createInstance + getInstance round-trip", async () => {
-    await store.createInstance(
-      "test-1",
-      "orderMachine",
-      "pending",
-      { orderId: "o1", total: 50 },
-      { orderId: "o1", total: 50 },
-    );
+    await store.createInstance({
+      id: "test-1",
+      machineName: "orderMachine",
+      stateValue: "pending",
+      context: { orderId: "o1", total: 50 },
+      input: { orderId: "o1", total: 50 },
+    });
 
     const row = await store.getInstance("test-1");
     expect(row).not.toBeNull();
@@ -54,22 +54,22 @@ describe("PgStore", () => {
   });
 
   it("finalizeInstance updates all fields", async () => {
-    await store.createInstance(
-      "test-2",
-      "orderMachine",
-      "pending",
-      { orderId: "o2" },
-      null,
-    );
+    await store.createInstance({
+      id: "test-2",
+      machineName: "orderMachine",
+      stateValue: "pending",
+      context: { orderId: "o2" },
+      input: null,
+    });
 
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      await store.finalizeInstance(
-        client, "test-2",
-        "paid", { orderId: "o2", chargeId: "ch_1" },
-        null, null, [], "running", 0,
-      );
+      await store.finalizeInstance({
+        client, instanceId: "test-2",
+        stateValue: "paid", context: { orderId: "o2", chargeId: "ch_1" },
+        wakeAt: null, wakeEvent: null, firedDelays: [], status: "running", eventCursor: 0,
+      });
       await client.query("COMMIT");
     } finally {
       client.release();
@@ -82,9 +82,9 @@ describe("PgStore", () => {
   });
 
   it("listInstances with machineName filter", async () => {
-    await store.createInstance("list-1", "machineA", "idle", {}, null);
-    await store.createInstance("list-2", "machineB", "idle", {}, null);
-    await store.createInstance("list-3", "machineA", "active", {}, null);
+    await store.createInstance({ id: "list-1", machineName: "machineA", stateValue: "idle", context: {}, input: null });
+    await store.createInstance({ id: "list-2", machineName: "machineB", stateValue: "idle", context: {}, input: null });
+    await store.createInstance({ id: "list-3", machineName: "machineA", stateValue: "active", context: {}, input: null });
 
     const results = await store.listInstances({ machineName: "machineA" });
     expect(results).toHaveLength(2);
@@ -92,9 +92,9 @@ describe("PgStore", () => {
   });
 
   it("listInstances with status filter", async () => {
-    await store.createInstance("list-4", "m1", "idle", {}, null);
+    await store.createInstance({ id: "list-4", machineName: "m1", stateValue: "idle", context: {}, input: null });
     await store.updateInstanceStatus("list-4", "done");
-    await store.createInstance("list-5", "m1", "idle", {}, null);
+    await store.createInstance({ id: "list-5", machineName: "m1", stateValue: "idle", context: {}, input: null });
 
     const results = await store.listInstances({ status: "running" });
     expect(results).toHaveLength(1);
@@ -104,7 +104,7 @@ describe("PgStore", () => {
   // ── Locking ───────────────────────────────────────────────────────────
 
   it("lockAndGetInstance returns row within transaction", async () => {
-    await store.createInstance("lock-1", "m1", "idle", {}, null);
+    await store.createInstance({ id: "lock-1", machineName: "m1", stateValue: "idle", context: {}, input: null });
 
     const client = await pool.connect();
     try {
@@ -121,7 +121,7 @@ describe("PgStore", () => {
   // ── Event Log ───────────────────────────────────────────────────────
 
   it("appendEvent + getEventLog round-trip", async () => {
-    await store.createInstance("evlog-1", "m1", "idle", {}, null);
+    await store.createInstance({ id: "evlog-1", machineName: "m1", stateValue: "idle", context: {}, input: null });
 
     const { seq: seq1 } = await store.appendEvent("evlog-1", { type: "A" });
     const { seq: seq2 } = await store.appendEvent("evlog-1", { type: "B" });
@@ -136,7 +136,7 @@ describe("PgStore", () => {
   });
 
   it("appendEvent with custom topic and source", async () => {
-    await store.createInstance("evlog-2", "m1", "idle", {}, null);
+    await store.createInstance({ id: "evlog-2", machineName: "m1", stateValue: "idle", context: {}, input: null });
 
     await store.appendEvent("evlog-2", { type: "TIMEOUT" }, "timeout", "system:timeout");
 
@@ -147,13 +147,13 @@ describe("PgStore", () => {
   });
 
   it("getEventLog returns empty array when no events", async () => {
-    await store.createInstance("evlog-3", "m1", "idle", {}, null);
+    await store.createInstance({ id: "evlog-3", machineName: "m1", stateValue: "idle", context: {}, input: null });
     const log = await store.getEventLog("evlog-3");
     expect(log).toHaveLength(0);
   });
 
   it("getEventLog supports afterSeq and limit", async () => {
-    await store.createInstance("evlog-4", "m1", "idle", {}, null);
+    await store.createInstance({ id: "evlog-4", machineName: "m1", stateValue: "idle", context: {}, input: null });
 
     await store.appendEvent("evlog-4", { type: "A" });
     const { seq: seq2 } = await store.appendEvent("evlog-4", { type: "B" });
@@ -169,7 +169,7 @@ describe("PgStore", () => {
   });
 
   it("lockAndPeekEvent returns row + next unconsumed event", async () => {
-    await store.createInstance("peek-1", "m1", "idle", {}, null);
+    await store.createInstance({ id: "peek-1", machineName: "m1", stateValue: "idle", context: {}, input: null });
     await store.appendEvent("peek-1", { type: "X" });
 
     const client = await pool.connect();
@@ -187,7 +187,7 @@ describe("PgStore", () => {
   });
 
   it("lockAndPeekEvent returns null nextEvent when no unconsumed events", async () => {
-    await store.createInstance("peek-2", "m1", "idle", {}, null);
+    await store.createInstance({ id: "peek-2", machineName: "m1", stateValue: "idle", context: {}, input: null });
 
     const client = await pool.connect();
     try {
@@ -214,7 +214,7 @@ describe("PgStore", () => {
   });
 
   it("lockAndPeekEvent respects event_cursor", async () => {
-    await store.createInstance("peek-3", "m1", "idle", {}, null);
+    await store.createInstance({ id: "peek-3", machineName: "m1", stateValue: "idle", context: {}, input: null });
     const { seq: seq1 } = await store.appendEvent("peek-3", { type: "A" });
     await store.appendEvent("peek-3", { type: "B" });
 
@@ -222,7 +222,7 @@ describe("PgStore", () => {
     const client0 = await pool.connect();
     try {
       await client0.query("BEGIN");
-      await store.finalizeInstance(client0, "peek-3", "idle", {}, null, null, [], "running", seq1);
+      await store.finalizeInstance({ client: client0, instanceId: "peek-3", stateValue: "idle", context: {}, wakeAt: null, wakeEvent: null, firedDelays: [], status: "running", eventCursor: seq1 });
       await client0.query("COMMIT");
     } finally {
       client0.release();
@@ -244,16 +244,15 @@ describe("PgStore", () => {
   // ── Invoke Results ────────────────────────────────────────────────────
 
   it("recordInvokeResult + getInvokeResult round-trip", async () => {
-    await store.createInstance("inv-1", "m1", "idle", {}, null);
+    await store.createInstance({ id: "inv-1", machineName: "m1", stateValue: "idle", context: {}, input: null });
 
-    await store.recordInvokeResult(
-      "inv-1",
-      "invoke:processPayment",
-      { chargeId: "ch_1" },
-      undefined,
-      1000,
-      2000,
-    );
+    await store.recordInvokeResult({
+      instanceId: "inv-1",
+      stepKey: "invoke:processPayment",
+      output: { chargeId: "ch_1" },
+      startedAt: 1000,
+      completedAt: 2000,
+    });
 
     const result = await store.getInvokeResult("inv-1", "invoke:processPayment");
     expect(result).not.toBeNull();
@@ -262,20 +261,20 @@ describe("PgStore", () => {
   });
 
   it("recordInvokeResult idempotent (ON CONFLICT DO NOTHING)", async () => {
-    await store.createInstance("inv-2", "m1", "idle", {}, null);
+    await store.createInstance({ id: "inv-2", machineName: "m1", stateValue: "idle", context: {}, input: null });
 
-    await store.recordInvokeResult("inv-2", "step-1", { a: 1 });
-    await store.recordInvokeResult("inv-2", "step-1", { a: 2 });
+    await store.recordInvokeResult({ instanceId: "inv-2", stepKey: "step-1", output: { a: 1 } });
+    await store.recordInvokeResult({ instanceId: "inv-2", stepKey: "step-1", output: { a: 2 } });
 
     const result = await store.getInvokeResult("inv-2", "step-1");
     expect(result!.output).toMatchObject({ a: 1 });
   });
 
   it("listInvokeResults returns StepInfo[]", async () => {
-    await store.createInstance("inv-3", "m1", "idle", {}, null);
+    await store.createInstance({ id: "inv-3", machineName: "m1", stateValue: "idle", context: {}, input: null });
 
-    await store.recordInvokeResult("inv-3", "invoke:a", { r: 1 }, undefined, 100, 200);
-    await store.recordInvokeResult("inv-3", "invoke:b", { r: 2 }, undefined, 300, 400);
+    await store.recordInvokeResult({ instanceId: "inv-3", stepKey: "invoke:a", output: { r: 1 }, startedAt: 100, completedAt: 200 });
+    await store.recordInvokeResult({ instanceId: "inv-3", stepKey: "invoke:b", output: { r: 2 }, startedAt: 300, completedAt: 400 });
 
     const steps = await store.listInvokeResults("inv-3");
     expect(steps).toHaveLength(2);
@@ -288,7 +287,7 @@ describe("PgStore", () => {
   // ── Transition Log ────────────────────────────────────────────────────
 
   it("appendTransition + getTransitions ordered by seq", async () => {
-    await store.createInstance("trans-1", "m1", "idle", {}, null);
+    await store.createInstance({ id: "trans-1", machineName: "m1", stateValue: "idle", context: {}, input: null });
 
     await store.appendTransition("trans-1", null, "pending", null, 1000);
     await store.appendTransition("trans-1", "pending", "paid", "PAY", 2000);
@@ -315,8 +314,8 @@ describe("PgStore", () => {
 
   describe("sendMachineEventBatch", () => {
     it("inserts multiple events in a single call", async () => {
-      await store.createInstance("batch-1", "m1", "idle", {}, null);
-      await store.createInstance("batch-2", "m1", "idle", {}, null);
+      await store.createInstance({ id: "batch-1", machineName: "m1", stateValue: "idle", context: {}, input: null });
+      await store.createInstance({ id: "batch-2", machineName: "m1", stateValue: "idle", context: {}, input: null });
 
       await sendMachineEventBatch(pool, [
         { workflowId: "batch-1", event: { type: "A" } },
@@ -342,7 +341,7 @@ describe("PgStore", () => {
     });
 
     it("produces same rows as individual sendMachineEvent calls", async () => {
-      await store.createInstance("cmp-1", "m1", "idle", {}, null);
+      await store.createInstance({ id: "cmp-1", machineName: "m1", stateValue: "idle", context: {}, input: null });
 
       await sendMachineEvent(pool, "cmp-1", { type: "X" });
       await sendMachineEvent(pool, "cmp-1", { type: "Y" });

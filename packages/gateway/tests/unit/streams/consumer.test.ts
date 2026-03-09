@@ -48,15 +48,15 @@ function createStringTransport(
 }
 
 function createMockClient() {
-  const sends: Array<{ workflowId: string; message: unknown; topic: string }> = [];
+  const sends: Array<{ workflowId: string; message: unknown }> = [];
   return {
     sends,
-    async send(workflowId: string, message: unknown, topic: string) {
-      sends.push({ workflowId, message, topic });
+    async send(workflowId: string, message: unknown) {
+      sends.push({ workflowId, message });
     },
-    async sendBatch(messages: Array<{ workflowId: string; message: unknown; topic: string }>) {
-      for (const { workflowId, message, topic } of messages) {
-        sends.push({ workflowId, message, topic });
+    async sendBatch(messages: Array<{ workflowId: string; message: unknown }>) {
+      for (const { workflowId, message } of messages) {
+        sends.push({ workflowId, message });
       }
     },
     async getState() { return null; },
@@ -85,8 +85,8 @@ describe("startStreamConsumer", () => {
     await handle.stopped;
 
     expect(client.sends).toHaveLength(2);
-    expect(client.sends[0]).toEqual({ workflowId: "wf-1", message: { type: "test", value: 1 }, topic: "xstate.event" });
-    expect(client.sends[1]).toEqual({ workflowId: "wf-1", message: { type: "test", value: 2 }, topic: "xstate.event" });
+    expect(client.sends[0]).toEqual({ workflowId: "wf-1", message: { type: "test", value: 1 } });
+    expect(client.sends[1]).toEqual({ workflowId: "wf-1", message: { type: "test", value: 2 } });
   });
 
   it("routes per-item (fan-out to different workflows)", async () => {
@@ -268,10 +268,10 @@ describe("startStreamConsumer", () => {
       { raw: "batch", cursor: { pos: 1 } },
     ]);
     const failingClient = {
-      sends: [] as Array<{ workflowId: string; message: unknown; topic: string }>,
-      async send(workflowId: string, message: unknown, topic: string) {
+      sends: [] as Array<{ workflowId: string; message: unknown }>,
+      async send(workflowId: string, message: unknown) {
         if (workflowId === "wf-fail") throw new Error("dispatch failed");
-        failingClient.sends.push({ workflowId, message, topic });
+        failingClient.sends.push({ workflowId, message });
       },
       async sendBatch() {
         throw new Error("batch dispatch failed");

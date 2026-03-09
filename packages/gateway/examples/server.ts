@@ -4,12 +4,12 @@ import type { GatewayClient } from "../src/index.js";
 
 // In a real app, use DBOSClient from @dbos-inc/dbos-sdk
 const client: GatewayClient = {
-  async send(workflowId, message, topic) {
-    console.log(`[send] ${workflowId} <- ${JSON.stringify(message)} (topic: ${topic})`);
+  async send(workflowId, message) {
+    console.log(`[send] ${workflowId} <- ${JSON.stringify(message)}`);
   },
   async sendBatch(messages) {
-    for (const { workflowId, message, topic } of messages) {
-      console.log(`[send] ${workflowId} <- ${JSON.stringify(message)} (topic: ${topic})`);
+    for (const { workflowId, message } of messages) {
+      console.log(`[send] ${workflowId} <- ${JSON.stringify(message)}`);
     }
   },
   async getState(_workflowId) {

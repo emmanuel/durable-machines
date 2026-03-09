@@ -64,10 +64,10 @@ export interface WebhookBinding<TPayload = unknown, TItem = TPayload> {
 
 /** Minimal subset of DBOSClient used by the gateway. */
 export interface GatewayClient {
-  /** Sends a message to a running workflow on the given topic. */
-  send<T>(workflowId: string, message: T, topic: string): Promise<void>;
-  /** Sends a batch of messages in a single operation. */
-  sendBatch<T>(messages: Array<{ workflowId: string; message: T; topic: string }>): Promise<void>;
+  /** Sends an event to a running workflow. */
+  send<T>(workflowId: string, message: T): Promise<void>;
+  /** Sends a batch of events in a single operation. */
+  sendBatch<T>(messages: Array<{ workflowId: string; message: T }>): Promise<void>;
   /** Retrieves the current durable state snapshot for a workflow. */
   getState(workflowId: string): Promise<import("@durable-xstate/durable-machine").DurableStateSnapshot | null>;
 }

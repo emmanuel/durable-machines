@@ -1,6 +1,24 @@
 import type { Server } from "node:http";
 import type { StateValue, AnyEventObject, AnyStateMachine } from "xstate";
 
+// ─── Logger ──────────────────────────────────────────────────────────────────
+
+/** Pino-compatible logger interface. */
+export interface Logger {
+  info(obj: Record<string, unknown>, msg: string): void;
+  warn(obj: Record<string, unknown>, msg: string): void;
+  error(obj: Record<string, unknown>, msg: string): void;
+  debug(obj: Record<string, unknown>, msg: string): void;
+}
+
+// ─── Status Types ───────────────────────────────────────────────────────────
+
+/** Lifecycle status of a durable machine instance. */
+export type InstanceStatus = "running" | "done" | "error" | "cancelled";
+
+/** Execution status of a single effect in the transactional outbox. */
+export type EffectOutboxStatus = "pending" | "executing" | "completed" | "failed";
+
 // ─── Durable State ──────────────────────────────────────────────────────────
 
 /**
@@ -12,8 +30,8 @@ export interface DurableStateSnapshot {
   value: StateValue;
   /** The machine's extended state (context data) at the time of this snapshot. */
   context: Record<string, unknown>;
-  /** Workflow lifecycle status: `"running"` while active, `"done"` when the machine reaches a final state, `"error"` on failure. */
-  status: "running" | "done" | "error";
+  /** Workflow lifecycle status. */
+  status: InstanceStatus;
 }
 
 // ─── Invocation ─────────────────────────────────────────────────────────────
@@ -142,12 +160,12 @@ export interface DurableMachineHandle<TContext = Record<string, unknown>> {
   getSteps(): Promise<StepInfo[]>;
   /** Cancel the running workflow. The machine will not process further events. */
   cancel(): Promise<void>;
-  /** Return the ordered list of state transitions recorded for this instance. Requires `enableTransitionStream` on DBOS backend; always available on PG backend. */
-  getTransitions?(): Promise<TransitionRecord[]>;
-  /** Return the list of effects enqueued for this instance, with their execution status. Only available on PG backend. */
-  listEffects?(): Promise<EffectStatus[]>;
-  /** Return the ordered log of all events received by this instance. Only available on PG backend. */
-  getEventLog?(opts?: { afterSeq?: number; limit?: number }): Promise<EventLogEntry[]>;
+  /** Return the ordered list of state transitions recorded for this instance. */
+  getTransitions(): Promise<TransitionRecord[]>;
+  /** Return the list of effects enqueued for this instance, with their execution status. */
+  listEffects(): Promise<EffectStatus[]>;
+  /** Return the ordered log of all events received by this instance. */
+  getEventLog(opts?: { afterSeq?: number; limit?: number }): Promise<EventLogEntry[]>;
 }
 
 /** A single entry in the append-only event log. */
@@ -164,7 +182,7 @@ export interface EffectStatus {
   id: string;
   effectType: string;
   effectPayload: Record<string, unknown>;
-  status: "pending" | "executing" | "completed" | "failed";
+  status: EffectOutboxStatus;
   attempts: number;
   maxAttempts: number;
   lastError: string | null;
@@ -176,7 +194,7 @@ export interface EffectStatus {
 export interface DurableMachineStatus {
   /** The unique workflow/instance ID. */
   workflowId: string;
-  /** Current workflow status (e.g. `"PENDING"`, `"SUCCESS"`, `"ERROR"`). */
+  /** Current workflow lifecycle status. */
   status: string;
   /** The registered machine/workflow name. */
   workflowName: string;
@@ -193,13 +211,13 @@ export interface DurableMachine<T extends AnyStateMachine = AnyStateMachine> {
   start(
     workflowId: string,
     input: Record<string, unknown>,
-  ): Promise<DurableMachineHandle>;
+  ): Promise<DurableMachineHandle<Record<string, unknown>>>;
 
   /** Get a handle to an existing machine instance by workflow ID. */
-  get(workflowId: string): DurableMachineHandle;
+  get(workflowId: string): DurableMachineHandle<Record<string, unknown>>;
 
   /** List machine instances, optionally filtered by status. */
-  list(filter?: { status?: string }): Promise<DurableMachineStatus[]>;
+  list(filter?: { status?: InstanceStatus | string }): Promise<DurableMachineStatus[]>;
 
   /** The underlying XState machine definition. */
   readonly machine: T;
@@ -416,9 +434,18 @@ export interface DurableMachineOptions {
 
 // ─── Errors ─────────────────────────────────────────────────────────────────
 
+/** Discriminated error codes for {@link DurableMachineError}. */
+export type DurableMachineErrorCode =
+  | "NOT_FOUND"
+  | "ALREADY_EXISTS"
+  | "NOT_RUNNING"
+  | "CANCELLED"
+  | "ERRORED"
+  | "INTERNAL";
+
 /** General runtime error thrown by the durable machine infrastructure (e.g. timeout, unexpected state). */
 export class DurableMachineError extends Error {
-  constructor(message: string) {
+  constructor(message: string, public readonly code: DurableMachineErrorCode) {
     super(message);
     this.name = "DurableMachineError";
   }

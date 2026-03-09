@@ -78,7 +78,7 @@ async function dispatchItems<TItem>(
   transform: ItemTransform<TItem>,
   client: GatewayClient,
 ): Promise<number> {
-  const batch: Array<{ workflowId: string; message: XStateEvent; topic: string }> = [];
+  const batch: Array<{ workflowId: string; message: XStateEvent }> = [];
 
   for (const item of items) {
     const routeResult = await router.route(item);
@@ -87,7 +87,7 @@ async function dispatchItems<TItem>(
 
     const event = transform.transform(item);
     for (const id of ids) {
-      batch.push({ workflowId: id, message: event, topic: "xstate.event" });
+      batch.push({ workflowId: id, message: event });
     }
   }
 
@@ -110,22 +110,9 @@ function registerBinding(
     const body = c.get("rawBody" as never) as string;
     const headers: Record<string, string | undefined> = {};
 
-    // Extract relevant headers
-    for (const key of [
-      "x-slack-request-timestamp",
-      "x-slack-signature",
-      "stripe-signature",
-      "x-hub-signature-256",
-      "x-github-event",
-      "x-github-delivery",
-      "linear-signature",
-      "x-cal-signature-256",
-      "x-twilio-signature",
-      "authorization",
-      "x-experience-api-version",
-      "content-type",
-    ]) {
-      headers[key] = c.req.header(key);
+    // Pass all headers so custom webhook sources can access non-standard signature headers
+    for (const [key, value] of c.req.raw.headers.entries()) {
+      headers[key] = value;
     }
 
     const rawReq: RawRequest = { headers, body };
@@ -144,8 +131,9 @@ function registerBinding(
       const response = await binding.onResponse(payload, c);
       if (response) {
         // Item-level dispatch, fire-and-forget
-        dispatchItems(items, binding.router, binding.transform, client).catch(() => {
-          // Swallow errors — webhook already acked
+        dispatchItems(items, binding.router, binding.transform, client).catch((err) => {
+          metrics?.webhooksReceived?.inc({ path: binding.path, status: "dispatch_error" });
+          console.error("[gateway] background dispatch failed:", binding.path, err);
         });
         return response;
       }

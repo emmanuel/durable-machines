@@ -136,7 +136,6 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await worker.pool.query("TRUNCATE machine_instances CASCADE");
-  await worker.store.close();
   await worker.pool.end();
 });
 

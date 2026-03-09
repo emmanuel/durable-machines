@@ -4,7 +4,6 @@ import type { DurableStateSnapshot } from "@durable-xstate/durable-machine";
 export interface SendCall {
   workflowId: string;
   message: unknown;
-  topic: string;
 }
 
 export interface MockClient extends GatewayClient {
@@ -20,12 +19,12 @@ export function createMockClient(): MockClient {
   return {
     sends,
     stateStubs,
-    async send(workflowId: string, message: unknown, topic: string): Promise<void> {
-      sends.push({ workflowId, message, topic });
+    async send(workflowId: string, message: unknown): Promise<void> {
+      sends.push({ workflowId, message });
     },
-    async sendBatch(messages: Array<{ workflowId: string; message: unknown; topic: string }>): Promise<void> {
-      for (const { workflowId, message, topic } of messages) {
-        sends.push({ workflowId, message, topic });
+    async sendBatch(messages: Array<{ workflowId: string; message: unknown }>): Promise<void> {
+      for (const { workflowId, message } of messages) {
+        sends.push({ workflowId, message });
       }
     },
     async getState(workflowId: string): Promise<DurableStateSnapshot | null> {

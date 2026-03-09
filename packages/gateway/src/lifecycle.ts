@@ -24,15 +24,15 @@ const gatewayConfigSchema = z.object({
   shutdownTimeoutMs: z.coerce.number().int().positive().default(30_000),
 });
 
-export interface GatewayConfig {
+export interface DBOSGatewayConfig {
   port: number;
   adminPort: number;
   dbUrl: string;
   shutdownTimeoutMs: number;
 }
 
-export interface GatewayContext {
-  config: GatewayConfig;
+export interface DBOSGatewayContext {
+  config: DBOSGatewayConfig;
   client: GatewayClient;
   dbosClient: Awaited<ReturnType<typeof DBOSClient.create>>;
   metrics: GatewayMetrics;
@@ -42,15 +42,15 @@ export interface GatewayContext {
   streamConsumers?: StreamConsumerHandle[];
 }
 
-export interface GatewayHandle {
+export interface DBOSGatewayHandle {
   shutdown(): Promise<void>;
   server: Server;
   adminServer: Server;
 }
 
-export function parseGatewayConfig(
+export function parseDBOSGatewayConfig(
   env: Record<string, string | undefined> = process.env,
-): GatewayConfig {
+): DBOSGatewayConfig {
   const result = gatewayConfigSchema.safeParse({
     port: env.PORT,
     adminPort: env.ADMIN_PORT,
@@ -68,7 +68,7 @@ export function parseGatewayConfig(
   return result.data;
 }
 
-export interface GatewayContextOptions {
+export interface DBOSGatewayContextOptions {
   bindings: WebhookBinding<any>[];
   /** Register durable machines to expose via the REST API with HATEOAS responses. */
   machines?: MachineRegistry;
@@ -92,10 +92,10 @@ export interface GatewayContextOptions {
   logger?: Logger;
 }
 
-export async function createGatewayContext(
-  config: GatewayConfig,
-  options: GatewayContextOptions,
-): Promise<GatewayContext> {
+export async function createDBOSGatewayContext(
+  config: DBOSGatewayConfig,
+  options: DBOSGatewayContextOptions,
+): Promise<DBOSGatewayContext> {
   const dbosClient = await DBOSClient.create({ systemDatabaseUrl: config.dbUrl });
   const client: GatewayClient = {
     send: (workflowId, message, topic) => dbosClient.send(workflowId, message, topic),
@@ -134,7 +134,7 @@ export async function createGatewayContext(
     isReady: () => !isShuttingDown(),
   });
 
-  const ctx: GatewayContext = { config, client, dbosClient, metrics, gateway, adminServer };
+  const ctx: DBOSGatewayContext = { config, client, dbosClient, metrics, gateway, adminServer };
 
   if (options.streams && options.streams.length > 0) {
     const { Pool } = await import("pg");
@@ -162,7 +162,7 @@ export async function createGatewayContext(
   return ctx;
 }
 
-export function startGateway(ctx: GatewayContext): GatewayHandle {
+export function startDBOSGateway(ctx: DBOSGatewayContext): DBOSGatewayHandle {
   const server = serve({
     fetch: ctx.gateway.fetch,
     port: ctx.config.port,

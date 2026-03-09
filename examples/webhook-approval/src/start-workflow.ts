@@ -1,11 +1,11 @@
 import { consoleChannel } from "@durable-xstate/durable-machine";
-import { parseWorkerConfig, createWorkerContext } from "@durable-xstate/worker";
+import { parseDBOSWorkerConfig, createDBOSWorkerContext } from "@durable-xstate/worker";
 import { approvalMachine } from "./machine.js";
 
 const requestId = process.argv[2] || `req-${Date.now()}`;
 
-const config = parseWorkerConfig();
-const ctx = await createWorkerContext(config, {
+const config = parseDBOSWorkerConfig();
+const ctx = await createDBOSWorkerContext(config, {
   machines: {
     approvals: { machine: approvalMachine, options: { channels: [consoleChannel()] } },
   },

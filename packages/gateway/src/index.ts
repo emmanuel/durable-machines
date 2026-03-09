@@ -21,8 +21,8 @@ export { createGatewayMetrics } from "./metrics.js";
 export type { GatewayMetrics } from "./metrics.js";
 
 // Lifecycle
-export { parseGatewayConfig, createGatewayContext, startGateway } from "./lifecycle.js";
-export type { GatewayConfig, GatewayContext, GatewayContextOptions, GatewayHandle } from "./lifecycle.js";
+export { parseDBOSGatewayConfig, createDBOSGatewayContext, startDBOSGateway } from "./lifecycle.js";
+export type { DBOSGatewayConfig, DBOSGatewayContext, DBOSGatewayContextOptions, DBOSGatewayHandle } from "./lifecycle.js";
 
 // Types
 export type {

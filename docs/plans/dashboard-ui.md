@@ -62,8 +62,8 @@ interface DashboardOptions {
 ### Existing files to modify
 
 - `packages/gateway/src/lifecycle.ts` — add `dashboardPath?: string` and
-  optional `store?: PgStore` to `GatewayContextOptions`, mount dashboard in
-  `createGatewayContext()`
+  optional `store?: PgStore` to `DBOSGatewayContextOptions`, mount dashboard in
+  `createDBOSGatewayContext()`
 - `packages/gateway/src/index.ts` — re-export `createDashboard`, `DashboardOptions`
 
 ### Existing functions to reuse

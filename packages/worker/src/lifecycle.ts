@@ -20,7 +20,7 @@ const workerConfigSchema = z.object({
   shutdownTimeoutMs: z.coerce.number().int().positive().default(30_000),
 });
 
-export interface WorkerConfig {
+export interface DBOSWorkerConfig {
   adminPort?: number;
   shutdownTimeoutMs: number;
 }
@@ -30,20 +30,20 @@ export type MachineDefinitions = Record<string, {
   options?: DurableMachineOptions;
 }>;
 
-export interface WorkerContext<T extends MachineDefinitions = MachineDefinitions> {
-  config: WorkerConfig;
+export interface DBOSWorkerContext<T extends MachineDefinitions = MachineDefinitions> {
+  config: DBOSWorkerConfig;
   machines: { [K in keyof T]: DurableMachine };
   adminServer?: Server;
 }
 
-export interface WorkerHandle {
+export interface DBOSWorkerHandle {
   shutdown(): Promise<void>;
   adminServer?: Server;
 }
 
-export function parseWorkerConfig(
+export function parseDBOSWorkerConfig(
   env: Record<string, string | undefined> = process.env,
-): WorkerConfig {
+): DBOSWorkerConfig {
   const result = workerConfigSchema.safeParse({
     adminPort: env.ADMIN_PORT,
     shutdownTimeoutMs: env.GRACEFUL_SHUTDOWN_TIMEOUT_MS,
@@ -59,10 +59,10 @@ export function parseWorkerConfig(
   return result.data;
 }
 
-export async function createWorkerContext<T extends MachineDefinitions>(
-  config: WorkerConfig,
+export async function createDBOSWorkerContext<T extends MachineDefinitions>(
+  config: DBOSWorkerConfig,
   options: { machines: T },
-): Promise<WorkerContext<T>> {
+): Promise<DBOSWorkerContext<T>> {
   // 1. Create metrics before any timed work
   let metrics: WorkerMetrics | undefined;
   if (config.adminPort != null) {
@@ -94,7 +94,7 @@ export async function createWorkerContext<T extends MachineDefinitions>(
   return { config, machines, adminServer };
 }
 
-export function startWorker(ctx: WorkerContext): WorkerHandle {
+export function startDBOSWorker(ctx: DBOSWorkerContext): DBOSWorkerHandle {
   const servers: Server[] = [];
 
   if (ctx.adminServer) {

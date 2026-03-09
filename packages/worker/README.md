@@ -13,31 +13,31 @@ Peer dependencies: `@dbos-inc/dbos-sdk`, `@durable-xstate/durable-machine`.
 ## Usage
 
 ```typescript
-import { parseWorkerConfig, createWorkerContext, startWorker } from "@durable-xstate/worker";
+import { parseDBOSWorkerConfig, createDBOSWorkerContext, startDBOSWorker } from "@durable-xstate/worker";
 import { consoleChannel } from "@durable-xstate/durable-machine";
 import { orderMachine } from "./machines/order.js";
 
 // 1. Parse config from environment
-const config = parseWorkerConfig();
+const config = parseDBOSWorkerConfig();
 
 // 2. Create context (registers machines, launches DBOS)
-const ctx = await createWorkerContext(config, {
+const ctx = await createDBOSWorkerContext(config, {
   machines: {
     orders: { machine: orderMachine, options: { channels: [consoleChannel()] } },
   },
 });
 
 // 3. Start (binds admin port, installs signal handlers)
-const handle = startWorker(ctx);
+const handle = startDBOSWorker(ctx);
 ```
 
 ## Three-phase startup
 
 | Phase | Function | What it does |
 |-------|----------|--------------|
-| 1. Parse | `parseWorkerConfig()` | Validates env vars, returns typed config |
-| 2. Build | `createWorkerContext()` | Creates metrics, registers machines, calls `DBOS.launch()`, creates admin server |
-| 3. Run | `startWorker()` | Binds admin port, installs `SIGTERM`/`SIGINT` handlers, returns shutdown handle |
+| 1. Parse | `parseDBOSWorkerConfig()` | Validates env vars, returns typed config |
+| 2. Build | `createDBOSWorkerContext()` | Creates metrics, registers machines, calls `DBOS.launch()`, creates admin server |
+| 3. Run | `startDBOSWorker()` | Binds admin port, installs `SIGTERM`/`SIGINT` handlers, returns shutdown handle |
 
 ## Configuration
 
@@ -88,17 +88,17 @@ On `SIGTERM` or `SIGINT`:
 
 ## API
 
-### `parseWorkerConfig(env?)`
+### `parseDBOSWorkerConfig(env?)`
 
 Parses and validates worker configuration from environment variables. Throws on invalid input.
 
-### `createWorkerContext(config, options)`
+### `createDBOSWorkerContext(config, options)`
 
-Registers all machines via `createDurableMachine()`, calls `DBOS.launch()`, and optionally creates the admin server. Returns a `WorkerContext` with typed access to each registered `DurableMachine`.
+Registers all machines via `createDurableMachine()`, calls `DBOS.launch()`, and optionally creates the admin server. Returns a `DBOSWorkerContext` with typed access to each registered `DurableMachine`.
 
-### `startWorker(ctx)`
+### `startDBOSWorker(ctx)`
 
-Binds the admin server and installs signal handlers. Returns a `WorkerHandle` with a `shutdown()` method for programmatic shutdown.
+Binds the admin server and installs signal handlers. Returns a `DBOSWorkerHandle` with a `shutdown()` method for programmatic shutdown.
 
 ### `createAdminServer(options?)`
 

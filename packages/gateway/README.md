@@ -16,9 +16,9 @@ Peer dependency: `@dbos-inc/dbos-sdk`.
 
 ```typescript
 import {
-  parseGatewayConfig,
-  createGatewayContext,
-  startGateway,
+  parseDBOSGatewayConfig,
+  createDBOSGatewayContext,
+  startDBOSGateway,
   stripeSource,
   fieldRouter,
   directTransform,
@@ -26,10 +26,10 @@ import {
 import type { StripeWebhookEvent } from "@durable-xstate/gateway";
 
 // 1. Parse config from environment
-const config = parseGatewayConfig();
+const config = parseDBOSGatewayConfig();
 
 // 2. Create context (connects DBOSClient, builds Hono app)
-const ctx = await createGatewayContext(config, {
+const ctx = await createDBOSGatewayContext(config, {
   bindings: [
     {
       path: "/webhooks/stripe",
@@ -44,7 +44,7 @@ const ctx = await createGatewayContext(config, {
 });
 
 // 3. Start (binds webhook + admin ports, installs signal handlers)
-startGateway(ctx);
+startDBOSGateway(ctx);
 ```
 
 ## Architecture
@@ -68,9 +68,9 @@ Each component is a small, replaceable interface. Mix and match built-in impleme
 
 | Phase | Function | What it does |
 |-------|----------|--------------|
-| 1. Parse | `parseGatewayConfig()` | Validates env vars, returns typed config |
-| 2. Build | `createGatewayContext()` | Connects `DBOSClient`, creates metrics, builds Hono app, creates admin server |
-| 3. Run | `startGateway()` | Binds webhook + admin ports, installs signal handlers, returns shutdown handle |
+| 1. Parse | `parseDBOSGatewayConfig()` | Validates env vars, returns typed config |
+| 2. Build | `createDBOSGatewayContext()` | Connects `DBOSClient`, creates metrics, builds Hono app, creates admin server |
+| 3. Run | `startDBOSGateway()` | Binds webhook + admin ports, installs signal handlers, returns shutdown handle |
 
 ## Configuration
 

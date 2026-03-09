@@ -1,7 +1,7 @@
 import {
-  parseGatewayConfig,
-  createGatewayContext,
-  startGateway,
+  parseDBOSGatewayConfig,
+  createDBOSGatewayContext,
+  startDBOSGateway,
   slackSource,
   genericSource,
   fieldRouter,
@@ -17,12 +17,12 @@ interface GenericPayload {
 
 // Phase 1: config (all env reads here)
 const config = {
-  ...parseGatewayConfig(),
+  ...parseDBOSGatewayConfig(),
   slackSigningSecret: process.env.SLACK_SIGNING_SECRET ?? "dev-secret",
 };
 
 // Phase 2: context (no process.env)
-const ctx = await createGatewayContext(config, {
+const ctx = await createDBOSGatewayContext(config, {
   bindings: [
     {
       path: "/webhooks/slack",
@@ -49,4 +49,4 @@ const ctx = await createGatewayContext(config, {
 });
 
 // Phase 3: start
-startGateway(ctx);
+startDBOSGateway(ctx);

@@ -207,7 +207,7 @@ export type { ClusterOptions, ClusterHandle } from "./cluster.js";
 
 ### 5. `packages/worker/src/lifecycle.ts`
 
-**`parseWorkerConfig()`** — add cluster env vars:
+**`parseDBOSWorkerConfig()`** — add cluster env vars:
 
 | Env Var | Default | Description |
 |---------|---------|-------------|
@@ -216,9 +216,9 @@ export type { ClusterOptions, ClusterHandle } from "./cluster.js";
 | `CLUSTER_REAPER_INTERVAL_MS` | 15000 | Reaper scan frequency |
 | `CLUSTER_DEAD_THRESHOLD_MS` | 30000 | Dead executor threshold |
 
-**`WorkerConfig`** — add nested cluster sub-object:
+**`DBOSWorkerConfig`** — add nested cluster sub-object:
 ```ts
-export interface WorkerConfig {
+export interface DBOSWorkerConfig {
   adminPort?: number;
   shutdownTimeoutMs: number;
   cluster?: {
@@ -233,18 +233,18 @@ export interface WorkerConfig {
 Cluster config is present only when `CLUSTER_DATABASE_URL` is set. All
 sub-fields get defaults from the Zod schema.
 
-**`WorkerContext`** — add optional cluster handle:
+**`DBOSWorkerContext`** — add optional cluster handle:
 ```ts
 cluster?: ClusterHandle;
 ```
 
-**`createWorkerContext()`** — when `config.cluster` is set:
+**`createDBOSWorkerContext()`** — when `config.cluster` is set:
 1. `const cluster = await startCluster(config.cluster)`
 2. `DBOS.setConfig({ executorID: cluster.executorId })`
 3. (then existing: register machines, DBOS.launch())
 4. Store `cluster` in returned context
 
-**`startWorker()`** — pass cluster to gracefulShutdown:
+**`startDBOSWorker()`** — pass cluster to gracefulShutdown:
 ```ts
 const shutdown = gracefulShutdown({
   servers,
@@ -273,9 +273,9 @@ Add multi-replica section documenting env vars and deployment pattern.
 ### Single replica (no cluster, existing behavior)
 
 ```ts
-const config = parseWorkerConfig();
-const ctx = await createWorkerContext(config, { machines: { ... } });
-startWorker(ctx);
+const config = parseDBOSWorkerConfig();
+const ctx = await createDBOSWorkerContext(config, { machines: { ... } });
+startDBOSWorker(ctx);
 ```
 
 ### Multi-replica (cluster enabled via env)
@@ -288,10 +288,10 @@ ADMIN_PORT=9090
 
 ```ts
 // Same code — cluster is activated automatically when CLUSTER_DATABASE_URL is set
-const config = parseWorkerConfig();
+const config = parseDBOSWorkerConfig();
 // config.cluster → { systemDatabaseUrl: "postgresql://...", heartbeatIntervalMs: 5000, ... }
-const ctx = await createWorkerContext(config, { machines: { ... } });
-startWorker(ctx);
+const ctx = await createDBOSWorkerContext(config, { machines: { ... } });
+startDBOSWorker(ctx);
 // ctx.cluster.executorId → "a1b2c3d4-..."
 ```
 

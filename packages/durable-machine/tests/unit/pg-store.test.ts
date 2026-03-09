@@ -53,7 +53,7 @@ describe("PgStore", () => {
     expect(row).toBeNull();
   });
 
-  it("updateInstance partial patch", async () => {
+  it("finalizeInstance updates all fields", async () => {
     await store.createInstance(
       "test-2",
       "orderMachine",
@@ -62,10 +62,18 @@ describe("PgStore", () => {
       null,
     );
 
-    await store.updateInstance("test-2", {
-      stateValue: "paid",
-      context: { orderId: "o2", chargeId: "ch_1" },
-    });
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await store.finalizeInstance(
+        client, "test-2",
+        "paid", { orderId: "o2", chargeId: "ch_1" },
+        null, null, [], "running", 0,
+      );
+      await client.query("COMMIT");
+    } finally {
+      client.release();
+    }
 
     const row = await store.getInstance("test-2");
     expect(row!.stateValue).toBe("paid");
@@ -85,7 +93,7 @@ describe("PgStore", () => {
 
   it("listInstances with status filter", async () => {
     await store.createInstance("list-4", "m1", "idle", {}, null);
-    await store.updateInstance("list-4", { status: "done" });
+    await store.updateInstanceStatus("list-4", "done");
     await store.createInstance("list-5", "m1", "idle", {}, null);
 
     const results = await store.listInstances({ status: "running" });
@@ -210,8 +218,15 @@ describe("PgStore", () => {
     const { seq: seq1 } = await store.appendEvent("peek-3", { type: "A" });
     await store.appendEvent("peek-3", { type: "B" });
 
-    // Advance cursor past first event
-    await store.updateInstance("peek-3", { eventCursor: seq1 });
+    // Advance cursor past first event using finalizeInstance
+    const client0 = await pool.connect();
+    try {
+      await client0.query("BEGIN");
+      await store.finalizeInstance(client0, "peek-3", "idle", {}, null, null, [], "running", seq1);
+      await client0.query("COMMIT");
+    } finally {
+      client0.release();
+    }
 
     const client = await pool.connect();
     try {

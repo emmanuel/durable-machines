@@ -74,23 +74,6 @@ function createMockStore(): PgStore & {
       return instances.get(id) ?? null;
     },
 
-    async updateInstance(
-      id: string,
-      patch: Record<string, unknown>,
-      _queryable?: unknown,
-    ) {
-      const row = instances.get(id);
-      if (!row) return;
-      if (patch.stateValue !== undefined) row.stateValue = patch.stateValue as any;
-      if (patch.context !== undefined) row.context = patch.context as any;
-      if (patch.wakeAt !== undefined) row.wakeAt = patch.wakeAt as any;
-      if (patch.wakeEvent !== undefined) row.wakeEvent = patch.wakeEvent as any;
-      if (patch.firedDelays !== undefined) row.firedDelays = patch.firedDelays as any;
-      if (patch.status !== undefined) row.status = patch.status as any;
-      if (patch.eventCursor !== undefined) row.eventCursor = patch.eventCursor as number;
-      row.updatedAt = Date.now();
-    },
-
     async updateInstanceStatus(id: string, status: string) {
       const row = instances.get(id);
       if (!row) return;
@@ -188,6 +171,24 @@ function createMockStore(): PgStore & {
         }
       }
       return results;
+    },
+
+    async finalizeInstance(
+      _client: any, instanceId: string,
+      stateValue: unknown, context: Record<string, unknown>,
+      wakeAt: unknown, _wakeEvent: unknown,
+      firedDelays: unknown, status: string, eventCursor: number,
+    ) {
+      const row = instances.get(instanceId);
+      if (row) {
+        row.stateValue = stateValue as any;
+        row.context = context;
+        row.wakeAt = wakeAt as any;
+        row.firedDelays = firedDelays as any;
+        row.status = status;
+        row.eventCursor = eventCursor;
+        row.updatedAt = Date.now();
+      }
     },
 
     async finalizeWithTransition(

@@ -358,18 +358,10 @@ async function finalize(
       prevStateValue, current.value, event.type, Date.now(),
     );
   } else {
-    await store.updateInstance(
-      instanceId,
-      {
-        stateValue: current.value,
-        context: current.context as Record<string, unknown>,
-        wakeAt,
-        wakeEvent,
-        firedDelays,
-        status,
-        eventCursor: eventSeq,
-      },
-      client,
+    await store.finalizeInstance(
+      client, instanceId,
+      current.value, current.context as Record<string, unknown>,
+      wakeAt, wakeEvent, firedDelays, status, eventSeq,
     );
   }
 

@@ -188,20 +188,6 @@ export interface PgStore {
     wakeEvent?: unknown,
   ): Promise<void>;
   getInstance(id: string): Promise<MachineRow | null>;
-  updateInstance(
-    id: string,
-    patch: {
-      stateValue?: StateValue;
-      context?: Record<string, unknown>;
-      wakeAt?: number | null;
-      wakeEvent?: unknown | null;
-      firedDelays?: Array<string | number>;
-      status?: string;
-      eventCursor?: number;
-    },
-    /** Optional client for transactional updates. */
-    queryable?: PoolClient,
-  ): Promise<void>;
   updateInstanceStatus(id: string, status: string): Promise<void>;
   updateInstanceSnapshot(
     client: PoolClient,
@@ -265,7 +251,18 @@ export interface PgStore {
   ): Promise<void>;
   listInvokeResults(instanceId: string): Promise<StepInfo[]>;
 
-  // CTE finalize: updateInstance + appendTransition in one query
+  // CTE finalize
+  finalizeInstance(
+    client: PoolClient,
+    instanceId: string,
+    stateValue: StateValue,
+    context: Record<string, unknown>,
+    wakeAt: number | null,
+    wakeEvent: unknown | null,
+    firedDelays: Array<string | number>,
+    status: string,
+    eventCursor: number,
+  ): Promise<void>;
   finalizeWithTransition(
     client: PoolClient,
     instanceId: string,
@@ -389,64 +386,6 @@ export function createStore(options: PgStoreOptions): PgStore {
     return rows.length > 0 ? rowToMachine(rows[0]) : null;
   }
 
-  async function updateInstance(
-    id: string,
-    patch: {
-      stateValue?: StateValue;
-      context?: Record<string, unknown>;
-      wakeAt?: number | null;
-      wakeEvent?: unknown | null;
-      firedDelays?: Array<string | number>;
-      status?: string;
-      eventCursor?: number;
-    },
-    queryable?: PoolClient,
-  ): Promise<void> {
-    const q = queryable ?? pool;
-    const sets: string[] = [];
-    const values: unknown[] = [];
-    let idx = 1;
-
-    if (patch.stateValue !== undefined) {
-      sets.push(`state_value = $${idx++}`);
-      values.push(JSON.stringify(patch.stateValue));
-    }
-    if (patch.context !== undefined) {
-      sets.push(`context = $${idx++}`);
-      values.push(JSON.stringify(patch.context));
-    }
-    if (patch.wakeAt !== undefined) {
-      sets.push(`wake_at = $${idx++}`);
-      values.push(patch.wakeAt);
-    }
-    if (patch.wakeEvent !== undefined) {
-      sets.push(`wake_event = $${idx++}`);
-      values.push(patch.wakeEvent != null ? JSON.stringify(patch.wakeEvent) : null);
-    }
-    if (patch.firedDelays !== undefined) {
-      sets.push(`fired_delays = $${idx++}`);
-      values.push(JSON.stringify(patch.firedDelays));
-    }
-    if (patch.status !== undefined) {
-      sets.push(`status = $${idx++}`);
-      values.push(patch.status);
-    }
-    if (patch.eventCursor !== undefined) {
-      sets.push(`event_cursor = $${idx++}`);
-      values.push(patch.eventCursor);
-    }
-
-    if (sets.length === 0) return;
-
-    sets.push(`updated_at = $${idx++}`);
-    values.push(Date.now());
-
-    values.push(id);
-    await q.query(
-      `UPDATE machine_instances SET ${sets.join(", ")} WHERE id = $${idx}`,
-      values,
-    );
-  }
 
   async function updateInstanceStatus(
     id: string,
@@ -687,6 +626,37 @@ export function createStore(options: PgStoreOptions): PgStore {
   }
 
   // ── CTE Finalize ───────────────────────────────────────────────────────
+
+  async function finalizeInstance(
+    client: PoolClient,
+    instanceId: string,
+    stateValue: StateValue,
+    context: Record<string, unknown>,
+    wakeAt: number | null,
+    wakeEvent: unknown | null,
+    firedDelays: Array<string | number>,
+    status: string,
+    eventCursor: number,
+  ): Promise<void> {
+    await client.query({
+      name: "dm_finalize_instance",
+      text: `UPDATE machine_instances
+             SET state_value=$2, context=$3, wake_at=$4, wake_event=$5,
+                 fired_delays=$6, status=$7, event_cursor=$8, updated_at=$9
+             WHERE id = $1`,
+      values: [
+        instanceId,
+        JSON.stringify(stateValue),
+        JSON.stringify(context),
+        wakeAt,
+        wakeEvent != null ? JSON.stringify(wakeEvent) : null,
+        JSON.stringify(firedDelays),
+        status,
+        eventCursor,
+        Date.now(),
+      ],
+    });
+  }
 
   async function finalizeWithTransition(
     client: PoolClient,
@@ -953,7 +923,6 @@ export function createStore(options: PgStoreOptions): PgStore {
     ensureSchema,
     createInstance,
     getInstance,
-    updateInstance,
     updateInstanceStatus,
     updateInstanceSnapshot,
     listInstances,
@@ -965,6 +934,7 @@ export function createStore(options: PgStoreOptions): PgStore {
     getInvokeResult,
     recordInvokeResult,
     listInvokeResults,
+    finalizeInstance,
     finalizeWithTransition,
     appendTransition,
     getTransitions,

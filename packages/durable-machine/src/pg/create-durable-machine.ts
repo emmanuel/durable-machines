@@ -14,7 +14,7 @@ import { DurableMachineError } from "../types.js";
 import { validateMachineForDurability } from "../validate.js";
 import { createStore } from "./store.js";
 import type { PgStore, MachineRow } from "./store.js";
-import { processStartup, processNextFromLog } from "./event-processor.js";
+import { processStartup, processBatchFromLog, processNextFromLog } from "./event-processor.js";
 import type { EventProcessorOptions } from "./event-processor.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -24,6 +24,7 @@ export interface PgDurableMachineOptions extends DurableMachineOptions {
   schema?: string;
   useListenNotify?: boolean;
   store?: PgStore;
+  useBatchProcessing?: boolean;
 }
 
 /**
@@ -80,9 +81,16 @@ export function createDurableMachine<T extends AnyStateMachine>(
 
   // ── Event Consumer ──────────────────────────────────────────────────────
 
+  const useBatch = options.useBatchProcessing !== false;
+
   async function consumeAndProcessMessages(instanceId: string): Promise<void> {
-    const processed = await processNextFromLog(deps, instanceId);
-    if (processed) await consumeAndProcessMessages(instanceId);
+    if (useBatch) {
+      const count = await processBatchFromLog(deps, instanceId);
+      if (count > 0) await consumeAndProcessMessages(instanceId);
+    } else {
+      const didProcess = await processNextFromLog(deps, instanceId);
+      if (didProcess) await consumeAndProcessMessages(instanceId);
+    }
   }
 
   // ── Handle Factory ──────────────────────────────────────────────────────
@@ -135,7 +143,7 @@ export function createDurableMachine<T extends AnyStateMachine>(
       },
 
       async cancel(): Promise<void> {
-        await store.updateInstance(workflowId, { status: "cancelled" });
+        await store.updateInstanceStatus(workflowId, "cancelled");
       },
 
       async listEffects(): Promise<EffectStatus[]> {

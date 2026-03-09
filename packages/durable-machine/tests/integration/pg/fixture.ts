@@ -3,13 +3,12 @@ import { createDurableMachine, createStore, getVisualizationState as pgGetVisual
 import type { PgDurableMachine } from "../../../src/pg/create-durable-machine.js";
 import type { BackendFixture } from "../../fixtures/helpers.js";
 import type { EffectHandler, ResolvedEffect } from "../../../src/effects.js";
-import { getSortedAfterDelays, buildAfterEvent } from "../../../src/xstate-utils.js";
 
 const TEST_DB_URL =
   process.env.PG_TEST_DATABASE_URL ??
   "postgresql://xstate_dbos:xstate_dbos@localhost:5442/xstate_dbos_test";
 
-export function createPgFixture(): BackendFixture {
+export function createPgFixture(opts?: { useBatchProcessing?: boolean }): BackendFixture {
   // Create pool and store eagerly so createMachine() works before setup()
   const pool = new pg.Pool({ connectionString: TEST_DB_URL });
   const store = createStore({ pool, useListenNotify: false });
@@ -19,7 +18,7 @@ export function createPgFixture(): BackendFixture {
   let effectPoller: ReturnType<typeof setInterval> | undefined;
 
   return {
-    name: "pg",
+    name: opts?.useBatchProcessing === false ? "pg-legacy" : "pg",
 
     async setup() {
       await store.ensureSchema();
@@ -51,6 +50,7 @@ export function createPgFixture(): BackendFixture {
         pool,
         store,
         useListenNotify: false,
+        useBatchProcessing: opts?.useBatchProcessing,
         ...options,
       });
       machines.set(machine.id, dm);
@@ -101,43 +101,22 @@ export function createPgFixture(): BackendFixture {
 
   async function pollTimeouts(): Promise<void> {
     try {
-      const now = Date.now();
+      await pool.query(`SELECT fire_due_timeouts()`);
+      // The PG function inserts into event_log which triggers NOTIFY.
+      // In test mode (no LISTEN), we need to process events for instances
+      // that had timeouts expire.
       const { rows } = await pool.query(
-        `SELECT id, machine_name, state_value, context, fired_delays
-         FROM machine_instances
-         WHERE wake_at <= $1 AND status = 'running'
-         ORDER BY wake_at ASC LIMIT 50`,
-        [now],
+        `SELECT DISTINCT el.instance_id, mi.machine_name
+         FROM event_log el
+         JOIN machine_instances mi ON mi.id = el.instance_id
+         WHERE el.source = 'system:timeout'
+           AND el.seq > mi.event_cursor
+           AND mi.status = 'running'`,
       );
       for (const row of rows) {
         const m = machines.get(row.machine_name);
         if (!m) continue;
-
-        // Optimistic claim
-        const { rowCount } = await pool.query(
-          `UPDATE machine_instances SET wake_at = NULL
-           WHERE id = $1 AND wake_at IS NOT NULL AND wake_at <= $2`,
-          [row.id, now],
-        );
-        if (!rowCount) continue;
-
-        try {
-          const snapshot = m.machine.resolveState({
-            value: row.state_value,
-            context: row.context,
-          });
-          const allDelays = getSortedAfterDelays(m.machine, snapshot);
-          const firedDelays = row.fired_delays as Array<string | number>;
-          const unfired = allDelays.filter((d: string | number) => !firedDelays.includes(d));
-          if (unfired.length === 0) continue;
-
-          const afterEvent = buildAfterEvent(m.machine, snapshot, unfired[0]);
-          await store.appendEvent(row.id, afterEvent, "timeout", "system:timeout");
-
-          try { await m.consumeAndProcess(row.id); } catch { /* NOTIFY retry */ }
-        } catch {
-          // individual failures don't stop the poller
-        }
+        try { await m.consumeAndProcess(row.instance_id); } catch { /* retry */ }
       }
     } catch {
       // poll errors silently ignored

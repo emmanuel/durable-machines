@@ -4,6 +4,5 @@ export default defineProject({
   test: {
     name: "unit",
     include: ["tests/unit/**/*.test.ts"],
-    globalSetup: ["tests/unit/pg-global-setup.ts"],
   },
 });

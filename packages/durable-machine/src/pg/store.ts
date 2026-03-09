@@ -12,11 +12,13 @@ CREATE TABLE IF NOT EXISTS machine_instances (
   status          TEXT NOT NULL DEFAULT 'running',
   fired_delays    JSONB NOT NULL DEFAULT '[]',
   wake_at         BIGINT,
+  wake_event      JSONB,
   input           JSONB,
   event_cursor    BIGINT NOT NULL DEFAULT 0,
   created_at      BIGINT NOT NULL,
   updated_at      BIGINT NOT NULL
 );
+ALTER TABLE machine_instances ADD COLUMN IF NOT EXISTS wake_event JSONB;
 CREATE INDEX IF NOT EXISTS idx_mi_status ON machine_instances (status);
 CREATE INDEX IF NOT EXISTS idx_mi_wake ON machine_instances (wake_at) WHERE wake_at IS NOT NULL AND status = 'running';
 CREATE INDEX IF NOT EXISTS idx_mi_name ON machine_instances (machine_name);
@@ -95,6 +97,33 @@ $$ LANGUAGE plpgsql;
 DROP TRIGGER IF EXISTS effect_outbox_trigger ON effect_outbox;
 CREATE TRIGGER effect_outbox_trigger
   AFTER INSERT ON effect_outbox FOR EACH ROW EXECUTE FUNCTION effect_outbox_notify();
+
+CREATE OR REPLACE FUNCTION fire_due_timeouts() RETURNS INTEGER AS $$
+DECLARE
+  cnt INTEGER;
+BEGIN
+  WITH to_expire AS (
+    SELECT id, wake_event FROM machine_instances
+    WHERE wake_at <= (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT
+      AND status = 'running' AND wake_at IS NOT NULL
+    FOR UPDATE
+  ),
+  cleared AS (
+    UPDATE machine_instances mi
+    SET wake_at = NULL, wake_event = NULL
+    FROM to_expire te
+    WHERE mi.id = te.id
+  )
+  INSERT INTO event_log (instance_id, topic, payload, source, created_at)
+  SELECT id, 'timeout', wake_event, 'system:timeout',
+         (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT
+  FROM to_expire
+  WHERE wake_event IS NOT NULL;
+
+  GET DIAGNOSTICS cnt = ROW_COUNT;
+  RETURN cnt;
+END;
+$$ LANGUAGE plpgsql;
 `;
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -113,6 +142,7 @@ export interface MachineRow {
   status: string;
   firedDelays: Array<string | number>;
   wakeAt: number | null;
+  wakeEvent: unknown | null;
   input: Record<string, unknown> | null;
   eventCursor: number;
   createdAt: number;
@@ -155,6 +185,7 @@ export interface PgStore {
     wakeAt?: number | null,
     firedDelays?: Array<string | number>,
     queryable?: PoolClient,
+    wakeEvent?: unknown,
   ): Promise<void>;
   getInstance(id: string): Promise<MachineRow | null>;
   updateInstance(
@@ -163,12 +194,20 @@ export interface PgStore {
       stateValue?: StateValue;
       context?: Record<string, unknown>;
       wakeAt?: number | null;
+      wakeEvent?: unknown | null;
       firedDelays?: Array<string | number>;
       status?: string;
       eventCursor?: number;
     },
     /** Optional client for transactional updates. */
     queryable?: PoolClient,
+  ): Promise<void>;
+  updateInstanceStatus(id: string, status: string): Promise<void>;
+  updateInstanceSnapshot(
+    client: PoolClient,
+    id: string,
+    stateValue: StateValue,
+    context: Record<string, unknown>,
   ): Promise<void>;
   listInstances(filter?: {
     machineName?: string;
@@ -197,6 +236,15 @@ export interface PgStore {
     nextEvent: { seq: number; payload: unknown } | null;
   } | null>;
 
+  lockAndPeekEvents(
+    client: PoolClient,
+    instanceId: string,
+    limit: number,
+  ): Promise<{
+    row: MachineRow;
+    events: Array<{ seq: number; payload: unknown }>;
+  } | null>;
+
   getEventLog(
     instanceId: string,
     opts?: { afterSeq?: number; limit?: number },
@@ -216,6 +264,23 @@ export interface PgStore {
     completedAt?: number,
   ): Promise<void>;
   listInvokeResults(instanceId: string): Promise<StepInfo[]>;
+
+  // CTE finalize: updateInstance + appendTransition in one query
+  finalizeWithTransition(
+    client: PoolClient,
+    instanceId: string,
+    stateValue: StateValue,
+    context: Record<string, unknown>,
+    wakeAt: number | null,
+    wakeEvent: unknown | null,
+    firedDelays: Array<string | number>,
+    status: string,
+    eventCursor: number,
+    fromState: StateValue | null,
+    toState: StateValue,
+    event: string | null,
+    ts: number,
+  ): Promise<void>;
 
   // Transition log
   appendTransition(
@@ -261,6 +326,7 @@ function rowToMachine(row: any): MachineRow {
     status: row.status,
     firedDelays: row.fired_delays as Array<string | number>,
     wakeAt: row.wake_at != null ? Number(row.wake_at) : null,
+    wakeEvent: row.wake_event ?? null,
     input: row.input as Record<string, unknown> | null,
     eventCursor: Number(row.event_cursor),
     createdAt: Number(row.created_at),
@@ -293,12 +359,13 @@ export function createStore(options: PgStoreOptions): PgStore {
     wakeAt?: number | null,
     firedDelays?: Array<string | number>,
     queryable?: PoolClient,
+    wakeEvent?: unknown,
   ): Promise<void> {
     const q = queryable ?? pool;
     const now = Date.now();
     await q.query(
-      `INSERT INTO machine_instances (id, machine_name, state_value, context, status, fired_delays, wake_at, input, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, 'running', $5, $6, $7, $8, $9)`,
+      `INSERT INTO machine_instances (id, machine_name, state_value, context, status, fired_delays, wake_at, wake_event, input, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, 'running', $5, $6, $7, $8, $9, $10)`,
       [
         id,
         machineName,
@@ -306,6 +373,7 @@ export function createStore(options: PgStoreOptions): PgStore {
         JSON.stringify(context),
         JSON.stringify(firedDelays ?? []),
         wakeAt ?? null,
+        wakeEvent != null ? JSON.stringify(wakeEvent) : null,
         input != null ? JSON.stringify(input) : null,
         now,
         now,
@@ -327,6 +395,7 @@ export function createStore(options: PgStoreOptions): PgStore {
       stateValue?: StateValue;
       context?: Record<string, unknown>;
       wakeAt?: number | null;
+      wakeEvent?: unknown | null;
       firedDelays?: Array<string | number>;
       status?: string;
       eventCursor?: number;
@@ -349,6 +418,10 @@ export function createStore(options: PgStoreOptions): PgStore {
     if (patch.wakeAt !== undefined) {
       sets.push(`wake_at = $${idx++}`);
       values.push(patch.wakeAt);
+    }
+    if (patch.wakeEvent !== undefined) {
+      sets.push(`wake_event = $${idx++}`);
+      values.push(patch.wakeEvent != null ? JSON.stringify(patch.wakeEvent) : null);
     }
     if (patch.firedDelays !== undefined) {
       sets.push(`fired_delays = $${idx++}`);
@@ -373,6 +446,30 @@ export function createStore(options: PgStoreOptions): PgStore {
       `UPDATE machine_instances SET ${sets.join(", ")} WHERE id = $${idx}`,
       values,
     );
+  }
+
+  async function updateInstanceStatus(
+    id: string,
+    status: string,
+  ): Promise<void> {
+    await pool.query({
+      name: "dm_update_instance_status",
+      text: `UPDATE machine_instances SET status = $2, updated_at = $3 WHERE id = $1`,
+      values: [id, status, Date.now()],
+    });
+  }
+
+  async function updateInstanceSnapshot(
+    client: PoolClient,
+    id: string,
+    stateValue: StateValue,
+    context: Record<string, unknown>,
+  ): Promise<void> {
+    await client.query({
+      name: "dm_update_instance_snapshot",
+      text: `UPDATE machine_instances SET state_value = $2, context = $3, updated_at = $4 WHERE id = $1`,
+      values: [id, JSON.stringify(stateValue), JSON.stringify(context), Date.now()],
+    });
   }
 
   async function listInstances(filter?: {
@@ -407,10 +504,11 @@ export function createStore(options: PgStoreOptions): PgStore {
     client: PoolClient,
     id: string,
   ): Promise<MachineRow | null> {
-    const { rows } = await client.query(
-      `SELECT * FROM machine_instances WHERE id = $1 FOR NO KEY UPDATE NOWAIT`,
-      [id],
-    );
+    const { rows } = await client.query({
+      name: "dm_lock_and_get_instance",
+      text: `SELECT * FROM machine_instances WHERE id = $1 FOR NO KEY UPDATE SKIP LOCKED`,
+      values: [id],
+    });
     return rows.length > 0 ? rowToMachine(rows[0]) : null;
   }
 
@@ -422,12 +520,13 @@ export function createStore(options: PgStoreOptions): PgStore {
     topic = "event",
     source?: string,
   ): Promise<{ seq: number }> {
-    const { rows } = await pool.query(
-      `INSERT INTO event_log (instance_id, topic, payload, source, created_at)
+    const { rows } = await pool.query({
+      name: "dm_append_event",
+      text: `INSERT INTO event_log (instance_id, topic, payload, source, created_at)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING seq`,
-      [instanceId, topic, JSON.stringify(payload), source ?? null, Date.now()],
-    );
+      values: [instanceId, topic, JSON.stringify(payload), source ?? null, Date.now()],
+    });
     return { seq: Number(rows[0].seq) };
   }
 
@@ -438,9 +537,10 @@ export function createStore(options: PgStoreOptions): PgStore {
     row: MachineRow;
     nextEvent: { seq: number; payload: unknown } | null;
   } | null> {
-    const { rows } = await client.query(
-      `WITH locked AS (
-        SELECT * FROM machine_instances WHERE id = $1 FOR NO KEY UPDATE NOWAIT
+    const { rows } = await client.query({
+      name: "dm_lock_and_peek_event",
+      text: `WITH locked AS (
+        SELECT * FROM machine_instances WHERE id = $1 FOR NO KEY UPDATE SKIP LOCKED
       )
       SELECT locked.*,
              e.seq AS next_event_seq,
@@ -451,8 +551,8 @@ export function createStore(options: PgStoreOptions): PgStore {
         WHERE instance_id = locked.id AND seq > locked.event_cursor
         ORDER BY seq ASC LIMIT 1
       ) e ON true`,
-      [instanceId],
-    );
+      values: [instanceId],
+    });
     if (rows.length === 0) return null;
     const r = rows[0];
     const machineRow = rowToMachine(r);
@@ -460,6 +560,41 @@ export function createStore(options: PgStoreOptions): PgStore {
       ? { seq: Number(r.next_event_seq), payload: r.next_event_payload }
       : null;
     return { row: machineRow, nextEvent };
+  }
+
+  async function lockAndPeekEvents(
+    client: PoolClient,
+    instanceId: string,
+    limit: number,
+  ): Promise<{
+    row: MachineRow;
+    events: Array<{ seq: number; payload: unknown }>;
+  } | null> {
+    const { rows } = await client.query({
+      name: "dm_lock_and_peek_events",
+      text: `WITH locked AS (
+        SELECT * FROM machine_instances WHERE id = $1 FOR NO KEY UPDATE SKIP LOCKED
+      )
+      SELECT locked.*,
+             e.seq AS event_seq,
+             e.payload AS event_payload
+      FROM locked
+      LEFT JOIN LATERAL (
+        SELECT seq, payload FROM event_log
+        WHERE instance_id = locked.id AND seq > locked.event_cursor
+        ORDER BY seq ASC LIMIT $2
+      ) e ON true`,
+      values: [instanceId, limit],
+    });
+    if (rows.length === 0) return null;
+    const machineRow = rowToMachine(rows[0]);
+    const events: Array<{ seq: number; payload: unknown }> = [];
+    for (const r of rows) {
+      if (r.event_seq != null) {
+        events.push({ seq: Number(r.event_seq), payload: r.event_payload });
+      }
+    }
+    return { row: machineRow, events };
   }
 
   async function getEventLog(
@@ -500,10 +635,11 @@ export function createStore(options: PgStoreOptions): PgStore {
     instanceId: string,
     stepKey: string,
   ): Promise<{ output: unknown; error: unknown } | null> {
-    const { rows } = await pool.query(
-      `SELECT output, error FROM invoke_results WHERE instance_id = $1 AND step_key = $2`,
-      [instanceId, stepKey],
-    );
+    const { rows } = await pool.query({
+      name: "dm_get_invoke_result",
+      text: `SELECT output, error FROM invoke_results WHERE instance_id = $1 AND step_key = $2`,
+      values: [instanceId, stepKey],
+    });
     if (rows.length === 0) return null;
     return { output: rows[0].output, error: rows[0].error };
   }
@@ -516,11 +652,12 @@ export function createStore(options: PgStoreOptions): PgStore {
     startedAt?: number,
     completedAt?: number,
   ): Promise<void> {
-    await pool.query(
-      `INSERT INTO invoke_results (instance_id, step_key, output, error, started_at, completed_at)
+    await pool.query({
+      name: "dm_record_invoke_result",
+      text: `INSERT INTO invoke_results (instance_id, step_key, output, error, started_at, completed_at)
        VALUES ($1, $2, $3, $4, $5, $6)
        ON CONFLICT (instance_id, step_key) DO NOTHING`,
-      [
+      values: [
         instanceId,
         stepKey,
         output != null ? JSON.stringify(output) : null,
@@ -528,7 +665,7 @@ export function createStore(options: PgStoreOptions): PgStore {
         startedAt ?? null,
         completedAt ?? null,
       ],
-    );
+    });
   }
 
   async function listInvokeResults(instanceId: string): Promise<StepInfo[]> {
@@ -547,6 +684,51 @@ export function createStore(options: PgStoreOptions): PgStore {
           row.completed_at != null ? Number(row.completed_at) : undefined,
       }),
     );
+  }
+
+  // ── CTE Finalize ───────────────────────────────────────────────────────
+
+  async function finalizeWithTransition(
+    client: PoolClient,
+    instanceId: string,
+    stateValue: StateValue,
+    context: Record<string, unknown>,
+    wakeAt: number | null,
+    wakeEvent: unknown | null,
+    firedDelays: Array<string | number>,
+    status: string,
+    eventCursor: number,
+    fromState: StateValue | null,
+    toState: StateValue,
+    event: string | null,
+    ts: number,
+  ): Promise<void> {
+    await client.query({
+      name: "dm_finalize_with_transition",
+      text: `WITH upd AS (
+        UPDATE machine_instances
+        SET state_value=$2, context=$3, wake_at=$4, wake_event=$5,
+            fired_delays=$6, status=$7, event_cursor=$8, updated_at=$9
+        WHERE id = $1
+      )
+      INSERT INTO transition_log (instance_id, from_state, to_state, event, ts)
+      VALUES ($1, $10, $11, $12, $13)`,
+      values: [
+        instanceId,
+        JSON.stringify(stateValue),
+        JSON.stringify(context),
+        wakeAt,
+        wakeEvent != null ? JSON.stringify(wakeEvent) : null,
+        JSON.stringify(firedDelays),
+        status,
+        eventCursor,
+        Date.now(),
+        fromState != null ? JSON.stringify(fromState) : null,
+        JSON.stringify(toState),
+        event,
+        ts,
+      ],
+    });
   }
 
   // ── Transition Log ──────────────────────────────────────────────────────
@@ -616,14 +798,26 @@ export function createStore(options: PgStoreOptions): PgStore {
     if (effects.length === 0) return;
     const now = Date.now();
     const stateJson = JSON.stringify(stateValue);
+
+    // Build multi-row INSERT
+    const placeholders: string[] = [];
+    const values: unknown[] = [];
+    let idx = 1;
     for (const effect of effects) {
       const { type, ...payload } = effect;
-      await client.query(
-        `INSERT INTO effect_outbox (instance_id, state_value, effect_type, effect_payload, max_attempts, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [instanceId, stateJson, type, JSON.stringify(payload), maxAttempts, now],
+      placeholders.push(
+        `($${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++})`,
+      );
+      values.push(
+        instanceId, stateJson, type, JSON.stringify(payload), maxAttempts, now,
       );
     }
+
+    await client.query(
+      `INSERT INTO effect_outbox (instance_id, state_value, effect_type, effect_payload, max_attempts, created_at)
+       VALUES ${placeholders.join(", ")}`,
+      values,
+    );
   }
 
   async function claimPendingEffects(limit = 50): Promise<EffectOutboxRow[]> {
@@ -760,14 +954,18 @@ export function createStore(options: PgStoreOptions): PgStore {
     createInstance,
     getInstance,
     updateInstance,
+    updateInstanceStatus,
+    updateInstanceSnapshot,
     listInstances,
     lockAndGetInstance,
     appendEvent,
     lockAndPeekEvent,
+    lockAndPeekEvents,
     getEventLog,
     getInvokeResult,
     recordInvokeResult,
     listInvokeResults,
+    finalizeWithTransition,
     appendTransition,
     getTransitions,
     insertEffects,

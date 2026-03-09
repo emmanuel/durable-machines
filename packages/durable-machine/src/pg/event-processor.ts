@@ -18,6 +18,7 @@ import {
   getActiveInvocation,
   extractActorImplementations,
   getSortedAfterDelays,
+  buildAfterEvent,
   isReentryDelay,
   resolveTransientTransitions,
   stateValueEquals,
@@ -33,23 +34,6 @@ export interface EventProcessorOptions {
   enableTransitionStream?: boolean;
 }
 
-// ─── Lock Retry Helper ──────────────────────────────────────────────────────
-
-const withRetry = (
-  fn: () => Promise<void>,
-  maxAttempts = 3,
-  baseMs = 50,
-): Promise<void> => {
-  const attempt = (n: number): Promise<void> =>
-    fn().catch((err) =>
-      (err as any).code === "55P03" && n < maxAttempts
-        ? new Promise<void>((r) => setTimeout(r, baseMs * 2 ** n)).then(() =>
-            attempt(n + 1),
-          )
-        : Promise.reject(err),
-    );
-  return attempt(0);
-};
 
 // ─── Actor Execution Helper ─────────────────────────────────────────────────
 
@@ -272,9 +256,10 @@ export async function processStartup(
     initialSnapshot,
   );
 
-  // Compute wake_at from after delays
+  // Compute wake_at + wake_event from after delays
   const delays = getSortedAfterDelays(machine, snapshot);
   const wakeAt = delays.length > 0 ? now + delays[0] : null;
+  const wakeEvent = wakeAt != null ? buildAfterEvent(machine, snapshot, delays[0]) : null;
 
   const status = snapshot.status === "done" ? "done" : "running";
 
@@ -292,6 +277,7 @@ export async function processStartup(
       wakeAt,
       [],
       client,
+      wakeEvent,
     );
 
     if (deps.options.effectHandlers) {
@@ -308,7 +294,7 @@ export async function processStartup(
   }
 
   if (status === "done") {
-    await store.updateInstance(instanceId, { status: "done" });
+    await store.updateInstanceStatus(instanceId, "done");
   }
 
   // Transition log
@@ -343,10 +329,11 @@ async function finalize(
   const { store, machine, options, enableTransitionStream } = deps;
   const channels = options.channels ?? [];
 
-  // Compute wakeAt
+  // Compute wakeAt + wakeEvent
   const nextDelays = getSortedAfterDelays(machine, current);
   const nextUnfired = nextDelays.filter((d) => !firedDelays.includes(d));
   let wakeAt: number | null = null;
+  let wakeEvent: AnyEventObject | null = null;
   if (nextUnfired.length > 0) {
     if (firedDelays.length === 0) {
       wakeAt = Date.now() + nextUnfired[0];
@@ -356,29 +343,38 @@ async function finalize(
       );
       wakeAt = Date.now() + Math.max(0, nextUnfired[0] - maxFired);
     }
+    wakeEvent = buildAfterEvent(machine, current, nextUnfired[0]);
   }
 
   const status = current.status === "done" ? "done" : "running";
+  const stateChanged = !stateValueEquals(prevStateValue, current.value);
 
-  // Atomic: state change + cursor advance
-  await store.updateInstance(
-    instanceId,
-    {
-      stateValue: current.value,
-      context: current.context as Record<string, unknown>,
-      wakeAt,
-      firedDelays,
-      status,
-      eventCursor: eventSeq,
-    },
-    client,
-  );
-
-  // Transition log, prompt lifecycle, effects
-  if (enableTransitionStream && !stateValueEquals(prevStateValue, current.value)) {
-    await store.appendTransition(instanceId, prevStateValue, current.value, event.type, Date.now());
+  // Atomic: state change + cursor advance (+ transition log if applicable)
+  if (enableTransitionStream && stateChanged) {
+    await store.finalizeWithTransition(
+      client, instanceId,
+      current.value, current.context as Record<string, unknown>,
+      wakeAt, wakeEvent, firedDelays, status, eventSeq,
+      prevStateValue, current.value, event.type, Date.now(),
+    );
+  } else {
+    await store.updateInstance(
+      instanceId,
+      {
+        stateValue: current.value,
+        context: current.context as Record<string, unknown>,
+        wakeAt,
+        wakeEvent,
+        firedDelays,
+        status,
+        eventCursor: eventSeq,
+      },
+      client,
+    );
   }
-  if (!stateValueEquals(prevStateValue, current.value)) {
+
+  // Prompt lifecycle, effects
+  if (stateChanged) {
     await handlePromptExit(deps, instanceId, prevStateValue, current, channels, event);
     await enqueueEffects(deps, client, instanceId, prevSnapshot, current, event);
     if (status === "running" && isDurableState(machine, current)) {
@@ -394,125 +390,293 @@ export async function processNextFromLog(
   instanceId: string,
 ): Promise<boolean> {
   const { store, machine } = deps;
-  let processed = false;
 
-  await withRetry(async () => {
-    // ── Txn 1: lock + transition + detect invocation ────────────────────
-    const client = await getPool(store).connect();
+  // ── Txn 1: lock + transition + detect invocation ────────────────────
+  const client = await getPool(store).connect();
 
-    let invocationSnapshot: AnyMachineSnapshot | null = null;
-    let prevSnapshot: AnyMachineSnapshot;
-    let prevStateValue: StateValue;
-    let event: AnyEventObject;
-    let eventSeq: number;
-    let firedDelays: Array<string | number>;
+  let invocationSnapshot: AnyMachineSnapshot | null = null;
+  let prevSnapshot: AnyMachineSnapshot;
+  let prevStateValue: StateValue;
+  let event: AnyEventObject;
+  let eventSeq: number;
+  let firedDelays: Array<string | number>;
 
-    try {
-      await client.query("BEGIN");
+  try {
+    await client.query("BEGIN");
 
-      const result = await store.lockAndPeekEvent(client, instanceId);
-      if (!result || result.row.status !== "running" || !result.nextEvent) {
-        await client.query("COMMIT");
-        return;
-      }
+    const result = await store.lockAndPeekEvent(client, instanceId);
+    // SKIP LOCKED returns no rows when locked by another transaction
+    if (!result || result.row.status !== "running" || !result.nextEvent) {
+      await client.query("COMMIT");
+      client.release();
+      return false;
+    }
 
-      const { row, nextEvent } = result;
-      event = nextEvent.payload as AnyEventObject;
-      eventSeq = nextEvent.seq;
-      prevSnapshot = machine.resolveState({
-        value: row.stateValue,
-        context: row.context,
-      });
-      prevStateValue = prevSnapshot.value;
+    const { row, nextEvent } = result;
+    event = nextEvent.payload as AnyEventObject;
+    eventSeq = nextEvent.seq;
+    prevSnapshot = machine.resolveState({
+      value: row.stateValue,
+      context: row.context,
+    });
+    prevStateValue = prevSnapshot.value;
 
-      // Transition
-      const [nextState] = transition(machine, prevSnapshot, event);
+    // Transition
+    const [nextState] = transition(machine, prevSnapshot, event);
 
-      // Resolve transient (always) transitions
+    // Resolve transient (always) transitions
+    const resolved = resolveTransientTransitions(machine, nextState);
+
+    // Compute firedDelays — timeout-aware
+    if (event.type.startsWith("xstate.after.")) {
+      const allDelays = getSortedAfterDelays(machine, prevSnapshot);
+      const unfired = allDelays.filter(
+        (d) => !(row.firedDelays as Array<string | number>).includes(d),
+      );
+      const firedDelay = unfired[0];
+      firedDelays = firedDelay !== undefined && isReentryDelay(machine, prevSnapshot, firedDelay)
+        ? []
+        : [...(row.firedDelays as Array<string | number>), ...(firedDelay !== undefined ? [firedDelay] : [])];
+    } else {
+      firedDelays = [];
+    }
+
+    // Check for invocation
+    const invocation = resolved.status !== "done"
+      ? getActiveInvocation(machine, resolved)
+      : null;
+
+    if (invocation) {
+      // ── Invocation path: persist invoking state, NO cursor advance ──
+      await store.updateInstanceSnapshot(
+        client,
+        instanceId,
+        resolved.value,
+        resolved.context as Record<string, unknown>,
+      );
+      await client.query("COMMIT");
+      invocationSnapshot = resolved;
+    } else {
+      // ── Fast path: finalize in a single transaction ─────────────────
+      await finalize(
+        deps, client, instanceId,
+        prevSnapshot, prevStateValue,
+        resolved, event, eventSeq, firedDelays,
+      );
+      await client.query("COMMIT");
+    }
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    client.release();
+    throw err;
+  }
+
+  client.release();
+
+  if (!invocationSnapshot) {
+    // Fast path completed (or no work)
+    return true;
+  }
+
+  // ── Invocation phase (no transaction, no lock held) ─────────────────
+  const current = await executeInvocationsInline(
+    deps, instanceId, invocationSnapshot,
+  );
+
+  // ── Txn 2: re-lock, check cancellation, finalize ───────────────────
+  const client2 = await getPool(store).connect();
+  try {
+    await client2.query("BEGIN");
+
+    const row2 = await store.lockAndGetInstance(client2, instanceId);
+    if (!row2 || row2.status === "cancelled") {
+      await client2.query("COMMIT");
+      return row2?.status === "cancelled";
+    }
+
+    await finalize(
+      deps, client2, instanceId,
+      prevSnapshot!, prevStateValue!,
+      current, event!, eventSeq!, firedDelays!,
+    );
+    await client2.query("COMMIT");
+    return true;
+  } catch (err) {
+    await client2.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client2.release();
+  }
+}
+
+// ─── Batch Event Drain ───────────────────────────────────────────────────────
+
+const BATCH_SIZE = 50;
+
+/**
+ * Drains up to BATCH_SIZE events for an instance in a single transaction.
+ * Returns the number of events processed (0 if none available or row locked).
+ *
+ * When an invocation is encountered mid-batch, processing stops: the invoking
+ * state is persisted (no cursor advance), the invocation runs outside the lock,
+ * and a second transaction finalizes with cursor at the invocation event.
+ */
+export async function processBatchFromLog(
+  deps: EventProcessorOptions,
+  instanceId: string,
+): Promise<number> {
+  const { store, machine } = deps;
+
+  const client = await getPool(store).connect();
+
+  let invocationSnapshot: AnyMachineSnapshot | null = null;
+  let prevSnapshot: AnyMachineSnapshot;
+  let prevStateValue: StateValue;
+  let lastEvent: AnyEventObject;
+  let lastEventSeq = 0;
+  let firedDelays: Array<string | number> = [];
+  let processedCount = 0;
+
+  try {
+    await client.query("BEGIN");
+
+    const result = await store.lockAndPeekEvents(client, instanceId, BATCH_SIZE);
+    if (!result || result.row.status !== "running" || result.events.length === 0) {
+      await client.query("COMMIT");
+      client.release();
+      return 0;
+    }
+
+    const { row, events } = result;
+    prevSnapshot = machine.resolveState({
+      value: row.stateValue,
+      context: row.context,
+    });
+    prevStateValue = prevSnapshot.value;
+    let current = prevSnapshot;
+    firedDelays = row.firedDelays;
+    lastEvent = events[0].payload as AnyEventObject;
+
+    // Track state before invocation for mid-batch commit
+    let preInvokeState = current;
+    let preInvokeEvent = lastEvent;
+    let preInvokeSeq = 0;
+    let preInvokeFiredDelays = firedDelays;
+
+    for (const evt of events) {
+      const event = evt.payload as AnyEventObject;
+      const [nextState] = transition(machine, current, event);
       const resolved = resolveTransientTransitions(machine, nextState);
 
-      // Compute firedDelays — timeout-aware
+      // Compute firedDelays for after events
       if (event.type.startsWith("xstate.after.")) {
-        const allDelays = getSortedAfterDelays(machine, prevSnapshot);
-        const unfired = allDelays.filter(
-          (d) => !(row.firedDelays as Array<string | number>).includes(d),
-        );
+        const allDelays = getSortedAfterDelays(machine, current);
+        const unfired = allDelays.filter((d) => !firedDelays.includes(d));
         const firedDelay = unfired[0];
-        firedDelays = firedDelay !== undefined && isReentryDelay(machine, prevSnapshot, firedDelay)
+        firedDelays = firedDelay !== undefined && isReentryDelay(machine, current, firedDelay)
           ? []
-          : [...(row.firedDelays as Array<string | number>), ...(firedDelay !== undefined ? [firedDelay] : [])];
+          : [...firedDelays, ...(firedDelay !== undefined ? [firedDelay] : [])];
       } else {
         firedDelays = [];
       }
 
-      // Check for invocation
-      const invocation = resolved.status !== "done"
-        ? getActiveInvocation(machine, resolved)
-        : null;
-
-      if (invocation) {
-        // ── Invocation path: persist invoking state, NO cursor advance ──
-        await store.updateInstance(
-          instanceId,
-          {
-            stateValue: resolved.value,
-            context: resolved.context as Record<string, unknown>,
-          },
-          client,
-        );
-        await client.query("COMMIT");
+      // Check for invocation — stop batch here
+      if (resolved.status !== "done" && getActiveInvocation(machine, resolved)) {
         invocationSnapshot = resolved;
-      } else {
-        // ── Fast path: finalize in a single transaction ─────────────────
+        lastEvent = event;
+        lastEventSeq = evt.seq;
+        break;
+      }
+
+      current = resolved;
+      lastEvent = event;
+      lastEventSeq = evt.seq;
+      processedCount++;
+
+      // Track for mid-batch commit if invocation comes next
+      preInvokeState = current;
+      preInvokeEvent = event;
+      preInvokeSeq = evt.seq;
+      preInvokeFiredDelays = firedDelays;
+    }
+
+    if (processedCount > 0 && !invocationSnapshot) {
+      // All events processed without invocation — finalize
+      await finalize(
+        deps, client, instanceId,
+        prevSnapshot, prevStateValue,
+        current, lastEvent, lastEventSeq, firedDelays,
+      );
+      await client.query("COMMIT");
+      client.release();
+      return processedCount;
+    }
+
+    if (invocationSnapshot) {
+      if (processedCount > 0) {
+        // Commit pre-invocation events first: finalize state + advance cursor
+        // to the last event before the invocation
         await finalize(
           deps, client, instanceId,
           prevSnapshot, prevStateValue,
-          resolved, event, eventSeq, firedDelays,
+          preInvokeState, preInvokeEvent, preInvokeSeq, preInvokeFiredDelays,
         );
         await client.query("COMMIT");
-        processed = true;
-      }
-    } catch (err) {
-      await client.query("ROLLBACK").catch(() => {});
-      throw err;
-    } finally {
-      client.release();
-    }
+        client.release();
 
-    if (!invocationSnapshot) return;
-
-    // ── Invocation phase (no transaction, no lock held) ─────────────────
-    const current = await executeInvocationsInline(
-      deps, instanceId, invocationSnapshot,
-    );
-
-    // ── Txn 2: re-lock, check cancellation, finalize ───────────────────
-    const client2 = await getPool(store).connect();
-    try {
-      await client2.query("BEGIN");
-
-      const row2 = await store.lockAndGetInstance(client2, instanceId);
-      if (!row2 || row2.status === "cancelled") {
-        await client2.query("COMMIT");
-        processed = row2?.status === "cancelled";
-        return;
+        // Update prevSnapshot/prevStateValue for the invocation finalize
+        prevSnapshot = preInvokeState;
+        prevStateValue = preInvokeState.value;
+      } else {
+        // First event triggered the invocation — persist invoking state only
+        await store.updateInstanceSnapshot(
+          client, instanceId,
+          invocationSnapshot.value,
+          invocationSnapshot.context as Record<string, unknown>,
+        );
+        await client.query("COMMIT");
+        client.release();
       }
 
-      await finalize(
-        deps, client2, instanceId,
-        prevSnapshot!, prevStateValue!,
-        current, event!, eventSeq!, firedDelays!,
+      // Execute invocations outside the lock
+      const postInvoke = await executeInvocationsInline(
+        deps, instanceId, invocationSnapshot,
       );
-      await client2.query("COMMIT");
-      processed = true;
-    } catch (err) {
-      await client2.query("ROLLBACK").catch(() => {});
-      throw err;
-    } finally {
-      client2.release();
+
+      // Txn 2: re-lock, finalize with cursor at invocation event
+      const client2 = await getPool(store).connect();
+      try {
+        await client2.query("BEGIN");
+        const row2 = await store.lockAndGetInstance(client2, instanceId);
+        if (!row2 || row2.status === "cancelled") {
+          await client2.query("COMMIT");
+          return processedCount + (row2?.status === "cancelled" ? 1 : 0);
+        }
+
+        await finalize(
+          deps, client2, instanceId,
+          prevSnapshot, prevStateValue,
+          postInvoke, lastEvent, lastEventSeq, firedDelays,
+        );
+        await client2.query("COMMIT");
+        return processedCount + 1;
+      } catch (err) {
+        await client2.query("ROLLBACK").catch(() => {});
+        throw err;
+      } finally {
+        client2.release();
+      }
     }
-  });
-  return processed;
+
+    // No events processed, no invocation
+    await client.query("COMMIT");
+    client.release();
+    return 0;
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    client.release();
+    throw err;
+  }
 }
 
 // ─── Internal Helpers ───────────────────────────────────────────────────────

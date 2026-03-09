@@ -4,6 +4,8 @@ export interface PgConfig {
   wakePollingIntervalMs?: number;
   effectPollingIntervalMs?: number;
   useListenNotify?: boolean;
+  maxConcurrency?: number;
+  poolSize?: number;
 }
 
 /**
@@ -15,6 +17,8 @@ export interface PgConfig {
  * | `PG_SCHEMA`                | string  | `"public"` | Schema for all tables                     |
  * | `WAKE_POLLING_INTERVAL_MS` | number  | `5000`     | Timeout poll interval                     |
  * | `PG_USE_LISTEN_NOTIFY`     | boolean | `true`     | Set `false` for PgBouncer transaction mode|
+ * | `MAX_CONCURRENCY`          | number  | `10`       | Max concurrent instance processing        |
+ * | `PG_POOL_SIZE`             | number  | `20`       | PG connection pool max size               |
  */
 export function parsePgConfig(
   env: Record<string, string | undefined> = process.env,
@@ -43,6 +47,26 @@ export function parsePgConfig(
   if (env.PG_USE_LISTEN_NOTIFY !== undefined) {
     config.useListenNotify =
       env.PG_USE_LISTEN_NOTIFY !== "false" && env.PG_USE_LISTEN_NOTIFY !== "0";
+  }
+
+  if (env.MAX_CONCURRENCY) {
+    const val = Number(env.MAX_CONCURRENCY);
+    if (Number.isNaN(val) || val <= 0) {
+      throw new Error(
+        `MAX_CONCURRENCY must be a positive number, got "${env.MAX_CONCURRENCY}"`,
+      );
+    }
+    config.maxConcurrency = val;
+  }
+
+  if (env.PG_POOL_SIZE) {
+    const val = Number(env.PG_POOL_SIZE);
+    if (Number.isNaN(val) || val <= 0) {
+      throw new Error(
+        `PG_POOL_SIZE must be a positive number, got "${env.PG_POOL_SIZE}"`,
+      );
+    }
+    config.poolSize = val;
   }
 
   return config;

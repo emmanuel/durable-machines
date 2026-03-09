@@ -36,14 +36,18 @@ const mockStore: PgStore = {
   createInstance: vi.fn(),
   getInstance: vi.fn(),
   updateInstance: vi.fn(),
+  updateInstanceStatus: vi.fn(),
+  updateInstanceSnapshot: vi.fn(),
   listInstances: vi.fn(),
   lockAndGetInstance: vi.fn(),
   appendEvent: mockAppendEvent,
   lockAndPeekEvent: vi.fn(),
+  lockAndPeekEvents: vi.fn(),
   getEventLog: vi.fn().mockResolvedValue([]),
   getInvokeResult: vi.fn(),
   recordInvokeResult: vi.fn(),
   listInvokeResults: vi.fn(),
+  finalizeWithTransition: vi.fn(),
   appendTransition: vi.fn(),
   getTransitions: vi.fn(),
   insertEffects: vi.fn(),
@@ -198,13 +202,15 @@ describe("createPgWorkerContext", () => {
       expect(cb.length).toBe(3);
     });
 
-    it("start() starts the wake poller and effect poller (setInterval called twice)", async () => {
-      const siSpy = vi.spyOn(globalThis, "setInterval");
+    it("start() starts the wake poller and effect poller (setTimeout called for adaptive polling)", async () => {
+      const stSpy = vi.spyOn(globalThis, "setTimeout");
       const ctx = createPgWorkerContext({ databaseUrl: "postgres://localhost/test" });
 
+      const beforeCount = stSpy.mock.calls.length;
       await ctx.start({ handleExceptions: false, signals: [] });
 
-      expect(siSpy).toHaveBeenCalledTimes(2);
+      // Adaptive polling uses setTimeout — at least 2 calls (one per poller)
+      expect(stSpy.mock.calls.length - beforeCount).toBeGreaterThanOrEqual(2);
     });
 
     it("shutdown stops poller, then store.close(), then pool.end() (in order)", async () => {

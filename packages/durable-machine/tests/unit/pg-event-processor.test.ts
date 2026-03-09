@@ -50,6 +50,8 @@ function createMockStore(): PgStore & {
       input: Record<string, unknown> | null,
       wakeAt?: number | null,
       firedDelays?: Array<string | number>,
+      _queryable?: unknown,
+      wakeEvent?: unknown,
     ) {
       const now = Date.now();
       instances.set(id, {
@@ -60,6 +62,7 @@ function createMockStore(): PgStore & {
         status: "running",
         firedDelays: firedDelays ?? [],
         wakeAt: wakeAt ?? null,
+        wakeEvent: wakeEvent ?? null,
         input,
         eventCursor: 0,
         createdAt: now,
@@ -81,9 +84,25 @@ function createMockStore(): PgStore & {
       if (patch.stateValue !== undefined) row.stateValue = patch.stateValue as any;
       if (patch.context !== undefined) row.context = patch.context as any;
       if (patch.wakeAt !== undefined) row.wakeAt = patch.wakeAt as any;
+      if (patch.wakeEvent !== undefined) row.wakeEvent = patch.wakeEvent as any;
       if (patch.firedDelays !== undefined) row.firedDelays = patch.firedDelays as any;
       if (patch.status !== undefined) row.status = patch.status as any;
       if (patch.eventCursor !== undefined) row.eventCursor = patch.eventCursor as number;
+      row.updatedAt = Date.now();
+    },
+
+    async updateInstanceStatus(id: string, status: string) {
+      const row = instances.get(id);
+      if (!row) return;
+      row.status = status;
+      row.updatedAt = Date.now();
+    },
+
+    async updateInstanceSnapshot(_client: any, id: string, stateValue: unknown, context: Record<string, unknown>) {
+      const row = instances.get(id);
+      if (!row) return;
+      row.stateValue = stateValue as any;
+      row.context = context;
       row.updatedAt = Date.now();
     },
 
@@ -116,6 +135,17 @@ function createMockStore(): PgStore & {
       return {
         row,
         nextEvent: next ? { seq: next.seq, payload: next.payload } : null,
+      };
+    },
+
+    async lockAndPeekEvents(_client: any, instanceId: string, limit: number) {
+      const row = instances.get(instanceId);
+      if (!row) return null;
+      const entries = eventLog.get(instanceId) ?? [];
+      const pending = entries.filter((e) => e.seq > row.eventCursor).slice(0, limit);
+      return {
+        row,
+        events: pending.map((e) => ({ seq: e.seq, payload: e.payload })),
       };
     },
 
@@ -158,6 +188,26 @@ function createMockStore(): PgStore & {
         }
       }
       return results;
+    },
+
+    async finalizeWithTransition(
+      _client: any, instanceId: string,
+      stateValue: unknown, context: Record<string, unknown>,
+      wakeAt: unknown, _wakeEvent: unknown,
+      firedDelays: unknown, status: string, eventCursor: number,
+      from: unknown, to: unknown, event: string | null, ts: number,
+    ) {
+      const row = instances.get(instanceId);
+      if (row) {
+        row.stateValue = stateValue as any;
+        row.context = context;
+        row.wakeAt = wakeAt as any;
+        row.firedDelays = firedDelays as any;
+        row.status = status;
+        row.eventCursor = eventCursor;
+        row.updatedAt = Date.now();
+      }
+      transitions.push({ instanceId, from, to, event, ts });
     },
 
     async appendTransition(instanceId: string, from: unknown, to: unknown, event: string | null, ts: number) {

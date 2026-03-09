@@ -7,7 +7,6 @@ import type {
   DurableMachineOptions,
 } from "../types.js";
 import type { EffectHandler, ResolvedEffect } from "../effects.js";
-import { getSortedAfterDelays, buildAfterEvent } from "../xstate-utils.js";
 import { createAppContext } from "../app-context.js";
 import { createStore } from "./store.js";
 import type { PgStore } from "./store.js";
@@ -27,7 +26,10 @@ export type PgWorkerAppContext = WorkerAppContext & {
 // ─── Factory ────────────────────────────────────────────────────────────────
 
 export function createPgWorkerContext(config: PgConfig): PgWorkerAppContext {
-  const pool = new Pool({ connectionString: config.databaseUrl });
+  const pool = new Pool({
+    connectionString: config.databaseUrl,
+    max: config.poolSize ?? 20,
+  });
   const store = createStore({
     pool,
     schema: config.schema,
@@ -36,57 +38,72 @@ export function createPgWorkerContext(config: PgConfig): PgWorkerAppContext {
 
   const machines = new Map<string, PgDurableMachine>();
   const allEffectHandlers = new Map<string, EffectHandler>();
-  let pollerHandle: ReturnType<typeof setInterval> | null = null;
-  let effectPollerHandle: ReturnType<typeof setInterval> | null = null;
+  let wakePoller: { stop: () => void } | null = null;
+  let effectPoller: { stop: () => void } | null = null;
+
+  // ── Semaphore for cross-instance concurrency control ────────────────
+
+  const maxConcurrency = config.maxConcurrency ?? 10;
+  let permits = maxConcurrency;
+  const waitQueue: Array<() => void> = [];
+
+  function acquirePermit(): Promise<void> {
+    if (permits > 0) { permits--; return Promise.resolve(); }
+    return new Promise<void>((resolve) => waitQueue.push(resolve));
+  }
+
+  function releasePermit(): void {
+    const next = waitQueue.shift();
+    if (next) next(); else permits++;
+  }
+
+  function dispatch(instanceId: string, dm: PgDurableMachine): void {
+    void acquirePermit().then(async () => {
+      try { await dm.consumeAndProcess(instanceId); }
+      finally { releasePermit(); }
+    });
+  }
+
+  // ── Adaptive Poller ────────────────────────────────────────────────────
+
+  function adaptivePoll(
+    pollFn: () => Promise<number>,
+    opts: { minMs: number; maxMs: number; factor: number },
+  ): { stop: () => void } {
+    let currentMs = opts.maxMs;
+    let timer: ReturnType<typeof setTimeout>;
+    let stopped = false;
+    async function tick(): Promise<void> {
+      if (stopped) return;
+      try {
+        const count = await pollFn();
+        currentMs = count > 0
+          ? opts.minMs
+          : Math.min(currentMs * opts.factor, opts.maxMs);
+      } catch { /* ignore */ }
+      if (!stopped) {
+        timer = setTimeout(() => void tick(), currentMs);
+        timer.unref();
+      }
+    }
+    timer = setTimeout(() => void tick(), opts.minMs);
+    timer.unref();
+    return {
+      stop() {
+        stopped = true;
+        clearTimeout(timer);
+      },
+    };
+  }
 
   // ── Poll for timed-out instances ────────────────────────────────────────
 
-  async function pollTimeouts(): Promise<void> {
+  async function pollTimeouts(): Promise<number> {
     try {
-      const now = Date.now();
-      const { rows } = await pool.query(
-        `SELECT id, machine_name, state_value, context, fired_delays
-         FROM machine_instances
-         WHERE wake_at <= $1 AND status = 'running' LIMIT 50`,
-        [now],
-      );
-
-      for (const row of rows) {
-        const dm = machines.get(row.machine_name);
-        if (!dm) continue;
-
-        // Optimistic claim: clear wake_at to prevent duplicate timeout events
-        const { rowCount } = await pool.query(
-          `UPDATE machine_instances SET wake_at = NULL
-           WHERE id = $1 AND wake_at IS NOT NULL AND wake_at <= $2`,
-          [row.id, now],
-        );
-        if (!rowCount) continue;
-
-        try {
-          // Build the after event
-          const snapshot = dm.machine.resolveState({
-            value: row.state_value,
-            context: row.context,
-          });
-          const allDelays = getSortedAfterDelays(dm.machine, snapshot);
-          const firedDelays = row.fired_delays as Array<string | number>;
-          const unfired = allDelays.filter((d: string | number) => !firedDelays.includes(d));
-          if (unfired.length === 0) continue;
-
-          const afterEvent = buildAfterEvent(dm.machine, snapshot, unfired[0]);
-
-          // Insert into event log — NOTIFY trigger fires automatically
-          await store.appendEvent(row.id, afterEvent, "timeout", "system:timeout");
-
-          // Trigger immediate consumption
-          try { await dm.consumeAndProcess(row.id); } catch { /* NOTIFY retry */ }
-        } catch {
-          // Individual failures don't stop the poller
-        }
-      }
+      const { rows } = await pool.query(`SELECT fire_due_timeouts() AS cnt`);
+      return Number(rows[0].cnt);
     } catch {
-      // Query failures don't stop the poller
+      return 0;
     }
   }
 
@@ -98,8 +115,8 @@ export function createPgWorkerContext(config: PgConfig): PgWorkerAppContext {
     return baseMs * rate ** (attempt - 1);
   }
 
-  async function pollEffects(): Promise<void> {
-    if (allEffectHandlers.size === 0) return;
+  async function pollEffects(): Promise<number> {
+    if (allEffectHandlers.size === 0) return 0;
 
     try {
       const rows = await store.claimPendingEffects(50);
@@ -125,8 +142,9 @@ export function createPgWorkerContext(config: PgConfig): PgWorkerAppContext {
           );
         }
       }
+      return rows.length;
     } catch {
-      // Poll errors silently ignored
+      return 0;
     }
   }
 
@@ -140,33 +158,28 @@ export function createPgWorkerContext(config: PgConfig): PgWorkerAppContext {
         (machineName: string, instanceId: string, _topic: string) => {
           const dm = machines.get(machineName);
           if (!dm) return;
-          void dm.consumeAndProcess(instanceId);
+          dispatch(instanceId, dm);
         },
       );
 
-      const intervalMs = config.wakePollingIntervalMs ?? 5000;
-      pollerHandle = setInterval(() => {
-        void pollTimeouts();
-      }, intervalMs);
-      pollerHandle.unref();
+      wakePoller = adaptivePoll(pollTimeouts, {
+        minMs: 500,
+        maxMs: config.wakePollingIntervalMs ?? 5000,
+        factor: 2,
+      });
 
-      // Start effect poller
-      const effectIntervalMs = config.effectPollingIntervalMs ?? 1000;
-      effectPollerHandle = setInterval(() => {
-        void pollEffects();
-      }, effectIntervalMs);
-      effectPollerHandle.unref();
+      effectPoller = adaptivePoll(pollEffects, {
+        minMs: 100,
+        maxMs: config.effectPollingIntervalMs ?? 1000,
+        factor: 2,
+      });
     },
 
     async stop(): Promise<void> {
-      if (pollerHandle != null) {
-        clearInterval(pollerHandle);
-        pollerHandle = null;
-      }
-      if (effectPollerHandle != null) {
-        clearInterval(effectPollerHandle);
-        effectPollerHandle = null;
-      }
+      wakePoller?.stop();
+      wakePoller = null;
+      effectPoller?.stop();
+      effectPoller = null;
       await store.close();
       await pool.end();
     },

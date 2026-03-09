@@ -60,7 +60,7 @@ describe("startInstancePage()", () => {
 
   it("renders cancel link back to instance list", () => {
     const html = startInstancePage("/dash", "order", minimalDefinition(), "/api");
-    expect(html).toContain('href="/dash/order"');
+    expect(html).toContain('href="/dash/machines/order"');
     expect(html).toContain("Cancel");
   });
 
@@ -97,7 +97,7 @@ describe("instanceListPage()", () => {
   it("renders Start New Instance link instead of inline form", () => {
     const html = instanceListPage("/dash", "order", []);
     expect(html).toContain("Start New Instance");
-    expect(html).toContain("/dash/order/new");
+    expect(html).toContain("/dash/machines/order/new");
     expect(html).not.toContain('id="start-form"');
   });
 });

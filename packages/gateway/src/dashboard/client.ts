@@ -849,7 +849,7 @@ export const CLIENT_JS = /* js */ `
         for (const inst of data.instances) {
           const statusLower = inst.status.toLowerCase();
           html += '<tr>';
-          html += '<td class="mono"><a href="' + basePath + '/' + esc(machineId) + '/' + esc(inst.workflowId) + '">' + esc(inst.workflowId) + '</a></td>';
+          html += '<td class="mono"><a href="' + basePath + '/machines/' + esc(machineId) + '/instances/' + esc(inst.workflowId) + '">' + esc(inst.workflowId) + '</a></td>';
           html += '<td><span class="badge badge-' + esc(statusLower) + '">' + esc(inst.status) + '</span></td>';
           html += '</tr>';
         }

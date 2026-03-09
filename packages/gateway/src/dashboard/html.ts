@@ -200,7 +200,7 @@ export function machineListPage(
         ? `<div class="machine-tags">${m.tags.map((t) => `<span class="machine-tag">${esc(t)}</span>`).join("")}</div>`
         : "";
       rows += `<tr>
-        <td><a href="${esc(basePath)}/${esc(m.machineId)}">${displayName}</a>${desc}${tags}</td>
+        <td><a href="${esc(basePath)}/machines/${esc(m.machineId)}">${displayName}</a>${desc}${tags}</td>
         <td>${m.instanceCount}</td>
       </tr>`;
     }
@@ -235,8 +235,8 @@ export function instanceListPage(
           (f === "all" && !statusFilter) || f === statusFilter;
         const href =
           f === "all"
-            ? `${basePath}/${machineId}`
-            : `${basePath}/${machineId}?status=${f}`;
+            ? `${basePath}/machines/${machineId}`
+            : `${basePath}/machines/${machineId}?status=${f}`;
         return `<a class="filter-btn${isActive ? " active" : ""}" href="${esc(href)}">${esc(f)}</a>`;
       })
       .join("")}
@@ -248,14 +248,14 @@ export function instanceListPage(
   } else {
     for (const inst of instances) {
       rows += `<tr>
-        <td class="mono"><a href="${esc(basePath)}/${esc(machineId)}/${esc(inst.workflowId)}">${esc(inst.workflowId)}</a></td>
+        <td class="mono"><a href="${esc(basePath)}/machines/${esc(machineId)}/instances/${esc(inst.workflowId)}">${esc(inst.workflowId)}</a></td>
         <td>${statusBadge(inst.status)}</td>
       </tr>`;
     }
   }
 
-  const sseUrl = `${basePath}/sse/${machineId}`;
-  const startUrl = `${basePath}/${machineId}/new`;
+  const sseUrl = `${basePath}/machines/${machineId}/stream`;
+  const startUrl = `${basePath}/machines/${machineId}/new`;
 
   const body = `
     <script type="application/json" id="base-path">${esc(basePath)}</script>
@@ -308,12 +308,12 @@ export function startInstancePage(
     <div class="card start-page-card">
       <h2>Start New Instance: ${esc(label)}</h2>
       ${descHtml}
-      <form id="start-form" class="start-form" data-url="${esc(startUrl)}" data-detail-base="${esc(basePath)}/${esc(machineId)}"${inputSchema && inputSchema.length > 0 ? ' data-has-schema="true"' : ""}>
+      <form id="start-form" class="start-form" data-url="${esc(startUrl)}" data-detail-base="${esc(basePath)}/machines/${esc(machineId)}/instances"${inputSchema && inputSchema.length > 0 ? ' data-has-schema="true"' : ""}>
         <input type="text" name="instanceId" placeholder="Instance ID (required)" required />
         ${fieldsHtml}
         <div class="start-form-row">
           <button type="submit">Start</button>
-          <a href="${esc(basePath)}/${esc(machineId)}" class="btn-cancel">Cancel</a>
+          <a href="${esc(basePath)}/machines/${esc(machineId)}" class="btn-cancel">Cancel</a>
           <span class="form-status" id="start-status"></span>
         </div>
       </form>
@@ -324,7 +324,7 @@ export function startInstancePage(
       title: `Start ${label} - Dashboard`,
       basePath,
       breadcrumbs: [
-        { label: machineId, href: `${basePath}/${machineId}` },
+        { label: machineId, href: `${basePath}/machines/${machineId}` },
         { label: "New" },
       ],
     },
@@ -373,7 +373,7 @@ export function instanceDetailPage(
     activeSleep,
   } = data;
 
-  const sseUrl = `${basePath}/sse/${machineId}/${instanceId}`;
+  const sseUrl = `${basePath}/machines/${machineId}/instances/${instanceId}/stream`;
   const sendUrl = `${restBasePath}/machines/${machineId}/instances/${instanceId}/events`;
 
   // Graph panel
@@ -511,7 +511,7 @@ export function instanceDetailPage(
       title: `${instanceId} - ${machineId} - Dashboard`,
       basePath,
       breadcrumbs: [
-        { label: machineId, href: `${basePath}/${machineId}` },
+        { label: machineId, href: `${basePath}/machines/${machineId}` },
         { label: instanceId },
       ],
       sseUrl,

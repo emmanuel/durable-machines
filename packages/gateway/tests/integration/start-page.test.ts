@@ -156,7 +156,7 @@ describe("Start page E2E with PG backend", () => {
   // ── Start page rendering ────────────────────────────────────────────────
 
   it("GET /:machineId/new renders start page with metadata header", async () => {
-    const res = await combined.request("/dashboard/start-page-order/new");
+    const res = await combined.request("/dashboard/machines/start-page-order/new");
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain("Order Processing");
@@ -166,7 +166,7 @@ describe("Start page E2E with PG backend", () => {
   });
 
   it("start page renders typed input fields from inputSchema", async () => {
-    const html = await (await combined.request("/dashboard/start-page-order/new")).text();
+    const html = await (await combined.request("/dashboard/machines/start-page-order/new")).text();
 
     // orderId: string → text input
     expect(html).toContain('data-field="orderId"');
@@ -190,24 +190,24 @@ describe("Start page E2E with PG backend", () => {
   });
 
   it("start page has cancel link back to instance list", async () => {
-    const html = await (await combined.request("/dashboard/start-page-order/new")).text();
-    expect(html).toContain('href="/dashboard/start-page-order"');
+    const html = await (await combined.request("/dashboard/machines/start-page-order/new")).text();
+    expect(html).toContain('href="/dashboard/machines/start-page-order"');
     expect(html).toContain("Cancel");
   });
 
   it("returns 404 for unknown machine start page", async () => {
-    const res = await combined.request("/dashboard/nonexistent/new");
+    const res = await combined.request("/dashboard/machines/nonexistent/new");
     expect(res.status).toBe(404);
   });
 
   // ── Instance list has Start New Instance link ───────────────────────────
 
   it("instance list page shows Start New Instance link", async () => {
-    const res = await combined.request("/dashboard/start-page-order");
+    const res = await combined.request("/dashboard/machines/start-page-order");
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain("Start New Instance");
-    expect(html).toContain("/dashboard/start-page-order/new");
+    expect(html).toContain("/dashboard/machines/start-page-order/new");
   });
 
   // ── Full lifecycle: start via REST → verify in dashboard ────────────────
@@ -230,7 +230,7 @@ describe("Start page E2E with PG backend", () => {
   });
 
   it("dashboard instance detail shows context from schema-typed input", async () => {
-    const res = await combined.request("/dashboard/start-page-order/sp-ord-1");
+    const res = await combined.request("/dashboard/machines/start-page-order/instances/sp-ord-1");
     expect(res.status).toBe(200);
     const html = await res.text();
 
@@ -247,7 +247,7 @@ describe("Start page E2E with PG backend", () => {
   });
 
   it("dashboard detail shows event schemas for available events", async () => {
-    const html = await (await combined.request("/dashboard/start-page-order/sp-ord-1")).text();
+    const html = await (await combined.request("/dashboard/machines/start-page-order/instances/sp-ord-1")).text();
 
     // The runtime data JSON should include event schemas
     const match = html.match(/id="runtime-data">([^<]+)/);
@@ -288,13 +288,13 @@ describe("Start page E2E with PG backend", () => {
     expect(body.context.chargeId).toBe("ch_55.99");
 
     // Dashboard detail should reflect the final state
-    const dashRes = await combined.request("/dashboard/start-page-order/sp-ord-1");
+    const dashRes = await combined.request("/dashboard/machines/start-page-order/instances/sp-ord-1");
     const html = await dashRes.text();
     expect(html).toContain("ch_55.99");
   });
 
   it("instance list shows the created instance", async () => {
-    const html = await (await combined.request("/dashboard/start-page-order")).text();
+    const html = await (await combined.request("/dashboard/machines/start-page-order")).text();
     expect(html).toContain("sp-ord-1");
   });
 });

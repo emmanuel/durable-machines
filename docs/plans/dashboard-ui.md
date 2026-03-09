@@ -35,11 +35,12 @@ All under configurable `dashboardPath` (default `/dashboard`):
 | Method | Path | Response | View |
 |--------|------|----------|------|
 | GET | `/` | HTML | Machine list |
-| GET | `/:machineId` | HTML | Instance list |
-| GET | `/:machineId/:instanceId` | HTML | Instance detail |
-| GET | `/sse/:machineId` | SSE | Instance list live updates |
-| GET | `/sse/:machineId/:instanceId` | SSE | Instance detail live updates |
-| POST | `/:machineId/:instanceId/send` | redirect | Send event from UI form |
+| GET | `/machines/:machineId` | HTML | Instance list |
+| GET | `/machines/:machineId/new` | HTML | Start instance |
+| GET | `/machines/:machineId/instances/:instanceId` | HTML | Instance detail |
+| GET | `/machines/:machineId/stream` | SSE | Instance list live updates |
+| GET | `/machines/:machineId/instances/:instanceId/stream` | SSE | Instance detail live updates |
+| POST | `/machines/:machineId/instances/:instanceId/send` | redirect | Send event from UI form |
 
 ## Integration Points
 
@@ -161,7 +162,7 @@ The dashboard uses the same mechanism: `DashboardOptions` accepts an optional
 to receive NOTIFY signals and pushes SSE immediately — zero polling latency.
 When not provided (DBOS backend), falls back to polling (2s interval).
 
-### `/sse/:machineId/:instanceId`
+### `/machines/:machineId/instances/:instanceId/stream`
 
 On NOTIFY for this instanceId (or on poll interval): fetches snapshot, steps,
 transitions via the DurableMachineHandle. Compares with last-sent state. Only
@@ -171,7 +172,7 @@ Events:
 - `state` — `{ snapshot, steps, transitions, effects, availableEvents }`
 - `complete` — `{ status }` (stream ends)
 
-### `/sse/:machineId`
+### `/machines/:machineId/stream`
 
 On any NOTIFY for this machineName (or on poll interval): fetches instance list.
 
@@ -222,7 +223,7 @@ tests passing.
 
 ### Phase 5: Live Updates — DONE
 
-- SSE endpoints: `/sse/:machineId` and `/sse/:machineId/:instanceId`
+- SSE endpoints: `/machines/:machineId/stream` and `/machines/:machineId/instances/:instanceId/stream`
 - Uses `hono/streaming` `streamSSE()` for SSE responses
 - NOTIFY-driven push when `store` provided, polling fallback otherwise
 - Client JS connects `EventSource`, updates all panels on `state` events

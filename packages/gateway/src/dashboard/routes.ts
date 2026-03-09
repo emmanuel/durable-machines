@@ -61,9 +61,9 @@ export function createDashboardRoutes(options: DashboardRouteOptions): Hono {
     return c.html(machineListPage(basePath, items));
   });
 
-  // ── GET /:machineId/new — Start instance page ───────────────────────────
+  // ── GET /machines/:machineId/new — Start instance page ───────────────────
 
-  app.get("/:machineId/new", async (c) => {
+  app.get("/machines/:machineId/new", async (c) => {
     const machineId = c.req.param("machineId");
     const durable = machines.get(machineId);
     if (!durable) return c.notFound();
@@ -72,9 +72,9 @@ export function createDashboardRoutes(options: DashboardRouteOptions): Hono {
     return c.html(startInstancePage(basePath, machineId, definition, restBasePath));
   });
 
-  // ── GET /:machineId — Instance list ──────────────────────────────────────
+  // ── GET /machines/:machineId — Instance list ────────────────────────────
 
-  app.get("/:machineId", async (c) => {
+  app.get("/machines/:machineId", async (c) => {
     const machineId = c.req.param("machineId");
     const durable = machines.get(machineId);
     if (!durable) return c.html(machineListPage(basePath, []), 404);
@@ -84,11 +84,11 @@ export function createDashboardRoutes(options: DashboardRouteOptions): Hono {
     return c.html(instanceListPage(basePath, machineId, instances, status));
   });
 
-  // ── SSE routes (must precede /:machineId/:instanceId to avoid shadowing) ──
+  // ── SSE routes ──────────────────────────────────────────────────────────────
 
-  // ── SSE: /sse/:machineId — Instance list updates ─────────────────────────
+  // ── SSE: /machines/:machineId/stream — Instance list updates ─────────────
 
-  app.get("/sse/:machineId", (c) => {
+  app.get("/machines/:machineId/stream", (c) => {
     const machineId = c.req.param("machineId");
     const durable = machines.get(machineId);
     if (!durable) return c.notFound();
@@ -142,9 +142,9 @@ export function createDashboardRoutes(options: DashboardRouteOptions): Hono {
     });
   });
 
-  // ── SSE: /sse/:machineId/:instanceId — Instance detail updates ──────────
+  // ── SSE: /machines/:machineId/instances/:instanceId/stream — Instance detail updates ──
 
-  app.get("/sse/:machineId/:instanceId", (c) => {
+  app.get("/machines/:machineId/instances/:instanceId/stream", (c) => {
     const machineId = c.req.param("machineId");
     const instanceId = c.req.param("instanceId");
     const durable = machines.get(machineId);
@@ -243,9 +243,9 @@ export function createDashboardRoutes(options: DashboardRouteOptions): Hono {
     });
   });
 
-  // ── GET /:machineId/:instanceId — Instance detail ────────────────────────
+  // ── GET /machines/:machineId/instances/:instanceId — Instance detail ─────
 
-  app.get("/:machineId/:instanceId", async (c) => {
+  app.get("/machines/:machineId/instances/:instanceId", async (c) => {
     const machineId = c.req.param("machineId");
     const instanceId = c.req.param("instanceId");
     const durable = machines.get(machineId);
@@ -270,9 +270,9 @@ export function createDashboardRoutes(options: DashboardRouteOptions): Hono {
     return c.html(instanceDetailPage(basePath, restBasePath, data));
   });
 
-  // ── POST /:machineId/:instanceId/send — Send event (form fallback) ──────
+  // ── POST /machines/:machineId/instances/:instanceId/send — Send event (form fallback) ──
 
-  app.post("/:machineId/:instanceId/send", async (c) => {
+  app.post("/machines/:machineId/instances/:instanceId/send", async (c) => {
     const machineId = c.req.param("machineId");
     const instanceId = c.req.param("instanceId");
     const durable = machines.get(machineId);
@@ -280,7 +280,7 @@ export function createDashboardRoutes(options: DashboardRouteOptions): Hono {
 
     const body = await c.req.parseBody();
     const eventType = String(body["eventType"] || "");
-    if (!eventType) return c.redirect(`${basePath}/${machineId}/${instanceId}`);
+    if (!eventType) return c.redirect(`${basePath}/machines/${machineId}/instances/${instanceId}`);
 
     let payload: Record<string, unknown> = {};
     const raw = String(body["payload"] || "").trim();
@@ -293,7 +293,7 @@ export function createDashboardRoutes(options: DashboardRouteOptions): Hono {
     }
 
     await durable.get(instanceId).send({ type: eventType, ...payload });
-    return c.redirect(`${basePath}/${machineId}/${instanceId}`);
+    return c.redirect(`${basePath}/machines/${machineId}/instances/${instanceId}`);
   });
 
   return app;

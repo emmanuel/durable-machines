@@ -244,7 +244,7 @@ afterAll(async () => {
 describe("SSE live updates E2E with PG backend", () => {
   // ── Instance detail SSE ─────────────────────────────────────────────────
 
-  describe("instance detail SSE — /sse/:machineId/:instanceId", () => {
+  describe("instance detail SSE — /machines/:machineId/instances/:instanceId/stream", () => {
     it("emits initial state event on connect", async () => {
       // Create an instance first
       await post(app, "/api/machines/sse-test/instances", {
@@ -260,7 +260,7 @@ describe("SSE live updates E2E with PG backend", () => {
       );
 
       // Connect to SSE and collect the initial event
-      const res = await app.request("/dashboard/sse/sse-test/sse-1");
+      const res = await app.request("/dashboard/machines/sse-test/instances/sse-1/stream");
       expect(res.status).toBe(200);
       expect(res.headers.get("content-type")).toContain("text/event-stream");
 
@@ -292,7 +292,7 @@ describe("SSE live updates E2E with PG backend", () => {
       // Connect SSE, wait for initial event, then send CANCEL
       const events = await sseWithAction(
         app,
-        "/dashboard/sse/sse-test/sse-2",
+        "/dashboard/machines/sse-test/instances/sse-2/stream",
         async () => {
           await post(app, "/api/machines/sse-test/instances/sse-2/events", {
             type: "CANCEL",
@@ -345,7 +345,7 @@ describe("SSE live updates E2E with PG backend", () => {
       );
 
       // Now connect SSE — should get state + complete immediately
-      const res = await app.request("/dashboard/sse/sse-test/sse-3");
+      const res = await app.request("/dashboard/machines/sse-test/instances/sse-3/stream");
       const events = await collectSSEEvents(res, 2, 5_000);
 
       const completeEvent = events.find((e) => e.event === "complete");
@@ -356,7 +356,7 @@ describe("SSE live updates E2E with PG backend", () => {
 
     it("includes event schemas in state updates", async () => {
       // sse-1 is still in pending — connect and check schemas
-      const res = await app.request("/dashboard/sse/sse-test/sse-1");
+      const res = await app.request("/dashboard/machines/sse-test/instances/sse-1/stream");
       const events = await collectSSEEvents(res, 1, 5_000);
 
       const data = JSON.parse(events[0].data);
@@ -378,7 +378,7 @@ describe("SSE live updates E2E with PG backend", () => {
 
       const events = await sseWithAction(
         app,
-        "/dashboard/sse/sse-test/sse-4",
+        "/dashboard/machines/sse-test/instances/sse-4/stream",
         async () => {
           await post(app, "/api/machines/sse-test/instances/sse-4/events", {
             type: "PAY",
@@ -404,9 +404,9 @@ describe("SSE live updates E2E with PG backend", () => {
 
   // ── Instance list SSE ───────────────────────────────────────────────────
 
-  describe("instance list SSE — /sse/:machineId", () => {
+  describe("instance list SSE — /machines/:machineId/stream", () => {
     it("emits initial instances event on connect", async () => {
-      const res = await app.request("/dashboard/sse/sse-test");
+      const res = await app.request("/dashboard/machines/sse-test/stream");
       expect(res.status).toBe(200);
       expect(res.headers.get("content-type")).toContain("text/event-stream");
 
@@ -424,7 +424,7 @@ describe("SSE live updates E2E with PG backend", () => {
     it("emits updated list after new instance is created", async () => {
       const events = await sseWithAction(
         app,
-        "/dashboard/sse/sse-test",
+        "/dashboard/machines/sse-test/stream",
         async () => {
           await post(app, "/api/machines/sse-test/instances", {
             instanceId: "sse-list-new",
@@ -449,12 +449,12 @@ describe("SSE live updates E2E with PG backend", () => {
 
   describe("SSE error cases", () => {
     it("returns 404 for unknown machine SSE", async () => {
-      const res = await app.request("/dashboard/sse/nonexistent");
+      const res = await app.request("/dashboard/machines/nonexistent/stream");
       expect(res.status).toBe(404);
     });
 
     it("returns 404 for unknown machine instance SSE", async () => {
-      const res = await app.request("/dashboard/sse/nonexistent/inst-1");
+      const res = await app.request("/dashboard/machines/nonexistent/instances/inst-1/stream");
       expect(res.status).toBe(404);
     });
   });

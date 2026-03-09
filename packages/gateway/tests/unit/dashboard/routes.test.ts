@@ -117,10 +117,10 @@ describe("dashboard routes", () => {
     });
   });
 
-  describe("GET /:machineId — instance list", () => {
+  describe("GET /machines/:machineId — instance list", () => {
     it("returns instance list for a valid machine", async () => {
       const app = makeApp();
-      const res = await app.request("/order");
+      const res = await app.request("/machines/order");
 
       expect(res.status).toBe(200);
       const html = await res.text();
@@ -132,23 +132,23 @@ describe("dashboard routes", () => {
       const dm = mockDurable();
       const app = makeApp(new Map([["order", dm]]));
 
-      await app.request("/order?status=SUCCESS");
+      await app.request("/machines/order?status=SUCCESS");
 
       expect(dm.list).toHaveBeenCalledWith({ status: "SUCCESS" });
     });
 
     it("returns 404 HTML for unknown machine", async () => {
       const app = makeApp();
-      const res = await app.request("/nope");
+      const res = await app.request("/machines/nope");
 
       expect(res.status).toBe(404);
     });
   });
 
-  describe("GET /:machineId/:instanceId — instance detail", () => {
+  describe("GET /machines/:machineId/instances/:instanceId — instance detail", () => {
     it("renders the four-panel detail view", async () => {
       const app = makeApp();
-      const res = await app.request("/order/inst-1");
+      const res = await app.request("/machines/order/instances/inst-1");
 
       expect(res.status).toBe(200);
       const html = await res.text();
@@ -165,7 +165,7 @@ describe("dashboard routes", () => {
       const dm = mockDurable({ handle });
       const app = makeApp(new Map([["order", dm]]));
 
-      const res = await app.request("/order/inst-1");
+      const res = await app.request("/machines/order/instances/inst-1");
       expect(res.status).toBe(404);
     });
 
@@ -181,7 +181,7 @@ describe("dashboard routes", () => {
       const dm = mockDurable({ handle });
       const app = makeApp(new Map([["order", dm]]));
 
-      const html = await (await app.request("/order/inst-1")).text();
+      const html = await (await app.request("/machines/order/instances/inst-1")).text();
 
       expect(handle.getTransitions).toHaveBeenCalled();
       // The timeline should contain multiple transition entries
@@ -207,7 +207,7 @@ describe("dashboard routes", () => {
       const dm = mockDurable({ handle });
       const app = makeApp(new Map([["order", dm]]));
 
-      const html = await (await app.request("/order/inst-1")).text();
+      const html = await (await app.request("/machines/order/instances/inst-1")).text();
       expect(html).toContain("sendEmail");
       expect(html).toContain("Effects");
     });
@@ -221,7 +221,7 @@ describe("dashboard routes", () => {
       const dm = mockDurable({ handle });
       const app = makeApp(new Map([["order", dm]]));
 
-      const html = await (await app.request("/order/inst-1")).text();
+      const html = await (await app.request("/machines/order/instances/inst-1")).text();
       expect(html).toContain("error-panel");
       expect(html).toContain("Payment failed");
     });
@@ -241,7 +241,7 @@ describe("dashboard routes", () => {
       const dm = mockDurable({ handle });
       const app = makeApp(new Map([["order", dm]]));
 
-      const html = await (await app.request("/order/inst-1")).text();
+      const html = await (await app.request("/machines/order/instances/inst-1")).text();
       expect(html).toContain("error-panel");
       expect(html).toContain("chargeCard");
       expect(html).toContain("Insufficient funds");
@@ -249,7 +249,7 @@ describe("dashboard routes", () => {
 
     it("does not render error panel when everything is healthy", async () => {
       const app = makeApp();
-      const html = await (await app.request("/order/inst-1")).text();
+      const html = await (await app.request("/machines/order/instances/inst-1")).text();
       // The error panel container should be empty (just open+close div, no child panel)
       expect(html).toContain('id="error-panel-container"></div>');
     });
@@ -263,7 +263,7 @@ describe("dashboard routes", () => {
       const dm = mockDurable({ handle });
       const app = makeApp(new Map([["order", dm]]));
 
-      const html = await (await app.request("/order/inst-1")).text();
+      const html = await (await app.request("/machines/order/instances/inst-1")).text();
       // The runtime data JSON should include both the compound and leaf paths
       const match = html.match(/id="runtime-data">([^<]+)/);
       expect(match).not.toBeNull();
@@ -281,7 +281,7 @@ describe("dashboard routes", () => {
       const dm = mockDurable({ handle });
       const app = makeApp(new Map([["order", dm]]));
 
-      const html = await (await app.request("/order/inst-1")).text();
+      const html = await (await app.request("/machines/order/instances/inst-1")).text();
       const match = html.match(/id="runtime-data">([^<]+)/);
       const runtimeData = JSON.parse(match![1]);
       expect(runtimeData.activeStates).toEqual(
@@ -295,10 +295,10 @@ describe("dashboard routes", () => {
     });
   });
 
-  describe("GET /:machineId/new — start instance page", () => {
+  describe("GET /machines/:machineId/new — start instance page", () => {
     it("returns start page HTML for a valid machine", async () => {
       const app = makeApp();
-      const res = await app.request("/order/new");
+      const res = await app.request("/machines/order/new");
 
       expect(res.status).toBe(200);
       const html = await res.text();
@@ -308,14 +308,14 @@ describe("dashboard routes", () => {
 
     it("returns 404 for unknown machine", async () => {
       const app = makeApp();
-      const res = await app.request("/nope/new");
+      const res = await app.request("/machines/nope/new");
 
       expect(res.status).toBe(404);
     });
 
     it("renders textarea fallback when machine has no inputSchema", async () => {
       const app = makeApp();
-      const html = await (await app.request("/order/new")).text();
+      const html = await (await app.request("/machines/order/new")).text();
       // No inputSchema → textarea
       expect(html).toContain("<textarea");
     });
@@ -331,7 +331,7 @@ describe("dashboard routes", () => {
         },
       };
       const app = makeApp(new Map([["order", dm]]));
-      const html = await (await app.request("/order/new")).text();
+      const html = await (await app.request("/machines/order/new")).text();
       expect(html).toContain("Order Processing");
       expect(html).toContain("Handles order lifecycle");
     });
@@ -357,16 +357,16 @@ describe("dashboard routes", () => {
     });
   });
 
-  describe("GET /:machineId — instance list", () => {
+  describe("GET /machines/:machineId — instance list", () => {
     it("includes Start New Instance link", async () => {
       const app = makeApp();
-      const html = await (await app.request("/order")).text();
+      const html = await (await app.request("/machines/order")).text();
       expect(html).toContain("Start New Instance");
-      expect(html).toContain("/dashboard/order/new");
+      expect(html).toContain("/dashboard/machines/order/new");
     });
   });
 
-  describe("POST /:machineId/:instanceId/send — event sender", () => {
+  describe("POST /machines/:machineId/instances/:instanceId/send — event sender", () => {
     it("sends event to handle and redirects", async () => {
       const handle = mockHandle();
       const dm = mockDurable({ handle });
@@ -378,14 +378,14 @@ describe("dashboard routes", () => {
       form.set("eventType", "START");
       form.set("payload", '{"urgent": true}');
 
-      const res = await app.request("/order/inst-1/send", {
+      const res = await app.request("/machines/order/instances/inst-1/send", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: form.toString(),
       });
 
       expect(res.status).toBe(302);
-      expect(res.headers.get("location")).toContain("/dashboard/order/inst-1");
+      expect(res.headers.get("location")).toContain("/dashboard/machines/order/instances/inst-1");
       expect(handle.send).toHaveBeenCalledWith(
         expect.objectContaining({ type: "START", urgent: true }),
       );
@@ -399,7 +399,7 @@ describe("dashboard routes", () => {
       const form = new URLSearchParams();
       form.set("eventType", "");
 
-      const res = await app.request("/order/inst-1/send", {
+      const res = await app.request("/machines/order/instances/inst-1/send", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: form.toString(),
@@ -418,7 +418,7 @@ describe("dashboard routes", () => {
       form.set("eventType", "GO");
       form.set("payload", "not json");
 
-      await app.request("/order/inst-1/send", {
+      await app.request("/machines/order/instances/inst-1/send", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: form.toString(),

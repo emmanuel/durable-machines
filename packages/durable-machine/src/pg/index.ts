@@ -6,5 +6,3 @@ export { sendMachineEvent, sendMachineEventBatch, getMachineState } from "./clie
 export { getVisualizationState } from "./visualization.js";
 export { parsePgConfig } from "./config.js";
 export type { PgConfig } from "./config.js";
-export { createPgWorkerContext } from "./worker.js";
-export type { PgWorkerAppContext } from "./worker.js";

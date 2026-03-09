@@ -9,6 +9,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./dbos": {
+      "types": "./dist/dbos/index.d.ts",
+      "import": "./dist/dbos/index.js"
+    },
+    "./pg": {
+      "types": "./dist/pg/index.d.ts",
+      "import": "./dist/pg/index.js"
     }
   },
   "files": [
@@ -45,17 +53,27 @@
   },
   "author": "Emmanuel Gomez",
   "dependencies": {
+    "@durable-xstate/durable-machine": "workspace:*",
     "prom-client": "^15.1.0",
     "zod": "^4.0.0"
   },
   "peerDependencies": {
     "@dbos-inc/dbos-sdk": "^4.0.0",
-    "@durable-xstate/durable-machine": "workspace:*"
+    "pg": "^8.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@dbos-inc/dbos-sdk": {
+      "optional": true
+    },
+    "pg": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@dbos-inc/dbos-sdk": "^4.0.0",
-    "@durable-xstate/durable-machine": "workspace:*",
     "@types/node": "^24",
+    "@types/pg": "^8.0.0",
+    "pg": "^8.0.0",
     "typescript": "^5.7.0",
     "vitest": "^4.0.18",
     "xstate": "^5.19.0"

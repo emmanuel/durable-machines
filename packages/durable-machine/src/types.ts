@@ -384,15 +384,6 @@ export interface AppContext {
   isShuttingDown(): boolean;
 }
 
-/** Extends {@link AppContext} with machine registration for worker processes. */
-export interface WorkerAppContext extends AppContext {
-  /** Register a machine and return a DAO handle. */
-  register<T extends AnyStateMachine>(
-    machine: T,
-    options?: DurableMachineOptions,
-  ): DurableMachine<T>;
-}
-
 // ─── Options ────────────────────────────────────────────────────────────────
 
 /** Controls how failed durable steps are retried. All fields are optional and fall back to sensible defaults. */

@@ -65,6 +65,14 @@
     "./streams": {
       "types": "./dist/streams/types.d.ts",
       "import": "./dist/streams/types.js"
+    },
+    "./dbos": {
+      "types": "./dist/dbos/index.d.ts",
+      "import": "./dist/dbos/index.js"
+    },
+    "./pg": {
+      "types": "./dist/pg/index.d.ts",
+      "import": "./dist/pg/index.js"
     }
   },
   "files": [
@@ -121,12 +129,16 @@
     "pg": "^8.0.0"
   },
   "peerDependenciesMeta": {
+    "@dbos-inc/dbos-sdk": {
+      "optional": true
+    },
     "pg": {
       "optional": true
     }
   },
   "devDependencies": {
     "@dbos-inc/dbos-sdk": "^4.0.0",
+    "@durable-xstate/worker": "workspace:*",
     "@types/node": "^22.0.0",
     "@types/pg": "^8.0.0",
     "pg": "^8.0.0",

@@ -1,12 +1,14 @@
 import {
-  parseDBOSGatewayConfig,
-  createDBOSGatewayContext,
-  startDBOSGateway,
   slackSource,
   genericSource,
   fieldRouter,
   directTransform,
 } from "@durable-xstate/gateway";
+import {
+  parseDBOSGatewayConfig,
+  createDBOSGatewayContext,
+  startDBOSGateway,
+} from "@durable-xstate/gateway/dbos";
 import type { SlackInteractivePayload } from "@durable-xstate/gateway";
 
 interface GenericPayload {

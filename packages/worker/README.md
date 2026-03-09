@@ -1,6 +1,6 @@
 # @durable-xstate/worker
 
-Worker process lifecycle for durable XState machines. Handles configuration, machine registration, DBOS launch, admin server, graceful shutdown, and Prometheus metrics in a structured three-phase startup.
+Worker process lifecycle for durable XState machines. Handles configuration, machine registration, admin server, graceful shutdown, and Prometheus metrics in a structured three-phase startup.
 
 ## Install
 
@@ -8,36 +8,68 @@ Worker process lifecycle for durable XState machines. Handles configuration, mac
 npm install @durable-xstate/worker
 ```
 
-Peer dependencies: `@dbos-inc/dbos-sdk`, `@durable-xstate/durable-machine`.
-
-## Usage
+## Quick start (generic)
 
 ```typescript
-import { parseDBOSWorkerConfig, createDBOSWorkerContext, startDBOSWorker } from "@durable-xstate/worker";
+import { createWorkerContext, startWorker } from "@durable-xstate/worker";
+import type { WorkerAppContext } from "@durable-xstate/worker";
+import { orderMachine } from "./machines/order.js";
+
+// Bring your own WorkerAppContext (e.g. from @durable-xstate/worker/pg)
+const appContext: WorkerAppContext = createPgWorkerContext(pgConfig);
+
+const ctx = createWorkerContext({ adminPort: 9090 }, appContext, {
+  machines: {
+    orders: { machine: orderMachine },
+  },
+});
+
+const handle = await startWorker(ctx);
+```
+
+## DBOS backend
+
+```typescript
+import { parseDBOSWorkerConfig, createDBOSWorkerContext, startDBOSWorker } from "@durable-xstate/worker/dbos";
 import { consoleChannel } from "@durable-xstate/durable-machine";
 import { orderMachine } from "./machines/order.js";
 
-// 1. Parse config from environment
 const config = parseDBOSWorkerConfig();
-
-// 2. Create context (registers machines, launches DBOS)
 const ctx = await createDBOSWorkerContext(config, {
   machines: {
     orders: { machine: orderMachine, options: { channels: [consoleChannel()] } },
   },
 });
-
-// 3. Start (binds admin port, installs signal handlers)
-const handle = startDBOSWorker(ctx);
+startDBOSWorker(ctx);
 ```
+
+Requires `@dbos-inc/dbos-sdk` peer dependency.
+
+## PG backend
+
+```typescript
+import { createPgWorkerContext } from "@durable-xstate/worker/pg";
+import { createWorkerContext, startWorker } from "@durable-xstate/worker";
+import { parsePgConfig } from "@durable-xstate/durable-machine/pg";
+
+const pgConfig = parsePgConfig();
+const appContext = createPgWorkerContext(pgConfig);
+
+const ctx = createWorkerContext({ adminPort: 9090 }, appContext, {
+  machines: { orders: { machine: orderMachine } },
+});
+await startWorker(ctx);
+```
+
+Requires `pg` peer dependency.
 
 ## Three-phase startup
 
 | Phase | Function | What it does |
 |-------|----------|--------------|
-| 1. Parse | `parseDBOSWorkerConfig()` | Validates env vars, returns typed config |
-| 2. Build | `createDBOSWorkerContext()` | Creates metrics, registers machines, calls `DBOS.launch()`, creates admin server |
-| 3. Run | `startDBOSWorker()` | Binds admin port, installs `SIGTERM`/`SIGINT` handlers, returns shutdown handle |
+| 1. Parse | Backend-specific config parser | Validates env vars, returns typed config |
+| 2. Build | `createWorkerContext()` | Creates metrics, registers machines, creates admin server |
+| 3. Run | `startWorker()` | Binds admin port, wires signal handlers, returns shutdown handle |
 
 ## Configuration
 
@@ -62,8 +94,8 @@ When the admin server is enabled, the following Prometheus histograms are record
 
 | Metric | Labels | Description |
 |--------|--------|-------------|
-| `worker_machine_registration_duration_seconds` | `machine_id` | Time to register each machine (validate + DBOS workflow setup) |
-| `worker_dbos_launch_duration_seconds` | *(none)* | Time for `DBOS.launch()` (DB connection + workflow recovery) |
+| `worker_machine_registration_duration_seconds` | `machine_id` | Time to register each machine |
+| `worker_dbos_launch_duration_seconds` | *(none)* | Time for backend launch (DBOS adapter only) |
 
 Default process metrics (CPU, memory, event loop) are also collected via `prom-client`.
 
@@ -83,22 +115,18 @@ On `SIGTERM` or `SIGINT`:
 1. Readiness probe (`/ready`) starts returning `503`
 2. Admin server stops accepting new connections
 3. In-flight connections drain up to `shutdownTimeoutMs`
-4. `DBOS.shutdown()` is called
+4. Backend shutdown (e.g. `DBOS.shutdown()` or PG pool close)
 5. Process exits
 
 ## API
 
-### `parseDBOSWorkerConfig(env?)`
+### `createWorkerContext(config, appContext, options)`
 
-Parses and validates worker configuration from environment variables. Throws on invalid input.
+Registers all machines via `appContext.register()`, optionally creates the admin server. Returns a `WorkerContext`.
 
-### `createDBOSWorkerContext(config, options)`
+### `startWorker(ctx)`
 
-Registers all machines via `createDurableMachine()`, calls `DBOS.launch()`, and optionally creates the admin server. Returns a `DBOSWorkerContext` with typed access to each registered `DurableMachine`.
-
-### `startDBOSWorker(ctx)`
-
-Binds the admin server and installs signal handlers. Returns a `DBOSWorkerHandle` with a `shutdown()` method for programmatic shutdown.
+Binds the admin server, wires signal handlers via `appContext.start()`. Returns a `WorkerHandle` with a `shutdown()` method for programmatic shutdown.
 
 ### `createAdminServer(options?)`
 

@@ -74,7 +74,7 @@ export interface GatewayClient {
 
 /** Options for {@link createWebhookGateway}. */
 export interface GatewayOptions {
-  /** DBOS client instance used to dispatch events to workflows. */
+  /** Client used to dispatch events to workflows. */
   client: GatewayClient;
   /** Webhook bindings to register on the gateway. */
   bindings: WebhookBinding<any>[];

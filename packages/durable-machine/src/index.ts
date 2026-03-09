@@ -55,7 +55,6 @@ export * from "./definition/index.js";
 export type {
   AppContext,
   AppContextOptions,
-  WorkerAppContext,
   DurableMachine,
   SerializedMachine,
   SerializedStateNode,

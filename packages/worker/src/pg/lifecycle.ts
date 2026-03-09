@@ -1,18 +1,18 @@
 import { Pool } from "pg";
 import type { Pool as PoolType } from "pg";
 import type { AnyStateMachine } from "xstate";
+import type { WorkerAppContext } from "../types.js";
 import type {
-  WorkerAppContext,
   DurableMachine,
   DurableMachineOptions,
-} from "../types.js";
-import type { EffectHandler, ResolvedEffect } from "../effects.js";
-import { createAppContext } from "../app-context.js";
-import { createStore } from "./store.js";
-import type { PgStore } from "./store.js";
-import { createDurableMachine } from "./create-durable-machine.js";
-import type { PgDurableMachine } from "./create-durable-machine.js";
-import type { PgConfig } from "./config.js";
+} from "@durable-xstate/durable-machine";
+import type { EffectHandler, ResolvedEffect } from "@durable-xstate/durable-machine";
+import { createAppContext } from "@durable-xstate/durable-machine";
+import { createStore } from "@durable-xstate/durable-machine/pg";
+import type { PgStore } from "@durable-xstate/durable-machine/pg";
+import { createDurableMachine } from "@durable-xstate/durable-machine/pg";
+import type { PgDurableMachine } from "@durable-xstate/durable-machine/pg";
+import type { PgConfig } from "@durable-xstate/durable-machine/pg";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 

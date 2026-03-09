@@ -1,6 +1,6 @@
 # @durable-xstate/gateway
 
-Webhook gateway for routing external webhooks to durable XState machines. Receives HTTP webhooks from providers (Slack, Stripe, GitHub, Linear, Cal.com, Twilio, etc.), verifies signatures, routes to target workflow(s), and dispatches XState events via `DBOSClient`.
+Webhook gateway for routing external webhooks to durable XState machines. Receives HTTP webhooks from providers (Slack, Stripe, GitHub, Linear, Cal.com, Twilio, etc.), verifies signatures, routes to target workflow(s), and dispatches XState events.
 
 Built on [Hono](https://hono.dev/) for the webhook HTTP layer and a plain `node:http` server for the admin/metrics port.
 
@@ -10,26 +10,24 @@ Built on [Hono](https://hono.dev/) for the webhook HTTP layer and a plain `node:
 npm install @durable-xstate/gateway
 ```
 
-Peer dependency: `@dbos-inc/dbos-sdk`.
-
-## Quick start
+## Quick start (generic)
 
 ```typescript
 import {
-  parseDBOSGatewayConfig,
-  createDBOSGatewayContext,
-  startDBOSGateway,
+  parseGatewayConfig,
+  createGatewayContext,
+  startGateway,
   stripeSource,
   fieldRouter,
   directTransform,
 } from "@durable-xstate/gateway";
-import type { StripeWebhookEvent } from "@durable-xstate/gateway";
+import type { StripeWebhookEvent, GatewayClient } from "@durable-xstate/gateway";
 
-// 1. Parse config from environment
-const config = parseDBOSGatewayConfig();
+// Bring your own client that talks to your backend
+const client: GatewayClient = { send, sendBatch, getEvent };
 
-// 2. Create context (connects DBOSClient, builds Hono app)
-const ctx = await createDBOSGatewayContext(config, {
+const config = parseGatewayConfig();
+const ctx = await createGatewayContext(config, client, {
   bindings: [
     {
       path: "/webhooks/stripe",
@@ -42,10 +40,41 @@ const ctx = await createDBOSGatewayContext(config, {
     },
   ],
 });
+const handle = startGateway(ctx);
+```
 
-// 3. Start (binds webhook + admin ports, installs signal handlers)
+## DBOS backend
+
+```typescript
+import {
+  parseDBOSGatewayConfig,
+  createDBOSGatewayContext,
+  startDBOSGateway,
+} from "@durable-xstate/gateway/dbos";
+
+const config = parseDBOSGatewayConfig();
+const ctx = await createDBOSGatewayContext(config, { bindings: [...] });
 startDBOSGateway(ctx);
 ```
+
+Requires `@dbos-inc/dbos-sdk` peer dependency. Reads `DBOS_DATABASE_URL` from the environment.
+
+## PG backend
+
+```typescript
+import {
+  createPgGatewayContext,
+  startPgGateway,
+} from "@durable-xstate/gateway/pg";
+import { Pool } from "pg";
+
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const config = parseGatewayConfig();
+const ctx = await createPgGatewayContext(config, pool, { bindings: [...] });
+startPgGateway(ctx);
+```
+
+Requires `pg` peer dependency.
 
 ## Architecture
 
@@ -57,7 +86,7 @@ POST /webhooks/stripe
   → Parse (split payload → items[]; default: [payload])
   → Router (per-item → workflow ID(s))
   → Transform (per-item → XState event)
-  → Dispatch (DBOSClient.send → durable machine)
+  → Dispatch (client.send → durable machine)
 ```
 
 Both webhooks and streams use the same item-level `ItemRouter` / `ItemTransform` interfaces. A webhook binding without `parse` wraps the payload as a single-item array, so simple bindings work unchanged. When `parse` is provided, multi-item payloads (e.g. xAPI statement batches) fan out per-item.
@@ -68,9 +97,9 @@ Each component is a small, replaceable interface. Mix and match built-in impleme
 
 | Phase | Function | What it does |
 |-------|----------|--------------|
-| 1. Parse | `parseDBOSGatewayConfig()` | Validates env vars, returns typed config |
-| 2. Build | `createDBOSGatewayContext()` | Connects `DBOSClient`, creates metrics, builds Hono app, creates admin server |
-| 3. Run | `startDBOSGateway()` | Binds webhook + admin ports, installs signal handlers, returns shutdown handle |
+| 1. Parse | `parseGatewayConfig()` | Validates env vars, returns typed config |
+| 2. Build | `createGatewayContext()` | Creates metrics, builds Hono app, creates admin server |
+| 3. Run | `startGateway()` | Binds webhook + admin ports, returns shutdown handle |
 
 ## Configuration
 
@@ -78,7 +107,7 @@ Each component is a small, replaceable interface. Mix and match built-in impleme
 |---------|------|---------|-------------|
 | `PORT` | number | `3000` | Webhook listener port |
 | `ADMIN_PORT` | number | `9090` | Admin/metrics port |
-| `DBOS_DATABASE_URL` | string | *(required)* | Postgres connection URL for `DBOSClient` |
+| `DATABASE_URL` or `DBOS_DATABASE_URL` | string | *(optional)* | Postgres URL (required for stream checkpoints) |
 | `GRACEFUL_SHUTDOWN_TIMEOUT_MS` | number | `30000` | Drain timeout on shutdown |
 
 ## Webhook sources
@@ -184,15 +213,6 @@ Prometheus metrics collected automatically:
 
 Default process metrics (CPU, memory, event loop) are also collected.
 
-To create metrics independently:
-
-```typescript
-import { createGatewayMetrics } from "@durable-xstate/gateway";
-
-const metrics = createGatewayMetrics();         // creates its own Registry
-const metrics = createGatewayMetrics(registry);  // uses an existing Registry
-```
-
 ## HMAC utilities
 
 Low-level helpers for building custom sources:
@@ -221,7 +241,7 @@ On `SIGTERM` or `SIGINT`:
 2. Webhook server stops accepting new connections
 3. In-flight requests drain up to `shutdownTimeoutMs`
 4. Admin server closes
-5. `DBOSClient` disconnects
+5. Client disconnects
 6. Process exits
 
 ## License

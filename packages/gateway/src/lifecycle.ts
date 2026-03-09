@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { serve } from "@hono/node-server";
-import { DBOSClient } from "@dbos-inc/dbos-sdk";
 import type { Hono } from "hono";
 import type { Server } from "node:http";
 import { createWebhookGateway } from "./gateway.js";
@@ -9,7 +8,6 @@ import { createDashboard } from "./dashboard/index.js";
 import { createGatewayMetrics } from "./metrics.js";
 import type { GatewayMetrics } from "./metrics.js";
 import { createAdminServer } from "./admin.js";
-import { gracefulShutdown, isShuttingDown } from "@durable-xstate/durable-machine/dbos";
 import type { GatewayClient, WebhookBinding } from "./types.js";
 import type { MachineRegistry } from "./rest-types.js";
 import type { Logger, StreamBinding } from "./streams/types.js";
@@ -20,21 +18,21 @@ import { pgCheckpointStore } from "./streams/checkpoint-store.js";
 const gatewayConfigSchema = z.object({
   port: z.coerce.number().int().positive().default(3000),
   adminPort: z.coerce.number().int().positive().default(9090),
-  dbUrl: z.string().url(),
+  dbUrl: z.string().url().optional(),
   shutdownTimeoutMs: z.coerce.number().int().positive().default(30_000),
 });
 
-export interface DBOSGatewayConfig {
+export interface GatewayConfig {
   port: number;
   adminPort: number;
-  dbUrl: string;
+  /** Database URL for stream checkpoints. Optional when streams are not used. */
+  dbUrl?: string;
   shutdownTimeoutMs: number;
 }
 
-export interface DBOSGatewayContext {
-  config: DBOSGatewayConfig;
+export interface GatewayContext {
+  config: GatewayConfig;
   client: GatewayClient;
-  dbosClient: Awaited<ReturnType<typeof DBOSClient.create>>;
   metrics: GatewayMetrics;
   gateway: Hono;
   adminServer: Server;
@@ -42,19 +40,19 @@ export interface DBOSGatewayContext {
   streamConsumers?: StreamConsumerHandle[];
 }
 
-export interface DBOSGatewayHandle {
+export interface GatewayHandle {
   shutdown(): Promise<void>;
   server: Server;
   adminServer: Server;
 }
 
-export function parseDBOSGatewayConfig(
+export function parseGatewayConfig(
   env: Record<string, string | undefined> = process.env,
-): DBOSGatewayConfig {
+): GatewayConfig {
   const result = gatewayConfigSchema.safeParse({
     port: env.PORT,
     adminPort: env.ADMIN_PORT,
-    dbUrl: env.DBOS_DATABASE_URL,
+    dbUrl: env.DATABASE_URL ?? env.DBOS_DATABASE_URL,
     shutdownTimeoutMs: env.GRACEFUL_SHUTDOWN_TIMEOUT_MS,
   });
 
@@ -68,7 +66,7 @@ export function parseDBOSGatewayConfig(
   return result.data;
 }
 
-export interface DBOSGatewayContextOptions {
+export interface GatewayContextOptions {
   bindings: WebhookBinding<any>[];
   /** Register durable machines to expose via the REST API with HATEOAS responses. */
   machines?: MachineRegistry;
@@ -90,20 +88,15 @@ export interface DBOSGatewayContextOptions {
     checkpointInterval?: number;
   }>;
   logger?: Logger;
+  /** Returns `true` when the gateway is shutting down. Used for readiness probes. */
+  isShuttingDown?: () => boolean;
 }
 
-export async function createDBOSGatewayContext(
-  config: DBOSGatewayConfig,
-  options: DBOSGatewayContextOptions,
-): Promise<DBOSGatewayContext> {
-  const dbosClient = await DBOSClient.create({ systemDatabaseUrl: config.dbUrl });
-  const client: GatewayClient = {
-    send: (workflowId, message, topic) => dbosClient.send(workflowId, message, topic),
-    sendBatch: (messages) => Promise.all(
-      messages.map((m) => dbosClient.send(m.workflowId, m.message, m.topic)),
-    ).then(() => {}),
-    getEvent: (workflowId, key, timeoutSeconds) => dbosClient.getEvent(workflowId, key, timeoutSeconds),
-  };
+export async function createGatewayContext(
+  config: GatewayConfig,
+  client: GatewayClient,
+  options: GatewayContextOptions,
+): Promise<GatewayContext> {
   const metrics = createGatewayMetrics();
   const gateway = createWebhookGateway({ client, bindings: options.bindings, metrics });
 
@@ -129,14 +122,18 @@ export async function createDBOSGatewayContext(
     }
   }
 
+  const isShuttingDown = options.isShuttingDown ?? (() => false);
   const adminServer = createAdminServer({
     metrics,
     isReady: () => !isShuttingDown(),
   });
 
-  const ctx: DBOSGatewayContext = { config, client, dbosClient, metrics, gateway, adminServer };
+  const ctx: GatewayContext = { config, client, metrics, gateway, adminServer };
 
   if (options.streams && options.streams.length > 0) {
+    if (!config.dbUrl) {
+      throw new Error("GatewayConfig.dbUrl is required when streams are configured");
+    }
     const { Pool } = await import("pg");
     const pool = new Pool({
       connectionString: config.dbUrl,
@@ -162,17 +159,12 @@ export async function createDBOSGatewayContext(
   return ctx;
 }
 
-export function startDBOSGateway(ctx: DBOSGatewayContext): DBOSGatewayHandle {
+export function startGateway(ctx: GatewayContext): GatewayHandle {
   const server = serve({
     fetch: ctx.gateway.fetch,
     port: ctx.config.port,
   }) as unknown as Server;
   ctx.adminServer.listen(ctx.config.adminPort);
-
-  const baseShutdown = gracefulShutdown({
-    servers: [server, ctx.adminServer],
-    timeoutMs: ctx.config.shutdownTimeoutMs,
-  });
 
   const shutdown = async () => {
     // Stop stream consumers first (abort → final checkpoint → close)
@@ -183,8 +175,25 @@ export function startDBOSGateway(ctx: DBOSGatewayContext): DBOSGatewayHandle {
       await Promise.all(ctx.streamConsumers.map((h) => h.stopped));
     }
 
-    // Shut down HTTP + admin servers
-    await baseShutdown();
+    // Drain HTTP + admin servers
+    const drainTimeout = ctx.config.shutdownTimeoutMs;
+    const forceTimer = setTimeout(() => {
+      server.closeAllConnections();
+      ctx.adminServer.closeAllConnections();
+    }, Math.floor(drainTimeout * 0.8));
+    forceTimer.unref();
+
+    await Promise.all([
+      new Promise<void>((resolve) => {
+        server.closeIdleConnections();
+        server.close(() => resolve());
+      }),
+      new Promise<void>((resolve) => {
+        ctx.adminServer.closeIdleConnections();
+        ctx.adminServer.close(() => resolve());
+      }),
+    ]);
+    clearTimeout(forceTimer);
 
     // End checkpoint pool
     if (ctx.checkpointPool) {

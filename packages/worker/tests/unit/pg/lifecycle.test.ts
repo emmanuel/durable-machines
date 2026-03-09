@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { AnyStateMachine } from "xstate";
-import type { PgStore } from "../../src/pg/store.js";
-import type { PgDurableMachine } from "../../src/pg/create-durable-machine.js";
+import type { PgStore } from "@durable-xstate/durable-machine/pg";
+import type { PgDurableMachine } from "@durable-xstate/durable-machine/pg";
 
 // ─── Mocks ──────────────────────────────────────────────────────────────────
 
-// Mock pg module — must be before the import of worker.ts
+// Mock pg module — must be before the import of lifecycle.ts
 const mockPoolEnd = vi.fn().mockResolvedValue(undefined);
 const mockPoolQuery = vi.fn().mockResolvedValue({ rows: [] });
 const mockPool = {
@@ -57,12 +57,24 @@ const mockStore: PgStore = {
   listEffects: vi.fn().mockResolvedValue([]),
 };
 
-vi.mock("../../src/pg/store.js", () => ({
-  createStore: vi.fn(() => mockStore),
-}));
+vi.mock("@durable-xstate/durable-machine/pg", async () => {
+  const actual = await vi.importActual("@durable-xstate/durable-machine/pg");
+  return {
+    ...actual,
+    createStore: vi.fn(() => mockStore),
+    createDurableMachine: vi.fn((machine: AnyStateMachine) => {
+      lastCreatedMachine = makeMockDurableMachine(machine);
+      return lastCreatedMachine;
+    }),
+  };
+});
 
-// Mock createDurableMachine
-const mockConsumeAndProcess = vi.fn().mockResolvedValue(undefined);
+// Mock createAppContext — pass-through to real implementation for lifecycle tests
+vi.mock("@durable-xstate/durable-machine", async () => {
+  return await vi.importActual("@durable-xstate/durable-machine");
+});
+
+// ─── Mock helpers ────────────────────────────────────────────────────────────
 
 function makeMockDurableMachine(machine: AnyStateMachine): PgDurableMachine {
   return {
@@ -74,24 +86,12 @@ function makeMockDurableMachine(machine: AnyStateMachine): PgDurableMachine {
   };
 }
 
+const mockConsumeAndProcess = vi.fn().mockResolvedValue(undefined);
 let lastCreatedMachine: PgDurableMachine | null = null;
-
-vi.mock("../../src/pg/create-durable-machine.js", () => ({
-  createDurableMachine: vi.fn((machine: AnyStateMachine) => {
-    lastCreatedMachine = makeMockDurableMachine(machine);
-    return lastCreatedMachine;
-  }),
-}));
-
-// Mock createAppContext — pass-through to real implementation for lifecycle tests
-// but we intercept process.on / process.exit
-vi.mock("../../src/app-context.js", async () => {
-  return await vi.importActual("../../src/app-context.js");
-});
 
 // ─── Import after mocks ─────────────────────────────────────────────────────
 
-import { createPgWorkerContext } from "../../src/pg/worker.js";
+import { createPgWorkerContext } from "../../../src/pg/lifecycle.js";
 
 // ─── Fake machines ──────────────────────────────────────────────────────────
 

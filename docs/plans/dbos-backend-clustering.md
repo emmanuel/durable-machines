@@ -186,7 +186,7 @@ Tests:
 
 ## Files to Modify
 
-### 3. `packages/durable-machine/src/dbos/shutdown.ts`
+### 3. `packages/worker/src/dbos/lifecycle.ts`
 
 Add `cluster?: ClusterHandle` to `GracefulShutdownOptions`. In `shutdown()`,
 after server drain and before `DBOS.shutdown()`:

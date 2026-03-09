@@ -4,10 +4,6 @@ export { createDurableMachine } from "./create-durable-machine.js";
 // External client helpers (DBOS-specific)
 export { sendMachineEvent, sendMachineEventBatch, getMachineState } from "./client.js";
 
-// Lifecycle
-export { gracefulShutdown, isShuttingDown } from "./shutdown.js";
-export type { GracefulShutdownOptions } from "./shutdown.js";
-
 // Visualization (DBOS-specific data access)
 export { getVisualizationState } from "./visualization.js";
 

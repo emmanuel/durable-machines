@@ -754,6 +754,9 @@ export const CLIENT_JS = /* js */ `
       if (indicator) indicator.className = 'sse-indicator disconnected';
     });
 
+    // Close on page navigation to free the HTTP/1.1 connection slot
+    window.addEventListener('beforeunload', function() { es.close(); });
+
     return es;
   }
 

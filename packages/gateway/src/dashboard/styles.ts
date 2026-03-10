@@ -208,6 +208,11 @@ tr:last-child td { border-bottom: none; }
   stroke: var(--green);
 }
 
+.graph-node.final.active rect {
+  stroke: var(--accent);
+  animation: pulse 2s ease-in-out infinite;
+}
+
 .graph-node text {
   fill: var(--text);
   font-size: 12px;

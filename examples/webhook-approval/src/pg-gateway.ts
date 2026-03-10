@@ -11,6 +11,8 @@ import {
   startPgGateway,
 } from "@durable-xstate/gateway/pg";
 import type { SlackInteractivePayload } from "@durable-xstate/gateway";
+import { createDurableMachine, createStore } from "@durable-xstate/durable-machine/pg";
+import { approvalMachine } from "./machine.js";
 
 interface GenericPayload {
   workflowId?: string;
@@ -29,8 +31,15 @@ const pool = new pg.Pool({
   max: 5,
 });
 
+// Register machines for the dashboard + REST API
+const store = createStore({ pool, useListenNotify: true });
+await store.ensureSchema();
+const dm = createDurableMachine(approvalMachine, { pool, store });
+const machines = new Map([["approvals", dm]]);
+
 // Phase 2: context
 const ctx = await createPgGatewayContext(config, pool, {
+  machines,
   bindings: [
     {
       path: "/webhooks/slack",

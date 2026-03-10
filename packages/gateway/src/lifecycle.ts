@@ -14,6 +14,7 @@ import { z } from "zod";
 import { serve } from "@hono/node-server";
 import type { Hono } from "hono";
 import type { Server } from "node:http";
+import { trimTrailingSlash } from "hono/trailing-slash";
 import { createWebhookGateway } from "./gateway.js";
 import { createRestApi } from "./rest-api.js";
 import { createDashboard } from "./dashboard/index.js";
@@ -120,6 +121,7 @@ export async function createGatewayContext(
 ): Promise<InternalGatewayContext> {
   const metrics = createGatewayMetrics();
   const gateway = createWebhookGateway({ client, bindings: options.bindings, metrics });
+  gateway.use(trimTrailingSlash());
 
   // Mount REST API if machines are registered
   if (options.machines && options.machines.size > 0) {

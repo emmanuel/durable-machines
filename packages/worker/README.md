@@ -224,6 +224,179 @@ Lower-level: creates the HTTP server without binding a port. Useful when composi
 
 Creates a `WorkerMetrics` object with startup and runtime metrics registered on the given (or new) `Registry`.
 
+## Dependencies
+
+```mermaid
+flowchart LR
+
+subgraph 0["packages"]
+subgraph 1["worker"]
+subgraph 2["src"]
+3["admin.ts"]
+subgraph 5["dbos"]
+6["index.ts"]
+19["lifecycle.ts"]
+end
+7["lifecycle.ts"]
+M["metrics.ts"]
+18["types.ts"]
+1J["index.ts"]
+subgraph 1K["pg"]
+1L["index.ts"]
+1O["lifecycle.ts"]
+end
+end
+end
+subgraph 8["durable-machine"]
+subgraph 9["dist"]
+A["index.js"]
+subgraph 1H["dbos"]
+1I["index.js"]
+end
+subgraph 1M["pg"]
+1N["index.js"]
+end
+end
+end
+end
+4["http"]
+subgraph B["node_modules"]
+subgraph C[".pnpm"]
+subgraph D["xstate@5.28.0"]
+subgraph E["node_modules"]
+subgraph F["xstate"]
+subgraph G["dist"]
+H["xstate.cjs.mjs"]
+end
+end
+end
+end
+subgraph I["zod@4.3.6"]
+subgraph J["node_modules"]
+subgraph K["zod"]
+L["index.js"]
+end
+end
+end
+subgraph N["@opentelemetry+api@1.9.0"]
+subgraph O["node_modules"]
+subgraph P["@opentelemetry"]
+subgraph Q["api"]
+subgraph R["build"]
+subgraph S["src"]
+T["index.js"]
+end
+end
+end
+end
+end
+end
+subgraph U["@opentelemetry+exporter-prometheus@0.213.0_@opentelemetry+api@1.9.0"]
+subgraph V["node_modules"]
+subgraph W["@opentelemetry"]
+subgraph X["exporter-prometheus"]
+subgraph Y["build"]
+subgraph Z["src"]
+10["index.js"]
+end
+end
+end
+end
+end
+end
+subgraph 11["@opentelemetry+sdk-metrics@2.6.0_@opentelemetry+api@1.9.0"]
+subgraph 12["node_modules"]
+subgraph 13["@opentelemetry"]
+subgraph 14["sdk-metrics"]
+subgraph 15["build"]
+subgraph 16["src"]
+17["index.js"]
+end
+end
+end
+end
+end
+end
+subgraph 1A["@dbos-inc+dbos-sdk@4.9.11"]
+subgraph 1B["node_modules"]
+subgraph 1C["@dbos-inc"]
+subgraph 1D["dbos-sdk"]
+subgraph 1E["dist"]
+subgraph 1F["src"]
+1G["index.js"]
+end
+end
+end
+end
+end
+end
+subgraph 1P["pg@8.11.3"]
+subgraph 1Q["node_modules"]
+subgraph 1R["pg"]
+subgraph 1S["lib"]
+1T["index.js"]
+end
+end
+end
+end
+end
+end
+3-->4
+3-->4
+6-->7
+6-->7
+6-->19
+6-->19
+7-->3
+7-->M
+7-->M
+7-->18
+7-->A
+7-->A
+7-->4
+7-->H
+7-->H
+7-->L
+M-->T
+M-->10
+M-->17
+M-->4
+18-->A
+18-->H
+19-->7
+19-->7
+19-->M
+19-->18
+19-->1G
+19-->A
+19-->A
+19-->1I
+19-->4
+1J-->3
+1J-->3
+1J-->7
+1J-->7
+1J-->M
+1J-->M
+1J-->18
+1L-->7
+1L-->1O
+1L-->1O
+1L-->1N
+1O-->7
+1O-->7
+1O-->M
+1O-->M
+1O-->18
+1O-->A
+1O-->A
+1O-->1N
+1O-->1N
+1O-->1T
+1O-->1T
+1O-->H
+```
+
 ## License
 
 MIT

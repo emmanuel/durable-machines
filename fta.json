@@ -1,0 +1,8 @@
+{
+  "output_limit": 50,
+  "score_cap": 80,
+  "exclude_directories": ["dist", "node_modules", "tests", ".claude"],
+  "exclude_filenames": ["*.d.ts", "*.test.ts", "*.spec.ts"],
+  "extensions": [".ts", ".tsx"],
+  "exclude_under": 10
+}

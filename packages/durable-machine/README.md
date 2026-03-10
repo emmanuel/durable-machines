@@ -367,6 +367,268 @@ pnpm test              # All tests
 pnpm typecheck         # Type-check without emitting
 ```
 
+## Dependencies
+
+```mermaid
+flowchart LR
+
+subgraph 0["packages"]
+subgraph 1["durable-machine"]
+subgraph 2["src"]
+3["app-context.ts"]
+4["types.ts"]
+D["effects.ts"]
+subgraph E["channels"]
+F["console.ts"]
+G["email.ts"]
+I["slack.ts"]
+J["twilio-sms.ts"]
+end
+subgraph K["dbos"]
+L["client.ts"]
+T["create-durable-machine.ts"]
+W["machine-loop.ts"]
+12["index.ts"]
+13["visualization.ts"]
+end
+U["validate.ts"]
+V["prompt.ts"]
+X["durable-state.ts"]
+Y["effect-collector.ts"]
+subgraph Z["definition"]
+10["expressions.ts"]
+15["create-machine.ts"]
+16["registry.ts"]
+17["transform.ts"]
+18["types.ts"]
+19["validate-definition.ts"]
+1A["index.ts"]
+end
+11["xstate-utils.ts"]
+14["visualization.ts"]
+1B["index.ts"]
+1C["schema.ts"]
+subgraph 1D["pg"]
+1E["client.ts"]
+1K["config.ts"]
+1L["create-durable-machine.ts"]
+1M["event-processor.ts"]
+1N["store-metrics.ts"]
+1V["store.ts"]
+1W["index.ts"]
+1X["visualization.ts"]
+end
+end
+end
+end
+5["http"]
+subgraph 6["node_modules"]
+subgraph 7[".pnpm"]
+subgraph 8["xstate@5.28.0"]
+subgraph 9["node_modules"]
+subgraph A["xstate"]
+subgraph B["dist"]
+C["xstate.cjs.mjs"]
+end
+end
+end
+end
+subgraph M["@dbos-inc+dbos-sdk@4.9.11"]
+subgraph N["node_modules"]
+subgraph O["@dbos-inc"]
+subgraph P["dbos-sdk"]
+subgraph Q["dist"]
+subgraph R["src"]
+S["index.js"]
+end
+end
+end
+end
+end
+end
+subgraph 1F["pg@8.11.3"]
+subgraph 1G["node_modules"]
+subgraph 1H["pg"]
+subgraph 1I["lib"]
+1J["index.js"]
+end
+end
+end
+end
+subgraph 1O["@opentelemetry+api@1.9.0"]
+subgraph 1P["node_modules"]
+subgraph 1Q["@opentelemetry"]
+subgraph 1R["api"]
+subgraph 1S["build"]
+subgraph 1T["src"]
+1U["index.js"]
+end
+end
+end
+end
+end
+end
+end
+end
+H["crypto"]
+3-->4
+4-->D
+4-->5
+4-->C
+F-->4
+G-->4
+G-->H
+I-->4
+J-->4
+L-->4
+L-->S
+L-->C
+T-->4
+T-->U
+T-->W
+T-->S
+T-->C
+U-->D
+U-->D
+U-->V
+U-->4
+U-->C
+V-->D
+V-->4
+W-->X
+W-->Y
+W-->D
+W-->V
+W-->4
+W-->4
+W-->11
+W-->S
+W-->C
+W-->C
+X-->D
+X-->C
+Y-->10
+Y-->D
+Y-->D
+Y-->C
+10-->C
+11-->4
+11-->C
+11-->C
+12-->4
+12-->L
+12-->T
+12-->13
+13-->4
+13-->14
+13-->S
+13-->C
+14-->D
+14-->V
+14-->4
+14-->4
+14-->U
+14-->C
+15-->4
+15-->16
+15-->17
+15-->18
+15-->19
+15-->C
+15-->C
+16-->C
+17-->4
+17-->10
+17-->16
+17-->18
+18-->D
+18-->4
+19-->V
+19-->16
+19-->18
+1A-->15
+1A-->10
+1A-->16
+1A-->16
+1A-->17
+1A-->18
+1A-->19
+1A-->19
+1B-->3
+1B-->3
+1B-->F
+1B-->F
+1B-->G
+1B-->G
+1B-->I
+1B-->I
+1B-->J
+1B-->J
+1B-->1A
+1B-->X
+1B-->Y
+1B-->D
+1B-->D
+1B-->V
+1B-->1C
+1B-->1C
+1B-->4
+1B-->4
+1B-->U
+1B-->U
+1B-->14
+1B-->11
+1C-->4
+1C-->C
+1C-->C
+1E-->4
+1E-->1J
+1E-->C
+1L-->4
+1L-->4
+1L-->U
+1L-->1M
+1L-->1M
+1L-->1N
+1L-->1V
+1L-->1V
+1L-->1J
+1L-->C
+1M-->X
+1M-->Y
+1M-->V
+1M-->4
+1M-->4
+1M-->11
+1M-->1N
+1M-->1V
+1M-->1J
+1M-->C
+1M-->C
+1N-->1U
+1N-->1J
+1V-->D
+1V-->4
+1V-->1N
+1V-->1J
+1V-->1J
+1V-->C
+1W-->1E
+1W-->1K
+1W-->1K
+1W-->1L
+1W-->1L
+1W-->1N
+1W-->1N
+1W-->1V
+1W-->1V
+1W-->1X
+1X-->4
+1X-->14
+1X-->1V
+1X-->C
+```
+
 ## License
 
 MIT

@@ -12,7 +12,16 @@
     "test:unit": "pnpm -r test:unit",
     "test:integration": "pnpm -r test:integration",
     "typecheck": "pnpm -r typecheck",
+    "lint:deps": "depcruise packages/*/src --config .dependency-cruiser.mjs",
+    "lint:complexity": "fta packages/ --config-path fta.json",
+    "lint:arch": "pnpm lint:deps && pnpm lint:complexity",
+    "diagrams:deps:generate": "bash scripts/generate-dep-diagrams.sh",
+    "lint:diagrams": "pnpm diagrams:deps:generate && git diff --exit-code packages/*/README.md",
     "db:up": "docker compose up -d --wait",
     "db:down": "docker compose down"
+  },
+  "devDependencies": {
+    "dependency-cruiser": "^17.3.8",
+    "fta-cli": "^3.0.0"
   }
 }

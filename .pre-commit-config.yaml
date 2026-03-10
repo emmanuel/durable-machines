@@ -11,6 +11,15 @@ repos:
       # - id: no-commit-to-branch
       #   args: [--branch, main]
 
+  - repo: local
+    hooks:
+      - id: arch-lint
+        name: architecture lint
+        entry: pnpm lint:arch
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+
   - repo: https://github.com/alessandrojcm/commitlint-pre-commit-hook
     rev: v9.24.0
     hooks:

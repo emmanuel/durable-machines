@@ -18,9 +18,9 @@ import {
   machineListPage,
   instanceListPage,
   startInstancePage,
-  instanceDetailPage,
 } from "./html.js";
-import type { InstanceDetailData } from "./html.js";
+import { instanceDetailPage } from "./instance-detail.js";
+import type { InstanceDetailData } from "./types.js";
 
 export interface DashboardRouteOptions {
   machines: MachineRegistry;

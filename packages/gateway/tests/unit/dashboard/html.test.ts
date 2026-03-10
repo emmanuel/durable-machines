@@ -4,7 +4,7 @@ import {
   instanceListPage,
   startInstancePage,
 } from "../../../src/dashboard/html.js";
-import type { MachineListItem } from "../../../src/dashboard/html.js";
+import type { MachineListItem } from "../../../src/dashboard/types.js";
 import type { SerializedMachine, FormField } from "@durable-xstate/durable-machine";
 
 function minimalDefinition(overrides: Partial<SerializedMachine> = {}): SerializedMachine {

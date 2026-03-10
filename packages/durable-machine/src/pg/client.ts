@@ -2,6 +2,11 @@ import type { Pool } from "pg";
 import type { AnyEventObject } from "xstate";
 import type { DurableStateSnapshot } from "../types.js";
 import type { StateValue } from "xstate";
+import {
+  Q_SEND_MACHINE_EVENT,
+  Q_SEND_MACHINE_EVENT_BATCH,
+  Q_GET_MACHINE_STATE,
+} from "./queries.js";
 
 /**
  * Sends an event to a machine instance via direct SQL insert into `event_log`.
@@ -12,11 +17,10 @@ export async function sendMachineEvent(
   workflowId: string,
   event: AnyEventObject,
 ): Promise<void> {
-  await pool.query(
-    `INSERT INTO event_log (instance_id, topic, payload, created_at)
-     VALUES ($1, 'event', $2, $3)`,
-    [workflowId, JSON.stringify(event), Date.now()],
-  );
+  await pool.query({
+    ...Q_SEND_MACHINE_EVENT,
+    values: [workflowId, JSON.stringify(event), Date.now()],
+  });
 }
 
 /**
@@ -42,11 +46,10 @@ export async function sendMachineEventBatch(
     timestamps.push(now);
   }
 
-  await pool.query(
-    `INSERT INTO event_log (instance_id, topic, payload, created_at)
-     SELECT * FROM UNNEST($1::text[], $2::text[], $3::jsonb[], $4::bigint[])`,
-    [instanceIds, topics, payloads, timestamps],
-  );
+  await pool.query({
+    ...Q_SEND_MACHINE_EVENT_BATCH,
+    values: [instanceIds, topics, payloads, timestamps],
+  });
 }
 
 /**
@@ -56,10 +59,10 @@ export async function getMachineState(
   pool: Pool,
   workflowId: string,
 ): Promise<DurableStateSnapshot | null> {
-  const { rows } = await pool.query(
-    `SELECT state_value, context, status FROM machine_instances WHERE id = $1`,
-    [workflowId],
-  );
+  const { rows } = await pool.query({
+    ...Q_GET_MACHINE_STATE,
+    values: [workflowId],
+  });
   if (rows.length === 0) return null;
   const row = rows[0];
   return {

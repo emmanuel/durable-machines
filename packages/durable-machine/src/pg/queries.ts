@@ -1,0 +1,176 @@
+// ─── Instance CRUD ───────────────────────────────────────────────────────────
+
+export const Q_CREATE_INSTANCE = {
+  name: "dm_create_instance",
+  text: `INSERT INTO machine_instances (id, machine_name, state_value, context, status, fired_delays, wake_at, wake_event, input, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, 'running', $5, $6, $7, $8, $9, $10)`,
+} as const;
+
+export const Q_GET_INSTANCE = {
+  name: "dm_get_instance",
+  text: `SELECT * FROM machine_instances WHERE id = $1`,
+} as const;
+
+export const Q_UPDATE_INSTANCE_STATUS = {
+  name: "dm_update_instance_status",
+  text: `UPDATE machine_instances SET status = $2, updated_at = $3 WHERE id = $1`,
+} as const;
+
+export const Q_UPDATE_INSTANCE_SNAPSHOT = {
+  name: "dm_update_instance_snapshot",
+  text: `UPDATE machine_instances SET state_value = $2, context = $3, updated_at = $4 WHERE id = $1`,
+} as const;
+
+// ─── Locking ─────────────────────────────────────────────────────────────────
+
+export const Q_LOCK_AND_GET_INSTANCE = {
+  name: "dm_lock_and_get_instance",
+  text: `SELECT * FROM machine_instances WHERE id = $1 FOR NO KEY UPDATE SKIP LOCKED`,
+} as const;
+
+// ─── Event Log ───────────────────────────────────────────────────────────────
+
+export const Q_APPEND_EVENT = {
+  name: "dm_append_event",
+  text: `INSERT INTO event_log (instance_id, topic, payload, source, created_at)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING seq`,
+} as const;
+
+export const Q_LOCK_AND_PEEK_EVENT = {
+  name: "dm_lock_and_peek_event",
+  text: `WITH locked AS (
+        SELECT * FROM machine_instances WHERE id = $1 FOR NO KEY UPDATE SKIP LOCKED
+      )
+      SELECT locked.*,
+             e.seq AS next_event_seq,
+             e.payload AS next_event_payload
+      FROM locked
+      LEFT JOIN LATERAL (
+        SELECT seq, payload FROM event_log
+        WHERE instance_id = locked.id AND seq > locked.event_cursor
+        ORDER BY seq ASC LIMIT 1
+      ) e ON true`,
+} as const;
+
+export const Q_LOCK_AND_PEEK_EVENTS = {
+  name: "dm_lock_and_peek_events",
+  text: `WITH locked AS (
+        SELECT * FROM machine_instances WHERE id = $1 FOR NO KEY UPDATE SKIP LOCKED
+      )
+      SELECT locked.*,
+             e.seq AS event_seq,
+             e.payload AS event_payload
+      FROM locked
+      LEFT JOIN LATERAL (
+        SELECT seq, payload FROM event_log
+        WHERE instance_id = locked.id AND seq > locked.event_cursor
+        ORDER BY seq ASC LIMIT $2
+      ) e ON true`,
+} as const;
+
+// ─── Invoke Results ──────────────────────────────────────────────────────────
+
+export const Q_GET_INVOKE_RESULT = {
+  name: "dm_get_invoke_result",
+  text: `SELECT output, error FROM invoke_results WHERE instance_id = $1 AND step_key = $2`,
+} as const;
+
+export const Q_RECORD_INVOKE_RESULT = {
+  name: "dm_record_invoke_result",
+  text: `INSERT INTO invoke_results (instance_id, step_key, output, error, started_at, completed_at)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (instance_id, step_key) DO NOTHING`,
+} as const;
+
+export const Q_LIST_INVOKE_RESULTS = {
+  name: "dm_list_invoke_results",
+  text: `SELECT step_key, output, error, started_at, completed_at
+       FROM invoke_results WHERE instance_id = $1 ORDER BY started_at ASC`,
+} as const;
+
+// ─── CTE Finalize ────────────────────────────────────────────────────────────
+
+export const Q_FINALIZE_INSTANCE = {
+  name: "dm_finalize_instance",
+  text: `UPDATE machine_instances
+             SET state_value=$2, context=$3, wake_at=$4, wake_event=$5,
+                 fired_delays=$6, status=$7, event_cursor=$8, updated_at=$9
+             WHERE id = $1`,
+} as const;
+
+export const Q_FINALIZE_WITH_TRANSITION = {
+  name: "dm_finalize_with_transition",
+  text: `WITH upd AS (
+        UPDATE machine_instances
+        SET state_value=$2, context=$3, wake_at=$4, wake_event=$5,
+            fired_delays=$6, status=$7, event_cursor=$8, updated_at=$9
+        WHERE id = $1
+      )
+      INSERT INTO transition_log (instance_id, from_state, to_state, event, ts)
+      VALUES ($1, $10, $11, $12, $13)`,
+} as const;
+
+// ─── Transition Log ──────────────────────────────────────────────────────────
+
+export const Q_APPEND_TRANSITION = {
+  name: "dm_append_transition",
+  text: `INSERT INTO transition_log (instance_id, from_state, to_state, event, ts)
+       VALUES ($1, $2, $3, $4, $5)`,
+} as const;
+
+export const Q_GET_TRANSITIONS = {
+  name: "dm_get_transitions",
+  text: `SELECT from_state, to_state, ts FROM transition_log
+       WHERE instance_id = $1 ORDER BY seq ASC`,
+} as const;
+
+// ─── Effect Outbox ───────────────────────────────────────────────────────────
+
+export const Q_CLAIM_PENDING_EFFECTS = {
+  name: "dm_claim_pending_effects",
+  text: `UPDATE effect_outbox
+       SET status = 'executing', attempts = attempts + 1
+       WHERE id IN (
+         SELECT id FROM effect_outbox
+         WHERE status = 'pending' AND (next_retry_at IS NULL OR next_retry_at <= $1)
+         ORDER BY created_at ASC
+         LIMIT $2
+         FOR UPDATE SKIP LOCKED
+       )
+       RETURNING *`,
+} as const;
+
+export const Q_MARK_EFFECT_COMPLETED = {
+  name: "dm_mark_effect_completed",
+  text: `UPDATE effect_outbox SET status = 'completed', completed_at = $1 WHERE id = $2`,
+} as const;
+
+export const Q_MARK_EFFECT_FAILED = {
+  name: "dm_mark_effect_failed",
+  text: `UPDATE effect_outbox SET status = $1, last_error = $2, next_retry_at = $3 WHERE id = $4`,
+} as const;
+
+export const Q_LIST_EFFECTS = {
+  name: "dm_list_effects",
+  text: `SELECT * FROM effect_outbox WHERE instance_id = $1 ORDER BY created_at ASC`,
+} as const;
+
+// ─── Client Queries ──────────────────────────────────────────────────────────
+
+export const Q_SEND_MACHINE_EVENT = {
+  name: "dm_send_machine_event",
+  text: `INSERT INTO event_log (instance_id, topic, payload, created_at)
+       VALUES ($1, 'event', $2, $3)`,
+} as const;
+
+export const Q_SEND_MACHINE_EVENT_BATCH = {
+  name: "dm_send_machine_event_batch",
+  text: `INSERT INTO event_log (instance_id, topic, payload, created_at)
+       SELECT * FROM UNNEST($1::text[], $2::text[], $3::jsonb[], $4::bigint[])`,
+} as const;
+
+export const Q_GET_MACHINE_STATE = {
+  name: "dm_get_machine_state",
+  text: `SELECT state_value, context, status FROM machine_instances WHERE id = $1`,
+} as const;

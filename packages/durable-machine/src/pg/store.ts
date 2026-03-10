@@ -2,6 +2,16 @@ import type { Pool, PoolClient, Client as PgClient } from "pg";
 import type { StateValue } from "xstate";
 import type { StepInfo, TransitionRecord, InstanceStatus, EffectOutboxStatus } from "../types.js";
 import { SCHEMA_SQL } from "./schema.js";
+import {
+  Q_CREATE_INSTANCE, Q_GET_INSTANCE, Q_UPDATE_INSTANCE_STATUS,
+  Q_UPDATE_INSTANCE_SNAPSHOT, Q_LOCK_AND_GET_INSTANCE,
+  Q_APPEND_EVENT, Q_LOCK_AND_PEEK_EVENT, Q_LOCK_AND_PEEK_EVENTS,
+  Q_GET_INVOKE_RESULT, Q_RECORD_INVOKE_RESULT, Q_LIST_INVOKE_RESULTS,
+  Q_FINALIZE_INSTANCE, Q_FINALIZE_WITH_TRANSITION,
+  Q_APPEND_TRANSITION, Q_GET_TRANSITIONS,
+  Q_CLAIM_PENDING_EFFECTS, Q_MARK_EFFECT_COMPLETED, Q_MARK_EFFECT_FAILED,
+  Q_LIST_EFFECTS,
+} from "./queries.js";
 import type {
   PgStoreOptions, MachineRow, PgStore,
   CreateInstanceParams, FinalizeParams, TransitionData,
@@ -60,10 +70,9 @@ export function createStore(options: PgStoreOptions): PgStore {
     const { id, machineName, stateValue, context, input, wakeAt, firedDelays, queryable, wakeEvent } = params;
     const q = queryable ?? pool;
     const now = Date.now();
-    await q.query(
-      `INSERT INTO machine_instances (id, machine_name, state_value, context, status, fired_delays, wake_at, wake_event, input, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, 'running', $5, $6, $7, $8, $9, $10)`,
-      [
+    await q.query({
+      ...Q_CREATE_INSTANCE,
+      values: [
         id,
         machineName,
         JSON.stringify(stateValue),
@@ -75,14 +84,11 @@ export function createStore(options: PgStoreOptions): PgStore {
         now,
         now,
       ],
-    );
+    });
   }
 
   async function getInstance(id: string): Promise<MachineRow | null> {
-    const { rows } = await pool.query(
-      `SELECT * FROM machine_instances WHERE id = $1`,
-      [id],
-    );
+    const { rows } = await pool.query({ ...Q_GET_INSTANCE, values: [id] });
     return rows.length > 0 ? rowToMachine(rows[0]) : null;
   }
 
@@ -92,12 +98,8 @@ export function createStore(options: PgStoreOptions): PgStore {
     status: InstanceStatus,
   ): Promise<void> {
     const t = qStart();
-    await pool.query({
-      name: "dm_update_instance_status",
-      text: `UPDATE machine_instances SET status = $2, updated_at = $3 WHERE id = $1`,
-      values: [id, status, Date.now()],
-    });
-    qEnd("dm_update_instance_status", t);
+    await pool.query({ ...Q_UPDATE_INSTANCE_STATUS, values: [id, status, Date.now()] });
+    qEnd(Q_UPDATE_INSTANCE_STATUS.name, t);
   }
 
   async function updateInstanceSnapshot(
@@ -108,11 +110,10 @@ export function createStore(options: PgStoreOptions): PgStore {
   ): Promise<void> {
     const t = qStart();
     await client.query({
-      name: "dm_update_instance_snapshot",
-      text: `UPDATE machine_instances SET state_value = $2, context = $3, updated_at = $4 WHERE id = $1`,
+      ...Q_UPDATE_INSTANCE_SNAPSHOT,
       values: [id, JSON.stringify(stateValue), JSON.stringify(context), Date.now()],
     });
-    qEnd("dm_update_instance_snapshot", t);
+    qEnd(Q_UPDATE_INSTANCE_SNAPSHOT.name, t);
   }
 
   async function listInstances(filter?: {
@@ -148,12 +149,8 @@ export function createStore(options: PgStoreOptions): PgStore {
     id: string,
   ): Promise<MachineRow | null> {
     const t = qStart();
-    const { rows } = await client.query({
-      name: "dm_lock_and_get_instance",
-      text: `SELECT * FROM machine_instances WHERE id = $1 FOR NO KEY UPDATE SKIP LOCKED`,
-      values: [id],
-    });
-    qEnd("dm_lock_and_get_instance", t);
+    const { rows } = await client.query({ ...Q_LOCK_AND_GET_INSTANCE, values: [id] });
+    qEnd(Q_LOCK_AND_GET_INSTANCE.name, t);
     return rows.length > 0 ? rowToMachine(rows[0]) : null;
   }
 
@@ -167,13 +164,10 @@ export function createStore(options: PgStoreOptions): PgStore {
   ): Promise<{ seq: number }> {
     const t = qStart();
     const { rows } = await pool.query({
-      name: "dm_append_event",
-      text: `INSERT INTO event_log (instance_id, topic, payload, source, created_at)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING seq`,
+      ...Q_APPEND_EVENT,
       values: [instanceId, topic, JSON.stringify(payload), source ?? null, Date.now()],
     });
-    qEnd("dm_append_event", t);
+    qEnd(Q_APPEND_EVENT.name, t);
     return { seq: Number(rows[0].seq) };
   }
 
@@ -185,23 +179,8 @@ export function createStore(options: PgStoreOptions): PgStore {
     nextEvent: { seq: number; payload: unknown } | null;
   } | null> {
     const t = qStart();
-    const { rows } = await client.query({
-      name: "dm_lock_and_peek_event",
-      text: `WITH locked AS (
-        SELECT * FROM machine_instances WHERE id = $1 FOR NO KEY UPDATE SKIP LOCKED
-      )
-      SELECT locked.*,
-             e.seq AS next_event_seq,
-             e.payload AS next_event_payload
-      FROM locked
-      LEFT JOIN LATERAL (
-        SELECT seq, payload FROM event_log
-        WHERE instance_id = locked.id AND seq > locked.event_cursor
-        ORDER BY seq ASC LIMIT 1
-      ) e ON true`,
-      values: [instanceId],
-    });
-    qEnd("dm_lock_and_peek_event", t);
+    const { rows } = await client.query({ ...Q_LOCK_AND_PEEK_EVENT, values: [instanceId] });
+    qEnd(Q_LOCK_AND_PEEK_EVENT.name, t);
     if (rows.length === 0) return null;
     const r = rows[0];
     const machineRow = rowToMachine(r);
@@ -220,23 +199,8 @@ export function createStore(options: PgStoreOptions): PgStore {
     events: Array<{ seq: number; payload: unknown }>;
   } | null> {
     const t = qStart();
-    const { rows } = await client.query({
-      name: "dm_lock_and_peek_events",
-      text: `WITH locked AS (
-        SELECT * FROM machine_instances WHERE id = $1 FOR NO KEY UPDATE SKIP LOCKED
-      )
-      SELECT locked.*,
-             e.seq AS event_seq,
-             e.payload AS event_payload
-      FROM locked
-      LEFT JOIN LATERAL (
-        SELECT seq, payload FROM event_log
-        WHERE instance_id = locked.id AND seq > locked.event_cursor
-        ORDER BY seq ASC LIMIT $2
-      ) e ON true`,
-      values: [instanceId, limit],
-    });
-    qEnd("dm_lock_and_peek_events", t);
+    const { rows } = await client.query({ ...Q_LOCK_AND_PEEK_EVENTS, values: [instanceId, limit] });
+    qEnd(Q_LOCK_AND_PEEK_EVENTS.name, t);
     if (rows.length === 0) return null;
     const machineRow = rowToMachine(rows[0]);
     const events: Array<{ seq: number; payload: unknown }> = [];
@@ -287,12 +251,8 @@ export function createStore(options: PgStoreOptions): PgStore {
     stepKey: string,
   ): Promise<{ output: unknown; error: unknown } | null> {
     const t = qStart();
-    const { rows } = await pool.query({
-      name: "dm_get_invoke_result",
-      text: `SELECT output, error FROM invoke_results WHERE instance_id = $1 AND step_key = $2`,
-      values: [instanceId, stepKey],
-    });
-    qEnd("dm_get_invoke_result", t);
+    const { rows } = await pool.query({ ...Q_GET_INVOKE_RESULT, values: [instanceId, stepKey] });
+    qEnd(Q_GET_INVOKE_RESULT.name, t);
     if (rows.length === 0) return null;
     return { output: rows[0].output, error: rows[0].error };
   }
@@ -301,10 +261,7 @@ export function createStore(options: PgStoreOptions): PgStore {
     const { instanceId, stepKey, output, error, startedAt, completedAt } = params;
     const t = qStart();
     await pool.query({
-      name: "dm_record_invoke_result",
-      text: `INSERT INTO invoke_results (instance_id, step_key, output, error, started_at, completed_at)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (instance_id, step_key) DO NOTHING`,
+      ...Q_RECORD_INVOKE_RESULT,
       values: [
         instanceId,
         stepKey,
@@ -314,15 +271,11 @@ export function createStore(options: PgStoreOptions): PgStore {
         completedAt ?? null,
       ],
     });
-    qEnd("dm_record_invoke_result", t);
+    qEnd(Q_RECORD_INVOKE_RESULT.name, t);
   }
 
   async function listInvokeResults(instanceId: string): Promise<StepInfo[]> {
-    const { rows } = await pool.query(
-      `SELECT step_key, output, error, started_at, completed_at
-       FROM invoke_results WHERE instance_id = $1 ORDER BY started_at ASC`,
-      [instanceId],
-    );
+    const { rows } = await pool.query({ ...Q_LIST_INVOKE_RESULTS, values: [instanceId] });
     return rows.map(
       (row: any): StepInfo => ({
         name: row.step_key,
@@ -341,11 +294,7 @@ export function createStore(options: PgStoreOptions): PgStore {
     const { client, instanceId, stateValue, context, wakeAt, wakeEvent, firedDelays, status, eventCursor } = params;
     const t = qStart();
     await client.query({
-      name: "dm_finalize_instance",
-      text: `UPDATE machine_instances
-             SET state_value=$2, context=$3, wake_at=$4, wake_event=$5,
-                 fired_delays=$6, status=$7, event_cursor=$8, updated_at=$9
-             WHERE id = $1`,
+      ...Q_FINALIZE_INSTANCE,
       values: [
         instanceId,
         JSON.stringify(stateValue),
@@ -358,22 +307,14 @@ export function createStore(options: PgStoreOptions): PgStore {
         Date.now(),
       ],
     });
-    qEnd("dm_finalize_instance", t);
+    qEnd(Q_FINALIZE_INSTANCE.name, t);
   }
 
   async function finalizeWithTransition(params: FinalizeParams & TransitionData): Promise<void> {
     const { client, instanceId, stateValue, context, wakeAt, wakeEvent, firedDelays, status, eventCursor, fromState, toState, event, ts } = params;
     const t = qStart();
     await client.query({
-      name: "dm_finalize_with_transition",
-      text: `WITH upd AS (
-        UPDATE machine_instances
-        SET state_value=$2, context=$3, wake_at=$4, wake_event=$5,
-            fired_delays=$6, status=$7, event_cursor=$8, updated_at=$9
-        WHERE id = $1
-      )
-      INSERT INTO transition_log (instance_id, from_state, to_state, event, ts)
-      VALUES ($1, $10, $11, $12, $13)`,
+      ...Q_FINALIZE_WITH_TRANSITION,
       values: [
         instanceId,
         JSON.stringify(stateValue),
@@ -390,7 +331,7 @@ export function createStore(options: PgStoreOptions): PgStore {
         ts,
       ],
     });
-    qEnd("dm_finalize_with_transition", t);
+    qEnd(Q_FINALIZE_WITH_TRANSITION.name, t);
   }
 
   // ── Transition Log ──────────────────────────────────────────────────────
@@ -402,27 +343,22 @@ export function createStore(options: PgStoreOptions): PgStore {
     event: string | null,
     ts: number,
   ): Promise<void> {
-    await pool.query(
-      `INSERT INTO transition_log (instance_id, from_state, to_state, event, ts)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [
+    await pool.query({
+      ...Q_APPEND_TRANSITION,
+      values: [
         instanceId,
         fromState != null ? JSON.stringify(fromState) : null,
         JSON.stringify(toState),
         event,
         ts,
       ],
-    );
+    });
   }
 
   async function getTransitions(
     instanceId: string,
   ): Promise<TransitionRecord[]> {
-    const { rows } = await pool.query(
-      `SELECT from_state, to_state, ts FROM transition_log
-       WHERE instance_id = $1 ORDER BY seq ASC`,
-      [instanceId],
-    );
+    const { rows } = await pool.query({ ...Q_GET_TRANSITIONS, values: [instanceId] });
     return rows.map(
       (row: any): TransitionRecord => ({
         from: row.from_state as StateValue | null,
@@ -456,7 +392,7 @@ export function createStore(options: PgStoreOptions): PgStore {
     const now = Date.now();
     const stateJson = JSON.stringify(stateValue);
 
-    // Build multi-row INSERT
+    // Build multi-row INSERT (dynamic placeholder count)
     const placeholders: string[] = [];
     const values: unknown[] = [];
     let idx = 1;
@@ -479,27 +415,12 @@ export function createStore(options: PgStoreOptions): PgStore {
 
   async function claimPendingEffects(limit = 50): Promise<EffectOutboxRow[]> {
     const now = Date.now();
-    const { rows } = await pool.query(
-      `UPDATE effect_outbox
-       SET status = 'executing', attempts = attempts + 1
-       WHERE id IN (
-         SELECT id FROM effect_outbox
-         WHERE status = 'pending' AND (next_retry_at IS NULL OR next_retry_at <= $1)
-         ORDER BY created_at ASC
-         LIMIT $2
-         FOR UPDATE SKIP LOCKED
-       )
-       RETURNING *`,
-      [now, limit],
-    );
+    const { rows } = await pool.query({ ...Q_CLAIM_PENDING_EFFECTS, values: [now, limit] });
     return rows.map(rowToEffect);
   }
 
   async function markEffectCompleted(effectId: string): Promise<void> {
-    await pool.query(
-      `UPDATE effect_outbox SET status = 'completed', completed_at = $1 WHERE id = $2`,
-      [Date.now(), effectId],
-    );
+    await pool.query({ ...Q_MARK_EFFECT_COMPLETED, values: [Date.now(), effectId] });
   }
 
   async function markEffectFailed(
@@ -508,17 +429,11 @@ export function createStore(options: PgStoreOptions): PgStore {
     nextRetryAt: number | null,
   ): Promise<void> {
     const status = nextRetryAt != null ? "pending" : "failed";
-    await pool.query(
-      `UPDATE effect_outbox SET status = $1, last_error = $2, next_retry_at = $3 WHERE id = $4`,
-      [status, error, nextRetryAt, effectId],
-    );
+    await pool.query({ ...Q_MARK_EFFECT_FAILED, values: [status, error, nextRetryAt, effectId] });
   }
 
   async function listEffects(instanceId: string): Promise<EffectOutboxRow[]> {
-    const { rows } = await pool.query(
-      `SELECT * FROM effect_outbox WHERE instance_id = $1 ORDER BY created_at ASC`,
-      [instanceId],
-    );
+    const { rows } = await pool.query({ ...Q_LIST_EFFECTS, values: [instanceId] });
     return rows.map(rowToEffect);
   }
 

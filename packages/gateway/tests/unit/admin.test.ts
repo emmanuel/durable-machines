@@ -64,16 +64,12 @@ describe("createAdminServer", () => {
     expect(res.status).toBe(503);
   });
 
-  it("GET /metrics returns Prometheus text when metrics provided", async () => {
+  it("GET /metrics returns content when metricsHandler provided", async () => {
     const metricsText = "# HELP test A test metric\ntest_total 42\n";
     server = createAdminServer({
-      metrics: {
-        registry: {
-          async metrics() {
-            return metricsText;
-          },
-          contentType: "text/plain; version=0.0.4",
-        },
+      metricsHandler: (_req, res) => {
+        res.writeHead(200, { "content-type": "text/plain; version=0.0.4" });
+        res.end(metricsText);
       },
     });
     await new Promise<void>((r) => server.listen(0, r));
@@ -84,7 +80,7 @@ describe("createAdminServer", () => {
     expect(res.headers["content-type"]).toBe("text/plain; version=0.0.4");
   });
 
-  it("GET /metrics returns 404 when no metrics configured", async () => {
+  it("GET /metrics returns 404 when no metricsHandler configured", async () => {
     server = createAdminServer();
     await new Promise<void>((r) => server.listen(0, r));
 

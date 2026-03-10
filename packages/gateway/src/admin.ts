@@ -2,15 +2,15 @@
 // Keep both in sync if modifying.
 
 import { createServer } from "node:http";
-import type { Server } from "node:http";
+import type { IncomingMessage, ServerResponse, Server } from "node:http";
 
 export interface AdminServerOptions {
-  metrics?: { registry: { metrics(): Promise<string>; contentType: string } };
+  metricsHandler?: (req: IncomingMessage, res: ServerResponse) => void;
   isReady?: () => boolean | Promise<boolean>;
 }
 
 export function createAdminServer(options?: AdminServerOptions): Server {
-  const { metrics, isReady = () => true } = options ?? {};
+  const { metricsHandler, isReady = () => true } = options ?? {};
 
   return createServer(async (req, res) => {
     if (req.url === "/healthz") {
@@ -27,14 +27,12 @@ export function createAdminServer(options?: AdminServerOptions): Server {
     }
 
     if (req.url === "/metrics") {
-      if (!metrics) {
+      if (!metricsHandler) {
         res.writeHead(404);
         res.end();
         return;
       }
-      const text = await metrics.registry.metrics();
-      res.writeHead(200, { "content-type": metrics.registry.contentType });
-      res.end(text);
+      metricsHandler(req, res);
       return;
     }
 

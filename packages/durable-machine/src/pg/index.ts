@@ -6,6 +6,8 @@ export type {
   CreateInstanceParams, FinalizeParams, TransitionData,
   RecordInvokeResultParams, InsertEffectsParams,
 } from "./store.js";
+export { createStoreInstruments } from "./store-metrics.js";
+export type { StoreInstruments } from "./store-metrics.js";
 export { sendMachineEvent, sendMachineEventBatch, getMachineState } from "./client.js";
 export { getVisualizationState } from "./visualization.js";
 export { parsePgConfig } from "./config.js";

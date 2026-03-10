@@ -1,82 +1,80 @@
-import { Registry, Histogram, Counter, Gauge, collectDefaultMetrics } from "prom-client";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import { MeterProvider } from "@opentelemetry/sdk-metrics";
+import { PrometheusExporter } from "@opentelemetry/exporter-prometheus";
+import type { Counter, Histogram, UpDownCounter } from "@opentelemetry/api";
 
 export interface WorkerMetrics {
-  registry: Registry;
   // Startup
   machineRegistrationDuration: Histogram;
   backendStartDuration: Histogram;
   // Runtime — event processing
   eventsProcessedTotal: Counter;
   eventProcessDuration: Histogram;
-  activeDispatches: Gauge;
+  activeDispatches: UpDownCounter;
   // Runtime — effects
   effectsExecutedTotal: Counter;
   effectExecutionDuration: Histogram;
   // Runtime — polling
   pollItemsFound: Counter;
+  // Admin server handler
+  metricsHandler: (req: IncomingMessage, res: ServerResponse) => void;
 }
 
-export function createWorkerMetrics(registry?: Registry): WorkerMetrics {
-  const reg = registry ?? new Registry();
+/** Start a timer that records elapsed seconds into the given histogram. */
+export function startTimer(
+  histogram: Histogram,
+  attributes?: Record<string, string>,
+): () => void {
+  const start = performance.now();
+  return () => histogram.record((performance.now() - start) / 1000, attributes);
+}
 
-  const machineRegistrationDuration = new Histogram({
-    name: "worker_machine_registration_duration_seconds",
-    help: "Duration of machine registration (validate + register DBOS workflow)",
-    labelNames: ["machine_id"] as const,
-    registers: [reg],
-  });
+export function createWorkerMetrics(): WorkerMetrics {
+  const exporter = new PrometheusExporter({ preventServerStart: true });
+  const provider = new MeterProvider({ readers: [exporter] });
+  const meter = provider.getMeter("durable-xstate.worker");
 
-  const backendStartDuration = new Histogram({
-    name: "worker_backend_start_duration_seconds",
-    help: "Duration of backend start (DBOS launch, PG schema init, etc.)",
-    registers: [reg],
-  });
+  const machineRegistrationDuration = meter.createHistogram(
+    "worker_machine_registration_duration_seconds",
+    { description: "Duration of machine registration (validate + register workflow)" },
+  );
 
-  const eventsProcessedTotal = new Counter({
-    name: "worker_events_processed_total",
-    help: "Total events dispatched and processed",
-    labelNames: ["machine_id", "status"] as const,
-    registers: [reg],
-  });
+  const backendStartDuration = meter.createHistogram(
+    "worker_backend_start_duration_seconds",
+    { description: "Duration of backend start (PG schema init, etc.)" },
+  );
 
-  const eventProcessDuration = new Histogram({
-    name: "worker_event_process_duration_seconds",
-    help: "Duration of event processing (consumeAndProcess)",
-    labelNames: ["machine_id"] as const,
-    registers: [reg],
-  });
+  const eventsProcessedTotal = meter.createCounter(
+    "worker_events_processed_total",
+    { description: "Total events dispatched and processed" },
+  );
 
-  const activeDispatches = new Gauge({
-    name: "worker_active_dispatches",
-    help: "Number of currently in-flight dispatch operations",
-    registers: [reg],
-  });
+  const eventProcessDuration = meter.createHistogram(
+    "worker_event_process_duration_seconds",
+    { description: "Duration of event processing (consumeAndProcess)" },
+  );
 
-  const effectsExecutedTotal = new Counter({
-    name: "worker_effects_executed_total",
-    help: "Total effects claimed and executed",
-    labelNames: ["effect_type", "status"] as const,
-    registers: [reg],
-  });
+  const activeDispatches = meter.createUpDownCounter(
+    "worker_active_dispatches",
+    { description: "Number of currently in-flight dispatch operations" },
+  );
 
-  const effectExecutionDuration = new Histogram({
-    name: "worker_effect_execution_duration_seconds",
-    help: "Duration of individual effect execution",
-    labelNames: ["effect_type"] as const,
-    registers: [reg],
-  });
+  const effectsExecutedTotal = meter.createCounter(
+    "worker_effects_executed_total",
+    { description: "Total effects claimed and executed" },
+  );
 
-  const pollItemsFound = new Counter({
-    name: "worker_poll_items_found_total",
-    help: "Total items found by adaptive pollers",
-    labelNames: ["poll_type"] as const,
-    registers: [reg],
-  });
+  const effectExecutionDuration = meter.createHistogram(
+    "worker_effect_execution_duration_seconds",
+    { description: "Duration of individual effect execution" },
+  );
 
-  collectDefaultMetrics({ register: reg });
+  const pollItemsFound = meter.createCounter(
+    "worker_poll_items_found_total",
+    { description: "Total items found by adaptive pollers" },
+  );
 
   return {
-    registry: reg,
     machineRegistrationDuration,
     backendStartDuration,
     eventsProcessedTotal,
@@ -85,5 +83,6 @@ export function createWorkerMetrics(registry?: Registry): WorkerMetrics {
     effectsExecutedTotal,
     effectExecutionDuration,
     pollItemsFound,
+    metricsHandler: (req, res) => exporter.getMetricsRequestHandler(req, res),
   };
 }

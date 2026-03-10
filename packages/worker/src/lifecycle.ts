@@ -16,7 +16,7 @@ import type { AnyStateMachine } from "xstate";
 import type { DurableMachine } from "@durable-xstate/durable-machine";
 import type { WorkerAppContext } from "./types.js";
 import { createAdminServer } from "./admin.js";
-import { createWorkerMetrics } from "./metrics.js";
+import { createWorkerMetrics, startTimer } from "./metrics.js";
 import type { WorkerMetrics } from "./metrics.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -85,7 +85,7 @@ export function createWorkerContext(
 
   const machines = new Map<string, DurableMachine>();
   for (const [key, def] of Object.entries(options.machines)) {
-    const end = metrics?.machineRegistrationDuration.startTimer({ machine_id: key });
+    const end = metrics ? startTimer(metrics.machineRegistrationDuration, { machine_id: key }) : undefined;
     const dm = appContext.register(def.machine, def.options);
     machines.set(key, dm);
     end?.();
@@ -94,7 +94,7 @@ export function createWorkerContext(
   let adminServer: Server | undefined;
   if (metrics) {
     adminServer = createAdminServer({
-      metrics,
+      metricsHandler: metrics.metricsHandler,
       isReady: () => !appContext.isShuttingDown(),
     });
   }
@@ -112,7 +112,7 @@ export async function startWorker(ctx: WorkerContext): Promise<WorkerHandle> {
     servers.push(ctx.adminServer);
   }
 
-  const end = ctx.metrics?.backendStartDuration.startTimer();
+  const end = ctx.metrics ? startTimer(ctx.metrics.backendStartDuration) : undefined;
   await ctx.appContext.start({
     servers,
     timeoutMs: ctx.config.shutdownTimeoutMs,

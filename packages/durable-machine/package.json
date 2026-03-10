@@ -70,11 +70,15 @@
   },
   "devDependencies": {
     "@dbos-inc/dbos-sdk": "^4.0.0",
+    "@opentelemetry/sdk-metrics": "^2.6.0",
     "@types/node": "^24",
     "@types/pg": "^8.18.0",
     "pg": "^8.11.3",
     "typescript": "^5.7.0",
     "vitest": "^4.0.18",
     "xstate": "^5.19.0"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.0"
   }
 }

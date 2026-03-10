@@ -14,6 +14,7 @@ import { DurableMachineError } from "../types.js";
 import { validateMachineForDurability } from "../validate.js";
 import { createStore } from "./store.js";
 import type { PgStore, MachineRow } from "./store.js";
+import { createStoreInstruments } from "./store-metrics.js";
 import { processStartup, processBatchFromLog, processNextFromLog } from "./event-processor.js";
 import type { EventProcessorOptions } from "./event-processor.js";
 
@@ -66,10 +67,12 @@ export function createDurableMachine<T extends AnyStateMachine>(
   // Validate at registration time
   validateMachineForDurability(machine, { effectHandlers: options.effectHandlers });
 
+  const instruments = createStoreInstruments(options.pool);
   const store = options.store ?? createStore({
     pool: options.pool,
     schema: options.schema,
     useListenNotify: options.useListenNotify,
+    instruments,
   });
 
   const deps: EventProcessorOptions = {
@@ -77,6 +80,7 @@ export function createDurableMachine<T extends AnyStateMachine>(
     machine,
     options,
     enableTransitionStream: options.enableTransitionStream ?? false,
+    instruments,
   };
 
   // ── Event Consumer ──────────────────────────────────────────────────────

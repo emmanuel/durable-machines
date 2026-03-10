@@ -53,8 +53,8 @@ export function createWebhookGateway(options: GatewayOptions): Hono {
       const durationSec = (performance.now() - start) / 1000;
       const path = c.req.path;
       const status = String(c.res.status);
-      metrics.webhooksReceived.inc({ path, status });
-      metrics.webhookDuration.observe({ path }, durationSec);
+      metrics.webhooksReceived.add(1, { path, status });
+      metrics.webhookDuration.record(durationSec, { path });
     });
   }
 
@@ -132,7 +132,7 @@ function registerBinding(
       if (response) {
         // Item-level dispatch, fire-and-forget
         dispatchItems(items, binding.router, binding.transform, client).catch((err) => {
-          metrics?.webhooksReceived?.inc({ path: binding.path, status: "dispatch_error" });
+          metrics?.webhooksReceived?.add(1, { path: binding.path, status: "dispatch_error" });
           console.error("[gateway] background dispatch failed:", binding.path, err);
         });
         return response;
@@ -146,7 +146,7 @@ function registerBinding(
       throw new WebhookRoutingError("No target workflow found");
     }
 
-    metrics?.webhooksDispatched.inc({ path }, dispatched);
+    metrics?.webhooksDispatched.add(dispatched, { path });
 
     return c.json({ ok: true, dispatched });
   });

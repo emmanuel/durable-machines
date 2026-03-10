@@ -1,5 +1,6 @@
 import pg from "pg";
-import { createDurableMachine, createStore, getVisualizationState as pgGetVisualizationState } from "../../../src/pg/index.js";
+import { createDurableMachine, createStore, createStoreInstruments, getVisualizationState as pgGetVisualizationState } from "../../../src/pg/index.js";
+import type { StoreInstruments } from "../../../src/pg/index.js";
 import type { PgDurableMachine } from "../../../src/pg/create-durable-machine.js";
 import type { BackendFixture } from "../../fixtures/helpers.js";
 import type { EffectHandler, ResolvedEffect } from "../../../src/effects.js";
@@ -8,19 +9,36 @@ const TEST_DB_URL =
   process.env.PG_TEST_DATABASE_URL ??
   "postgresql://xstate_dbos:xstate_dbos@localhost:5442/xstate_dbos_test";
 
-export function createPgFixture(opts?: { useBatchProcessing?: boolean }): BackendFixture {
-  // Create pool and store eagerly so createMachine() works before setup()
-  const pool = new pg.Pool({ connectionString: TEST_DB_URL });
-  const store = createStore({ pool, useListenNotify: false });
+export function createPgFixture(opts?: {
+  useBatchProcessing?: boolean;
+  poolSize?: number;
+  /** When true, creates OTel instruments from the global MeterProvider during setup(). */
+  enableMetrics?: boolean;
+}): BackendFixture {
+  const pool = new pg.Pool({
+    connectionString: TEST_DB_URL,
+    ...(opts?.poolSize != null ? { max: opts.poolSize } : {}),
+  });
+  // Store is created lazily in setup() so OTel MeterProvider can be registered first
+  let store: ReturnType<typeof createStore>;
+  let instruments: StoreInstruments | undefined;
   const machines = new Map<string, PgDurableMachine>();
   const allEffectHandlers = new Map<string, EffectHandler>();
   let poller: ReturnType<typeof setInterval> | undefined;
   let effectPoller: ReturnType<typeof setInterval> | undefined;
 
   return {
-    name: opts?.useBatchProcessing === false ? "pg-legacy" : "pg",
+    name: (() => {
+      const base = opts?.useBatchProcessing === false ? "pg-legacy" : "pg";
+      if (opts?.poolSize != null) return `${base} pool=${opts.poolSize}`;
+      return base;
+    })(),
 
     async setup() {
+      if (opts?.enableMetrics) {
+        instruments = createStoreInstruments(pool);
+      }
+      store = createStore({ pool, useListenNotify: false, instruments });
       await store.ensureSchema();
       await pool.query("TRUNCATE machine_instances CASCADE");
 

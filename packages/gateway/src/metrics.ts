@@ -1,7 +1,9 @@
-import { Registry, Counter, Histogram, collectDefaultMetrics } from "prom-client";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import { MeterProvider } from "@opentelemetry/sdk-metrics";
+import { PrometheusExporter } from "@opentelemetry/exporter-prometheus";
+import type { Counter, Histogram } from "@opentelemetry/api";
 
 export interface GatewayMetrics {
-  registry: Registry;
   webhooksReceived: Counter;
   webhooksDispatched: Counter;
   webhookDuration: Histogram;
@@ -13,64 +15,51 @@ export interface GatewayMetrics {
   streamReconnections: Counter;
   /** Total checkpoint writes (labeled: streamId). */
   streamCheckpoints: Counter;
+  // Admin server handler
+  metricsHandler: (req: IncomingMessage, res: ServerResponse) => void;
 }
 
-export function createGatewayMetrics(registry?: Registry): GatewayMetrics {
-  const reg = registry ?? new Registry();
+export function createGatewayMetrics(): GatewayMetrics {
+  const exporter = new PrometheusExporter({ preventServerStart: true });
+  const provider = new MeterProvider({ readers: [exporter] });
+  const meter = provider.getMeter("durable-xstate.gateway");
 
-  const webhooksReceived = new Counter({
-    name: "webhook_gateway_received_total",
-    help: "Total webhooks received",
-    labelNames: ["path", "status"] as const,
-    registers: [reg],
-  });
+  const webhooksReceived = meter.createCounter(
+    "webhook_gateway_received_total",
+    { description: "Total webhooks received" },
+  );
 
-  const webhooksDispatched = new Counter({
-    name: "webhook_gateway_dispatched_total",
-    help: "Total webhooks successfully dispatched",
-    labelNames: ["path"] as const,
-    registers: [reg],
-  });
+  const webhooksDispatched = meter.createCounter(
+    "webhook_gateway_dispatched_total",
+    { description: "Total webhooks successfully dispatched" },
+  );
 
-  const webhookDuration = new Histogram({
-    name: "webhook_gateway_duration_seconds",
-    help: "Webhook processing duration in seconds",
-    labelNames: ["path"] as const,
-    registers: [reg],
-  });
+  const webhookDuration = meter.createHistogram(
+    "webhook_gateway_duration_seconds",
+    { description: "Webhook processing duration in seconds" },
+  );
 
-  const streamEventsReceived = new Counter({
-    name: "stream_events_received_total",
-    help: "Total SSE/stream events received",
-    labelNames: ["streamId"] as const,
-    registers: [reg],
-  });
+  const streamEventsReceived = meter.createCounter(
+    "stream_events_received_total",
+    { description: "Total SSE/stream events received" },
+  );
 
-  const streamItemsDispatched = new Counter({
-    name: "stream_items_dispatched_total",
-    help: "Total items dispatched from streams",
-    labelNames: ["streamId"] as const,
-    registers: [reg],
-  });
+  const streamItemsDispatched = meter.createCounter(
+    "stream_items_dispatched_total",
+    { description: "Total items dispatched from streams" },
+  );
 
-  const streamReconnections = new Counter({
-    name: "stream_reconnections_total",
-    help: "Total stream reconnections",
-    labelNames: ["streamId"] as const,
-    registers: [reg],
-  });
+  const streamReconnections = meter.createCounter(
+    "stream_reconnections_total",
+    { description: "Total stream reconnections" },
+  );
 
-  const streamCheckpoints = new Counter({
-    name: "stream_checkpoints_total",
-    help: "Total checkpoint writes",
-    labelNames: ["streamId"] as const,
-    registers: [reg],
-  });
-
-  collectDefaultMetrics({ register: reg });
+  const streamCheckpoints = meter.createCounter(
+    "stream_checkpoints_total",
+    { description: "Total checkpoint writes" },
+  );
 
   return {
-    registry: reg,
     webhooksReceived,
     webhooksDispatched,
     webhookDuration,
@@ -78,5 +67,6 @@ export function createGatewayMetrics(registry?: Registry): GatewayMetrics {
     streamItemsDispatched,
     streamReconnections,
     streamCheckpoints,
+    metricsHandler: (req, res) => exporter.getMetricsRequestHandler(req, res),
   };
 }

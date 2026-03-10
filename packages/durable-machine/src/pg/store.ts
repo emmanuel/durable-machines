@@ -2,6 +2,7 @@ import type { Pool, PoolClient, Client as PgClient } from "pg";
 import type { StateValue } from "xstate";
 import type { StepInfo, TransitionRecord, InstanceStatus, EffectOutboxStatus } from "../types.js";
 import type { ResolvedEffect } from "../effects.js";
+import type { StoreInstruments } from "./store-metrics.js";
 
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS machine_instances (
@@ -132,6 +133,7 @@ export interface PgStoreOptions {
   pool: Pool;
   schema?: string;
   useListenNotify?: boolean;
+  instruments?: StoreInstruments;
 }
 
 export interface MachineRow {
@@ -337,10 +339,16 @@ function rowToMachine(row: any): MachineRow {
 // ─── Factory ────────────────────────────────────────────────────────────────
 
 export function createStore(options: PgStoreOptions): PgStore {
-  const { pool, useListenNotify = true } = options;
+  const { pool, useListenNotify = true, instruments: instr } = options;
   let listenClient: PgClient | null = null;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let stopped = false;
+
+  // Query timing helpers — zero overhead when instruments not provided
+  function qStart(): number { return instr ? performance.now() : 0; }
+  function qEnd(name: string, start: number): void {
+    if (instr) instr.queryDuration.record(performance.now() - start, { query: name });
+  }
 
   // ── Schema ──────────────────────────────────────────────────────────────
 
@@ -385,11 +393,13 @@ export function createStore(options: PgStoreOptions): PgStore {
     id: string,
     status: InstanceStatus,
   ): Promise<void> {
+    const t = qStart();
     await pool.query({
       name: "dm_update_instance_status",
       text: `UPDATE machine_instances SET status = $2, updated_at = $3 WHERE id = $1`,
       values: [id, status, Date.now()],
     });
+    qEnd("dm_update_instance_status", t);
   }
 
   async function updateInstanceSnapshot(
@@ -398,11 +408,13 @@ export function createStore(options: PgStoreOptions): PgStore {
     stateValue: StateValue,
     context: Record<string, unknown>,
   ): Promise<void> {
+    const t = qStart();
     await client.query({
       name: "dm_update_instance_snapshot",
       text: `UPDATE machine_instances SET state_value = $2, context = $3, updated_at = $4 WHERE id = $1`,
       values: [id, JSON.stringify(stateValue), JSON.stringify(context), Date.now()],
     });
+    qEnd("dm_update_instance_snapshot", t);
   }
 
   async function listInstances(filter?: {
@@ -437,11 +449,13 @@ export function createStore(options: PgStoreOptions): PgStore {
     client: PoolClient,
     id: string,
   ): Promise<MachineRow | null> {
+    const t = qStart();
     const { rows } = await client.query({
       name: "dm_lock_and_get_instance",
       text: `SELECT * FROM machine_instances WHERE id = $1 FOR NO KEY UPDATE SKIP LOCKED`,
       values: [id],
     });
+    qEnd("dm_lock_and_get_instance", t);
     return rows.length > 0 ? rowToMachine(rows[0]) : null;
   }
 
@@ -453,6 +467,7 @@ export function createStore(options: PgStoreOptions): PgStore {
     topic = "event",
     source?: string,
   ): Promise<{ seq: number }> {
+    const t = qStart();
     const { rows } = await pool.query({
       name: "dm_append_event",
       text: `INSERT INTO event_log (instance_id, topic, payload, source, created_at)
@@ -460,6 +475,7 @@ export function createStore(options: PgStoreOptions): PgStore {
        RETURNING seq`,
       values: [instanceId, topic, JSON.stringify(payload), source ?? null, Date.now()],
     });
+    qEnd("dm_append_event", t);
     return { seq: Number(rows[0].seq) };
   }
 
@@ -470,6 +486,7 @@ export function createStore(options: PgStoreOptions): PgStore {
     row: MachineRow;
     nextEvent: { seq: number; payload: unknown } | null;
   } | null> {
+    const t = qStart();
     const { rows } = await client.query({
       name: "dm_lock_and_peek_event",
       text: `WITH locked AS (
@@ -486,6 +503,7 @@ export function createStore(options: PgStoreOptions): PgStore {
       ) e ON true`,
       values: [instanceId],
     });
+    qEnd("dm_lock_and_peek_event", t);
     if (rows.length === 0) return null;
     const r = rows[0];
     const machineRow = rowToMachine(r);
@@ -503,6 +521,7 @@ export function createStore(options: PgStoreOptions): PgStore {
     row: MachineRow;
     events: Array<{ seq: number; payload: unknown }>;
   } | null> {
+    const t = qStart();
     const { rows } = await client.query({
       name: "dm_lock_and_peek_events",
       text: `WITH locked AS (
@@ -519,6 +538,7 @@ export function createStore(options: PgStoreOptions): PgStore {
       ) e ON true`,
       values: [instanceId, limit],
     });
+    qEnd("dm_lock_and_peek_events", t);
     if (rows.length === 0) return null;
     const machineRow = rowToMachine(rows[0]);
     const events: Array<{ seq: number; payload: unknown }> = [];
@@ -568,17 +588,20 @@ export function createStore(options: PgStoreOptions): PgStore {
     instanceId: string,
     stepKey: string,
   ): Promise<{ output: unknown; error: unknown } | null> {
+    const t = qStart();
     const { rows } = await pool.query({
       name: "dm_get_invoke_result",
       text: `SELECT output, error FROM invoke_results WHERE instance_id = $1 AND step_key = $2`,
       values: [instanceId, stepKey],
     });
+    qEnd("dm_get_invoke_result", t);
     if (rows.length === 0) return null;
     return { output: rows[0].output, error: rows[0].error };
   }
 
   async function recordInvokeResult(params: RecordInvokeResultParams): Promise<void> {
     const { instanceId, stepKey, output, error, startedAt, completedAt } = params;
+    const t = qStart();
     await pool.query({
       name: "dm_record_invoke_result",
       text: `INSERT INTO invoke_results (instance_id, step_key, output, error, started_at, completed_at)
@@ -593,6 +616,7 @@ export function createStore(options: PgStoreOptions): PgStore {
         completedAt ?? null,
       ],
     });
+    qEnd("dm_record_invoke_result", t);
   }
 
   async function listInvokeResults(instanceId: string): Promise<StepInfo[]> {
@@ -617,6 +641,7 @@ export function createStore(options: PgStoreOptions): PgStore {
 
   async function finalizeInstance(params: FinalizeParams): Promise<void> {
     const { client, instanceId, stateValue, context, wakeAt, wakeEvent, firedDelays, status, eventCursor } = params;
+    const t = qStart();
     await client.query({
       name: "dm_finalize_instance",
       text: `UPDATE machine_instances
@@ -635,10 +660,12 @@ export function createStore(options: PgStoreOptions): PgStore {
         Date.now(),
       ],
     });
+    qEnd("dm_finalize_instance", t);
   }
 
   async function finalizeWithTransition(params: FinalizeParams & TransitionData): Promise<void> {
     const { client, instanceId, stateValue, context, wakeAt, wakeEvent, firedDelays, status, eventCursor, fromState, toState, event, ts } = params;
+    const t = qStart();
     await client.query({
       name: "dm_finalize_with_transition",
       text: `WITH upd AS (
@@ -665,6 +692,7 @@ export function createStore(options: PgStoreOptions): PgStore {
         ts,
       ],
     });
+    qEnd("dm_finalize_with_transition", t);
   }
 
   // ── Transition Log ──────────────────────────────────────────────────────
@@ -807,7 +835,8 @@ export function createStore(options: PgStoreOptions): PgStore {
 
     try {
       // Create a dedicated client (not from pool) for LISTEN
-      const { Client } = await import("pg");
+      const pg = await import("pg");
+      const Client = pg.default?.Client ?? pg.Client;
       const client = new Client(
         (pool as any).options ?? {
           connectionString: (pool as any)._connectionString,

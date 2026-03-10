@@ -1,4 +1,4 @@
-import { Pool } from "pg";
+import pg from "pg";
 import type { Pool as PoolType } from "pg";
 import type { AnyStateMachine } from "xstate";
 import type { WorkerAppContext, Logger } from "../types.js";
@@ -14,7 +14,7 @@ import { createDurableMachine } from "@durable-xstate/durable-machine/pg";
 import type { PgDurableMachine } from "@durable-xstate/durable-machine/pg";
 import type { PgConfig } from "@durable-xstate/durable-machine/pg";
 import type { WorkerMetrics } from "../metrics.js";
-import { createWorkerMetrics } from "../metrics.js";
+import { createWorkerMetrics, startTimer } from "../metrics.js";
 import {
   createWorkerContext,
   startWorker,
@@ -56,7 +56,7 @@ export function createPgWorkerContext(
   const metrics = options?.metrics;
   const logger = options?.logger ?? noopLogger;
 
-  const pool = new Pool({
+  const pool = new pg.Pool({
     connectionString: config.databaseUrl,
     max: config.poolSize ?? 20,
   });
@@ -89,17 +89,17 @@ export function createPgWorkerContext(
 
   function dispatch(instanceId: string, dm: PgDurableMachine): void {
     void acquirePermit().then(async () => {
-      metrics?.activeDispatches.inc();
-      const end = metrics?.eventProcessDuration.startTimer({ machine_id: dm.machine.id });
+      metrics?.activeDispatches.add(1);
+      const end = metrics ? startTimer(metrics.eventProcessDuration, { machine_id: dm.machine.id }) : undefined;
       try {
         await dm.consumeAndProcess(instanceId);
-        metrics?.eventsProcessedTotal.inc({ machine_id: dm.machine.id, status: "success" });
+        metrics?.eventsProcessedTotal.add(1, { machine_id: dm.machine.id, status: "success" });
       } catch (err) {
-        metrics?.eventsProcessedTotal.inc({ machine_id: dm.machine.id, status: "error" });
+        metrics?.eventsProcessedTotal.add(1, { machine_id: dm.machine.id, status: "error" });
         logger.error({ instanceId, machineId: dm.machine.id, err: String(err) }, "dispatch failed");
       } finally {
         end?.();
-        metrics?.activeDispatches.dec();
+        metrics?.activeDispatches.add(-1);
         releasePermit();
       }
     });
@@ -144,7 +144,7 @@ export function createPgWorkerContext(
       const { rows } = await pool.query(`SELECT fire_due_timeouts() AS cnt`);
       const count = Number(rows[0].cnt);
       if (count > 0) {
-        metrics?.pollItemsFound.inc({ poll_type: "timeouts" }, count);
+        metrics?.pollItemsFound.add(count, { poll_type: "timeouts" });
       }
       return count;
     } catch (err) {
@@ -167,22 +167,22 @@ export function createPgWorkerContext(
     try {
       const rows = await store.claimPendingEffects(50);
       if (rows.length > 0) {
-        metrics?.pollItemsFound.inc({ poll_type: "effects" }, rows.length);
+        metrics?.pollItemsFound.add(rows.length, { poll_type: "effects" });
       }
       for (const row of rows) {
         const handler = allEffectHandlers.get(row.effectType);
         if (!handler) {
           await store.markEffectFailed(row.id, `No handler for "${row.effectType}"`, null);
-          metrics?.effectsExecutedTotal.inc({ effect_type: row.effectType, status: "no_handler" });
+          metrics?.effectsExecutedTotal.add(1, { effect_type: row.effectType, status: "no_handler" });
           logger.warn({ effectType: row.effectType }, "no handler for effect");
           continue;
         }
 
-        const end = metrics?.effectExecutionDuration.startTimer({ effect_type: row.effectType });
+        const end = metrics ? startTimer(metrics.effectExecutionDuration, { effect_type: row.effectType }) : undefined;
         try {
           await handler({ type: row.effectType, ...row.effectPayload } as ResolvedEffect);
           await store.markEffectCompleted(row.id);
-          metrics?.effectsExecutedTotal.inc({ effect_type: row.effectType, status: "success" });
+          metrics?.effectsExecutedTotal.add(1, { effect_type: row.effectType, status: "success" });
         } catch (err) {
           const exhausted = row.attempts >= row.maxAttempts;
           const nextRetry = exhausted
@@ -193,7 +193,7 @@ export function createPgWorkerContext(
             err instanceof Error ? err.message : String(err),
             nextRetry,
           );
-          metrics?.effectsExecutedTotal.inc({ effect_type: row.effectType, status: "error" });
+          metrics?.effectsExecutedTotal.add(1, { effect_type: row.effectType, status: "error" });
           logger.error({ effectType: row.effectType, err: String(err) }, "effect execution failed");
         } finally {
           end?.();

@@ -89,7 +89,7 @@ async function run<TRaw, TItem>(
     for await (const msg of transport.consume(cursor, signal)) {
       if (signal.aborted) break;
 
-      metrics?.streamEventsReceived?.inc({ streamId });
+      metrics?.streamEventsReceived?.add(1, { streamId });
 
       const items = parse(msg.raw);
       if (items.length === 0) {
@@ -115,7 +115,7 @@ async function run<TRaw, TItem>(
       if (batch.length > 0) {
         try {
           await client.sendBatch(batch);
-          metrics?.streamItemsDispatched?.inc({ streamId }, batch.length);
+          metrics?.streamItemsDispatched?.add(batch.length, { streamId });
         } catch (err: unknown) {
           logger.error(
             {
@@ -128,7 +128,7 @@ async function run<TRaw, TItem>(
           for (const { workflowId, message } of batch) {
             try {
               await client.send(workflowId, message);
-              metrics?.streamItemsDispatched?.inc({ streamId });
+              metrics?.streamItemsDispatched?.add(1, { streamId });
             } catch (sendErr: unknown) {
               logger.error(
                 {
@@ -149,7 +149,7 @@ async function run<TRaw, TItem>(
 
       if (messageCount % checkpointInterval === 0) {
         await checkpoints.save(streamId, latestCursor);
-        metrics?.streamCheckpoints?.inc({ streamId });
+        metrics?.streamCheckpoints?.add(1, { streamId });
       }
     }
   } catch (err: unknown) {
@@ -164,7 +164,7 @@ async function run<TRaw, TItem>(
     if (latestCursor) {
       try {
         await checkpoints.save(streamId, latestCursor);
-        metrics?.streamCheckpoints?.inc({ streamId });
+        metrics?.streamCheckpoints?.add(1, { streamId });
         logger.info({ streamId }, "Final checkpoint saved");
       } catch (err: unknown) {
         logger.error(

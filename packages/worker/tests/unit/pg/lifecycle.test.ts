@@ -14,11 +14,14 @@ const mockPool = {
   connect: vi.fn(),
 };
 
-vi.mock("pg", () => ({
-  Pool: vi.fn(function () {
-    return mockPool;
-  }),
-}));
+vi.mock("pg", () => {
+  const mod = {
+    Pool: vi.fn(function () {
+      return mockPool;
+    }),
+  };
+  return { ...mod, default: mod };
+});
 
 // Mock createStore
 const mockEnsureSchema = vi.fn().mockResolvedValue(undefined);

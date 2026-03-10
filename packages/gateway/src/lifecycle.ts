@@ -145,7 +145,7 @@ export async function createGatewayContext(
 
   const isShuttingDown = options.isShuttingDown ?? (() => false);
   const adminServer = createAdminServer({
-    metrics,
+    metricsHandler: metrics.metricsHandler,
     isReady: () => !isShuttingDown(),
   });
 
@@ -155,7 +155,8 @@ export async function createGatewayContext(
     if (!config.dbUrl) {
       throw new Error("GatewayConfig.dbUrl is required when streams are configured");
     }
-    const { Pool } = await import("pg");
+    const pgMod = await import("pg");
+    const Pool = pgMod.default?.Pool ?? pgMod.Pool;
     const pool = new Pool({
       connectionString: config.dbUrl,
       max: Math.max(2, options.streams.length + 1),

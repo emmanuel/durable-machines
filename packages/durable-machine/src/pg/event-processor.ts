@@ -24,6 +24,7 @@ import {
   stateValueEquals,
 } from "../xstate-utils.js";
 import type { PgStore } from "./store.js";
+import type { StoreInstruments } from "./store-metrics.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -32,6 +33,7 @@ export interface EventProcessorOptions {
   machine: AnyStateMachine;
   options: DurableMachineOptions;
   enableTransitionStream?: boolean;
+  instruments?: StoreInstruments;
 }
 
 
@@ -264,7 +266,7 @@ export async function processStartup(
   const status = snapshot.status === "done" ? "done" : "running";
 
   // Wrap creation + effect insert in a single transaction
-  const client = await getPool(store).connect();
+  const client = await timedConnect(deps);
   try {
     await client.query("BEGIN");
 
@@ -384,7 +386,7 @@ export async function processNextFromLog(
   const { store, machine } = deps;
 
   // ── Txn 1: lock + transition + detect invocation ────────────────────
-  const client = await getPool(store).connect();
+  const client = await timedConnect(deps);
 
   let invocationSnapshot: AnyMachineSnapshot | null = null;
   let prevSnapshot: AnyMachineSnapshot;
@@ -476,7 +478,7 @@ export async function processNextFromLog(
   );
 
   // ── Txn 2: re-lock, check cancellation, finalize ───────────────────
-  const client2 = await getPool(store).connect();
+  const client2 = await timedConnect(deps);
   try {
     await client2.query("BEGIN");
 
@@ -519,7 +521,7 @@ export async function processBatchFromLog(
 ): Promise<number> {
   const { store, machine } = deps;
 
-  const client = await getPool(store).connect();
+  const client = await timedConnect(deps);
 
   let invocationSnapshot: AnyMachineSnapshot | null = null;
   let prevSnapshot: AnyMachineSnapshot;
@@ -601,6 +603,7 @@ export async function processBatchFromLog(
       );
       await client.query("COMMIT");
       client.release();
+      deps.instruments?.batchSize.record(processedCount);
       return processedCount;
     }
 
@@ -636,7 +639,7 @@ export async function processBatchFromLog(
       );
 
       // Txn 2: re-lock, finalize with cursor at invocation event
-      const client2 = await getPool(store).connect();
+      const client2 = await timedConnect(deps);
       try {
         await client2.query("BEGIN");
         const row2 = await store.lockAndGetInstance(client2, instanceId);
@@ -651,7 +654,9 @@ export async function processBatchFromLog(
           postInvoke, lastEvent, lastEventSeq, firedDelays,
         );
         await client2.query("COMMIT");
-        return processedCount + 1;
+        const total = processedCount + 1;
+        deps.instruments?.batchSize.record(total);
+        return total;
       } catch (err) {
         await client2.query("ROLLBACK").catch(() => {});
         throw err;
@@ -681,4 +686,13 @@ export async function processBatchFromLog(
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function getPool(store: PgStore): any {
   return (store as any)._pool;
+}
+
+async function timedConnect(deps: EventProcessorOptions): Promise<import("pg").PoolClient> {
+  const pool = getPool(deps.store);
+  if (!deps.instruments) return pool.connect();
+  const start = performance.now();
+  const client = await pool.connect();
+  deps.instruments.poolCheckoutDuration.record(performance.now() - start);
+  return client;
 }

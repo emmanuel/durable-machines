@@ -7,17 +7,22 @@
     "build": "tsc",
     "worker": "tsx src/worker.ts",
     "gateway": "tsx src/gateway.ts",
-    "start-workflow": "tsx src/start-workflow.ts"
+    "start-workflow": "tsx src/start-workflow.ts",
+    "pg:worker": "tsx src/pg-worker.ts",
+    "pg:gateway": "tsx src/pg-gateway.ts",
+    "pg:start-workflow": "tsx src/pg-start-workflow.ts"
   },
   "dependencies": {
     "@durable-xstate/durable-machine": "workspace:*",
     "@durable-xstate/gateway": "workspace:*",
     "@durable-xstate/worker": "workspace:*",
     "@dbos-inc/dbos-sdk": "^4.0.0",
+    "pg": "^8.13.0",
     "xstate": "^5.19.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/pg": "^8.0.0",
     "typescript": "^5.7.0",
     "tsx": "^4.19.0"
   }

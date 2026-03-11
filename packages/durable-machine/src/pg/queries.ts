@@ -25,7 +25,7 @@ export const Q_UPDATE_INSTANCE_SNAPSHOT = {
 
 export const Q_LOCK_AND_GET_INSTANCE = {
   name: "dm_lock_and_get_instance",
-  text: `SELECT * FROM machine_instances WHERE id = $1 FOR NO KEY UPDATE SKIP LOCKED`,
+  text: `SELECT * FROM machine_instances WHERE id = $1 FOR NO KEY UPDATE`,
 } as const;
 
 // ─── Event Log ───────────────────────────────────────────────────────────────
@@ -37,36 +37,36 @@ export const Q_APPEND_EVENT = {
        RETURNING seq`,
 } as const;
 
+// Lock instance + peek events in a single round-trip CTE.
+// Uses blocking FOR NO KEY UPDATE (not SKIP LOCKED) — SKIP LOCKED can
+// spuriously skip unlocked rows due to PG plan-caching/visibility issues.
+
 export const Q_LOCK_AND_PEEK_EVENT = {
   name: "dm_lock_and_peek_event",
   text: `WITH locked AS (
-        SELECT * FROM machine_instances WHERE id = $1 FOR NO KEY UPDATE SKIP LOCKED
-      )
-      SELECT locked.*,
-             e.seq AS next_event_seq,
-             e.payload AS next_event_payload
-      FROM locked
-      LEFT JOIN LATERAL (
-        SELECT seq, payload FROM event_log
-        WHERE instance_id = locked.id AND seq > locked.event_cursor
-        ORDER BY seq ASC LIMIT 1
-      ) e ON true`,
+           SELECT * FROM machine_instances WHERE id = $1 FOR NO KEY UPDATE
+         )
+         SELECT locked.*, e.seq AS evt_seq, e.payload AS evt_payload
+         FROM locked
+         LEFT JOIN LATERAL (
+           SELECT seq, payload FROM event_log
+           WHERE instance_id = $1 AND seq > locked.event_cursor
+           ORDER BY seq ASC LIMIT 1
+         ) e ON true`,
 } as const;
 
 export const Q_LOCK_AND_PEEK_EVENTS = {
   name: "dm_lock_and_peek_events",
   text: `WITH locked AS (
-        SELECT * FROM machine_instances WHERE id = $1 FOR NO KEY UPDATE SKIP LOCKED
-      )
-      SELECT locked.*,
-             e.seq AS event_seq,
-             e.payload AS event_payload
-      FROM locked
-      LEFT JOIN LATERAL (
-        SELECT seq, payload FROM event_log
-        WHERE instance_id = locked.id AND seq > locked.event_cursor
-        ORDER BY seq ASC LIMIT $2
-      ) e ON true`,
+           SELECT * FROM machine_instances WHERE id = $1 FOR NO KEY UPDATE
+         )
+         SELECT locked.*, e.seq AS evt_seq, e.payload AS evt_payload
+         FROM locked
+         LEFT JOIN LATERAL (
+           SELECT seq, payload FROM event_log
+           WHERE instance_id = $1 AND seq > locked.event_cursor
+           ORDER BY seq ASC LIMIT $2
+         ) e ON true`,
 } as const;
 
 // ─── Invoke Results ──────────────────────────────────────────────────────────

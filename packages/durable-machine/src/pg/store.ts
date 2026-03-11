@@ -213,8 +213,8 @@ export function createStore(options: PgStoreOptions): PgStore {
     if (rows.length === 0) return null;
     const r = rows[0];
     const machineRow = rowToMachine(r);
-    const nextEvent = r.next_event_seq != null
-      ? { seq: Number(r.next_event_seq), payload: r.next_event_payload }
+    const nextEvent = r.evt_seq != null
+      ? { seq: Number(r.evt_seq), payload: r.evt_payload }
       : null;
     return { row: machineRow, nextEvent };
   }
@@ -234,8 +234,8 @@ export function createStore(options: PgStoreOptions): PgStore {
     const machineRow = rowToMachine(rows[0]);
     const events: Array<{ seq: number; payload: unknown }> = [];
     for (const r of rows) {
-      if (r.event_seq != null) {
-        events.push({ seq: Number(r.event_seq), payload: r.event_payload });
+      if (r.evt_seq != null) {
+        events.push({ seq: Number(r.evt_seq), payload: r.evt_payload });
       }
     }
     return { row: machineRow, events };

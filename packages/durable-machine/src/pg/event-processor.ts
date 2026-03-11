@@ -300,6 +300,42 @@ async function finalize(
   }
 }
 
+// ─── Two-Phase Invocation ────────────────────────────────────────────────────
+
+/**
+ * Executes invocations outside any lock, then re-locks and finalizes.
+ * Returns `true` if the invocation was finalized (or the instance was cancelled).
+ */
+async function executeAndFinalizeInvocation(
+  deps: EventProcessorOptions,
+  instanceId: string,
+  invocationSnapshot: AnyMachineSnapshot,
+  prevSnapshot: AnyMachineSnapshot,
+  prevStateValue: StateValue,
+  event: AnyEventObject,
+  eventSeq: number,
+  firedDelays: Array<string | number>,
+): Promise<boolean> {
+  const postInvoke = await executeInvocationsInline(deps, instanceId, invocationSnapshot);
+
+  let processed = false;
+  await deps.store.withTransaction(async (client) => {
+    const row = await deps.store.lockAndGetInstance(client, instanceId);
+    if (!row || row.status === "cancelled") {
+      processed = row?.status === "cancelled";
+      return;
+    }
+    await finalize(
+      deps, client, instanceId,
+      prevSnapshot, prevStateValue,
+      postInvoke, event, eventSeq, firedDelays,
+    );
+    processed = true;
+  });
+
+  return processed;
+}
+
 // ─── Batch Event Drain ───────────────────────────────────────────────────────
 
 const BATCH_SIZE = 50;
@@ -418,26 +454,14 @@ export async function processBatchFromLog(
     return processedCount;
   }
 
-  // Execute invocations outside the lock
-  const postInvoke = await executeInvocationsInline(
+  // Two-phase: execute outside lock, then re-lock and finalize
+  if (await executeAndFinalizeInvocation(
     deps, instanceId, invocationSnapshot,
-  );
-
-  // Txn 2: re-lock, finalize with cursor at invocation event
-  await store.withTransaction(async (client) => {
-    const row2 = await store.lockAndGetInstance(client, instanceId);
-    if (!row2 || row2.status === "cancelled") {
-      if (row2?.status === "cancelled") processedCount++;
-      return;
-    }
-
-    await finalize(
-      deps, client, instanceId,
-      prevSnapshot!, prevStateValue!,
-      postInvoke, lastEvent!, lastEventSeq, firedDelays,
-    );
+    prevSnapshot!, prevStateValue!,
+    lastEvent!, lastEventSeq, firedDelays,
+  )) {
     processedCount++;
-  });
+  }
 
   deps.instruments?.batchSize.record(processedCount);
   return processedCount;

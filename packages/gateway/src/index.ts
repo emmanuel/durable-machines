@@ -41,6 +41,8 @@ export type {
   ItemTransform,
   GatewayClient,
   GatewayOptions,
+  AuthMiddleware,
+  GatewaySecurityOptions,
 } from "./types.js";
 export { WebhookVerificationError, WebhookRoutingError } from "./types.js";
 

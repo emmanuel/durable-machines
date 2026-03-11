@@ -60,7 +60,7 @@ export function emailChannel(options: EmailChannelOptions): ChannelAdapter {
     async sendPrompt(params: SendPromptParams) {
       const recipient = resolveRecipient(params.prompt, params.context, defaultRecipient);
       const text = resolveText(params.prompt, params.context);
-      const subject = subjectPrefix ? `${subjectPrefix} ${text}` : text;
+      const subject = sanitizeSubject(subjectPrefix ? `${subjectPrefix} ${text}` : text);
       const html = renderHtml(params.prompt, params.workflowId, text, callbackUrl, signingSecret);
 
       await sendEmail({ to: recipient, subject, html });
@@ -72,9 +72,11 @@ export function emailChannel(options: EmailChannelOptions): ChannelAdapter {
     async resolvePrompt(params: ResolvePromptParams) {
       const handle = params.handle as EmailPromptHandle;
       const resolvedHtml = `<p>This action has been resolved: <strong>${escapeHtml(params.event.type)}</strong></p>`;
-      const subject = subjectPrefix
-        ? `${subjectPrefix} Resolved: ${params.event.type}`
-        : `Resolved: ${params.event.type}`;
+      const subject = sanitizeSubject(
+        subjectPrefix
+          ? `${subjectPrefix} Resolved: ${params.event.type}`
+          : `Resolved: ${params.event.type}`,
+      );
 
       await sendEmail({ to: handle.to, subject, html: resolvedHtml });
     },
@@ -100,19 +102,25 @@ function resolveText(prompt: PromptConfig, context: Record<string, unknown>): st
   return typeof t === "function" ? t({ context }) : t;
 }
 
-/** Creates an HMAC-SHA256 signature for an action link. */
-export function signActionLink(workflowId: string, event: string, secret: string): string {
-  return createHmac("sha256", secret).update(workflowId + event).digest("hex");
+/** Creates an HMAC-SHA256 signature for an action link (includes timestamp for replay protection). */
+export function signActionLink(workflowId: string, event: string, secret: string, createdAt: number = Date.now()): string {
+  return createHmac("sha256", secret).update(`${workflowId}:${event}:${createdAt}`).digest("hex");
 }
 
 function actionUrl(baseUrl: string, workflowId: string, event: string, secret: string): string {
-  const sig = signActionLink(workflowId, event, secret);
-  const params = new URLSearchParams({ workflowId, event, sig });
+  const createdAt = Date.now();
+  const sig = signActionLink(workflowId, event, secret, createdAt);
+  const params = new URLSearchParams({ workflowId, event, sig, t: String(createdAt) });
   return `${baseUrl}?${params.toString()}`;
 }
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/** Strip control characters that could inject email headers. */
+function sanitizeSubject(s: string): string {
+  return s.replace(/[\r\n\t]/g, " ").trim();
 }
 
 function styledButton(label: string, href: string, style?: string): string {

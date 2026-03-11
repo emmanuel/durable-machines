@@ -1,7 +1,8 @@
-import type { PoolClient, Client as PgClient } from "pg";
+import type { PoolClient } from "pg";
 import type { StateValue } from "xstate";
 import type { StepInfo, TransitionRecord, InstanceStatus, EffectOutboxStatus } from "../types.js";
 import { SCHEMA_SQL } from "./schema.js";
+import { createListenNotify } from "./listen-notify.js";
 import {
   Q_CREATE_INSTANCE, Q_GET_INSTANCE, Q_UPDATE_INSTANCE_STATUS,
   Q_UPDATE_INSTANCE_SNAPSHOT, Q_LOCK_AND_GET_INSTANCE,
@@ -10,13 +11,14 @@ import {
   Q_FINALIZE_INSTANCE, Q_FINALIZE_WITH_TRANSITION,
   Q_APPEND_TRANSITION, Q_GET_TRANSITIONS,
   Q_CLAIM_PENDING_EFFECTS, Q_MARK_EFFECT_COMPLETED, Q_MARK_EFFECT_FAILED,
-  Q_LIST_EFFECTS,
+  Q_LIST_EFFECTS, Q_RESET_STALE_EFFECTS,
   Q_LIST_INSTANCES, Q_LIST_INSTANCES_BY_MACHINE, Q_LIST_INSTANCES_BY_STATUS,
   Q_LIST_INSTANCES_BY_MACHINE_AND_STATUS,
   Q_GET_EVENT_LOG, Q_GET_EVENT_LOG_AFTER, Q_GET_EVENT_LOG_LIMIT,
   Q_GET_EVENT_LOG_AFTER_LIMIT,
   Q_INSERT_EFFECTS,
 } from "./queries.js";
+import { DurableMachineError } from "../types.js";
 import type {
   PgStoreOptions, MachineRow, PgStore,
   CreateInstanceParams, FinalizeParams, TransitionData,
@@ -30,6 +32,19 @@ export type {
   RecordInvokeResultParams, InsertEffectsParams, PgStore,
 } from "./store-types.js";
 
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+/** Strip dangerous keys to prevent prototype pollution from deserialized JSON. */
+function sanitizeContext(obj: unknown): Record<string, unknown> {
+  if (typeof obj !== "object" || obj === null) return {};
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (key === "__proto__" || key === "constructor" || key === "prototype") continue;
+    result[key] = value;
+  }
+  return result;
+}
+
 // ─── Row Mapping ────────────────────────────────────────────────────────────
 
 function rowToMachine(row: any): MachineRow {
@@ -37,7 +52,7 @@ function rowToMachine(row: any): MachineRow {
     id: row.id,
     machineName: row.machine_name,
     stateValue: row.state_value as StateValue,
-    context: row.context as Record<string, unknown>,
+    context: sanitizeContext(row.context),
     status: row.status as InstanceStatus,
     firedDelays: row.fired_delays as Array<string | number>,
     wakeAt: row.wake_at != null ? Number(row.wake_at) : null,
@@ -53,9 +68,6 @@ function rowToMachine(row: any): MachineRow {
 
 export function createStore(options: PgStoreOptions): PgStore {
   const { pool, useListenNotify = true, instruments: instr } = options;
-  let listenClient: PgClient | null = null;
-  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  let stopped = false;
 
   // Query timing helpers — zero overhead when instruments not provided
   function qStart(): number { return instr ? performance.now() : 0; }
@@ -185,16 +197,23 @@ export function createStore(options: PgStoreOptions): PgStore {
 
   // ── Event Log ───────────────────────────────────────────────────────────
 
+  /** Maximum event payload size: 256 KB. */
+  const MAX_EVENT_PAYLOAD_BYTES = 256 * 1024;
+
   async function appendEvent(
     instanceId: string,
     payload: unknown,
     topic = "event",
     source?: string,
   ): Promise<{ seq: number }> {
+    const json = JSON.stringify(payload);
+    if (Buffer.byteLength(json, "utf-8") > MAX_EVENT_PAYLOAD_BYTES) {
+      throw new DurableMachineError("Event payload exceeds 256 KB size limit", "INTERNAL");
+    }
     const t = qStart();
     const { rows } = await pool.query({
       ...Q_APPEND_EVENT,
-      values: [instanceId, topic, JSON.stringify(payload), source ?? null, Date.now()],
+      values: [instanceId, topic, json, source ?? null, Date.now()],
     });
     qEnd(Q_APPEND_EVENT.name, t);
     return { seq: Number(rows[0].seq) };
@@ -479,87 +498,16 @@ export function createStore(options: PgStoreOptions): PgStore {
     return rows.map(rowToEffect);
   }
 
+  async function resetStaleEffects(olderThanMs: number): Promise<number> {
+    const t = qStart();
+    const { rowCount } = await pool.query({ ...Q_RESET_STALE_EFFECTS, values: [olderThanMs] });
+    qEnd(Q_RESET_STALE_EFFECTS.name, t);
+    return rowCount ?? 0;
+  }
+
   // ── LISTEN/NOTIFY ─────────────────────────────────────────────────────
 
-  let listenCallback:
-    | ((machineName: string, instanceId: string, topic: string) => void)
-    | null = null;
-
-  async function connectListener(): Promise<void> {
-    if (stopped || !useListenNotify) return;
-
-    try {
-      // Create a dedicated client (not from pool) for LISTEN
-      const pg = await import("pg");
-      const Client = pg.default?.Client ?? pg.Client;
-      const client = new Client(
-        (pool as any).options ?? {
-          connectionString: (pool as any)._connectionString,
-        },
-      );
-      await client.connect();
-      await client.query("LISTEN machine_event");
-
-      listenClient = client as unknown as PgClient;
-
-      client.on("notification", (msg: any) => {
-        if (msg.channel === "machine_event" && msg.payload && listenCallback) {
-          const [machineName, instanceId, topic] = msg.payload.split("::");
-          listenCallback(machineName, instanceId, topic ?? "event");
-        }
-      });
-
-      client.on("error", () => {
-        reconnect();
-      });
-
-      client.on("end", () => {
-        if (!stopped) reconnect();
-      });
-    } catch {
-      reconnect();
-    }
-  }
-
-  function reconnect(): void {
-    if (stopped) return;
-    if (listenClient) {
-      (listenClient as any).end().catch(() => {});
-      listenClient = null;
-    }
-    if (reconnectTimer) clearTimeout(reconnectTimer);
-    reconnectTimer = setTimeout(() => {
-      void connectListener();
-    }, 1000);
-  }
-
-  async function startListening(
-    callback: (machineName: string, instanceId: string, topic: string) => void,
-  ): Promise<void> {
-    listenCallback = callback;
-    if (useListenNotify) {
-      await connectListener();
-    }
-  }
-
-  async function stopListening(): Promise<void> {
-    stopped = true;
-    listenCallback = null;
-    if (reconnectTimer) {
-      clearTimeout(reconnectTimer);
-      reconnectTimer = null;
-    }
-    if (listenClient) {
-      await (listenClient as any).end().catch(() => {});
-      listenClient = null;
-    }
-  }
-
-  // ── Lifecycle ─────────────────────────────────────────────────────────
-
-  async function close(): Promise<void> {
-    await stopListening();
-  }
+  const listener = createListenNotify(pool, useListenNotify);
 
   // ── Return ────────────────────────────────────────────────────────────
 
@@ -588,9 +536,10 @@ export function createStore(options: PgStoreOptions): PgStore {
     markEffectCompleted,
     markEffectFailed,
     listEffects,
-    startListening,
-    stopListening,
-    close,
+    resetStaleEffects,
+    startListening: listener.startListening,
+    stopListening: listener.stopListening,
+    close: listener.stopListening,
   };
   return store;
 }

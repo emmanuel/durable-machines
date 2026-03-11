@@ -33,6 +33,8 @@ export interface DashboardRouteOptions {
     stopListening(): Promise<void>;
   };
   pollIntervalMs: number;
+  /** Maximum concurrent SSE connections. @defaultValue `100` */
+  maxSseConnections?: number;
 }
 
 /**
@@ -40,6 +42,8 @@ export interface DashboardRouteOptions {
  */
 export function createDashboardRoutes(options: DashboardRouteOptions): Hono {
   const { machines, basePath, restBasePath, store, pollIntervalMs } = options;
+  const maxSseConnections = options.maxSseConnections ?? 100;
+  let sseConnections = 0;
   const app = new Hono();
 
   // ── GET / — Machine list ─────────────────────────────────────────────────
@@ -93,51 +97,60 @@ export function createDashboardRoutes(options: DashboardRouteOptions): Hono {
     const durable = machines.get(machineId);
     if (!durable) return c.notFound();
 
+    if (sseConnections >= maxSseConnections) {
+      return c.json({ error: "Too many concurrent SSE connections" }, 429);
+    }
+
+    sseConnections++;
     return streamSSE(c, async (stream) => {
-      let lastJson = "";
+      try {
+        let lastJson = "";
 
-      const sendUpdate = async () => {
-        try {
-          const instances = await durable.list();
-          const json = JSON.stringify(instances);
-          if (json !== lastJson) {
-            lastJson = json;
-            await stream.writeSSE({
-              event: "instances",
-              data: JSON.stringify({ instances }),
-            });
+        const sendUpdate = async () => {
+          try {
+            const instances = await durable.list();
+            const json = JSON.stringify(instances);
+            if (json !== lastJson) {
+              lastJson = json;
+              await stream.writeSSE({
+                event: "instances",
+                data: JSON.stringify({ instances }),
+              });
+            }
+          } catch {
+            // Instance may have been deleted, ignore
           }
-        } catch {
-          // Instance may have been deleted, ignore
-        }
-      };
-
-      // If store available, use LISTEN/NOTIFY for push
-      if (store) {
-        let notified = false;
-        const listener = (machineName: string) => {
-          if (machineName === machineId) notified = true;
         };
 
-        await store.startListening(listener);
-        try {
-          await sendUpdate();
-          while (!stream.aborted) {
-            if (notified) {
-              notified = false;
-              await sendUpdate();
+        // If store available, use LISTEN/NOTIFY for push
+        if (store) {
+          let notified = false;
+          const listener = (machineName: string) => {
+            if (machineName === machineId) notified = true;
+          };
+
+          await store.startListening(listener);
+          try {
+            await sendUpdate();
+            while (!stream.aborted) {
+              if (notified) {
+                notified = false;
+                await sendUpdate();
+              }
+              await sleep(200);
             }
-            await sleep(200);
+          } finally {
+            await store.stopListening();
           }
-        } finally {
-          await store.stopListening();
+        } else {
+          // Poll fallback
+          while (!stream.aborted) {
+            await sendUpdate();
+            await sleep(pollIntervalMs);
+          }
         }
-      } else {
-        // Poll fallback
-        while (!stream.aborted) {
-          await sendUpdate();
-          await sleep(pollIntervalMs);
-        }
+      } finally {
+        sseConnections--;
       }
     });
   });
@@ -150,93 +163,102 @@ export function createDashboardRoutes(options: DashboardRouteOptions): Hono {
     const durable = machines.get(machineId);
     if (!durable) return c.notFound();
 
+    if (sseConnections >= maxSseConnections) {
+      return c.json({ error: "Too many concurrent SSE connections" }, 429);
+    }
+
+    sseConnections++;
     return streamSSE(c, async (stream) => {
-      const handle = durable.get(instanceId);
-      // Static graph data — computed once, reused across SSE ticks
-      const sseDefinition = serializeMachineDefinition(durable.machine);
-      const sseGraphData = extractGraphData(sseDefinition);
-      let lastJson = "";
+      try {
+        const handle = durable.get(instanceId);
+        // Static graph data — computed once, reused across SSE ticks
+        const sseDefinition = serializeMachineDefinition(durable.machine);
+        const sseGraphData = extractGraphData(sseDefinition);
+        let lastJson = "";
 
-      const sendUpdate = async (): Promise<boolean> => {
-        try {
-          const [snapshot, steps] = await Promise.all([
-            handle.getState(),
-            handle.getSteps(),
-          ]);
-          if (!snapshot) return false;
+        const sendUpdate = async (): Promise<boolean> => {
+          try {
+            const [snapshot, steps] = await Promise.all([
+              handle.getState(),
+              handle.getSteps(),
+            ]);
+            if (!snapshot) return false;
 
-          const availableEvents = getAvailableEvents(durable.machine, snapshot);
-          const eventSchemas = getAvailableEventSchemas(durable.machine, snapshot);
-          const effects = await handle.listEffects();
-          const eventLog = await handle.getEventLog({ limit: 50 });
+            const availableEvents = getAvailableEvents(durable.machine, snapshot);
+            const eventSchemas = getAvailableEventSchemas(durable.machine, snapshot);
+            const effects = await handle.listEffects();
+            const eventLog = await handle.getEventLog({ limit: 50 });
 
-          // Compute active sleep for SSE updates
-          const sseActiveStates = resolveActiveStates(snapshot);
-          const sseTransitions: TransitionRecord[] = await handle.getTransitions();
-          const sseStateDurations = computeStateDurations(sseTransitions);
-          const sseSleep = computeActiveSleep(sseGraphData, sseActiveStates, sseStateDurations);
+            // Compute active sleep for SSE updates
+            const sseActiveStates = resolveActiveStates(snapshot);
+            const sseTransitions: TransitionRecord[] = await handle.getTransitions();
+            const sseStateDurations = computeStateDurations(sseTransitions);
+            const sseSleep = computeActiveSleep(sseGraphData, sseActiveStates, sseStateDurations);
 
-          const stateData = {
-            snapshot,
-            steps,
-            availableEvents,
-            eventSchemas,
-            effects,
-            eventLog,
-            activeStep: detectActiveStep(steps),
-            activeSleep: sseSleep,
-          };
+            const stateData = {
+              snapshot,
+              steps,
+              availableEvents,
+              eventSchemas,
+              effects,
+              eventLog,
+              activeStep: detectActiveStep(steps),
+              activeSleep: sseSleep,
+            };
 
-          const json = JSON.stringify(stateData);
-          if (json !== lastJson) {
-            lastJson = json;
-            await stream.writeSSE({
-              event: "state",
-              data: json,
-            });
+            const json = JSON.stringify(stateData);
+            if (json !== lastJson) {
+              lastJson = json;
+              await stream.writeSSE({
+                event: "state",
+                data: json,
+              });
+            }
+
+            if (snapshot.status !== "running") {
+              await stream.writeSSE({
+                event: "complete",
+                data: JSON.stringify({ status: snapshot.status }),
+              });
+              return true; // Signal stream end
+            }
+          } catch {
+            // Ignore errors, retry on next tick
           }
-
-          if (snapshot.status !== "running") {
-            await stream.writeSSE({
-              event: "complete",
-              data: JSON.stringify({ status: snapshot.status }),
-            });
-            return true; // Signal stream end
-          }
-        } catch {
-          // Ignore errors, retry on next tick
-        }
-        return false;
-      };
-
-      if (store) {
-        let notified = false;
-        const listener = (_machineName: string, instId: string) => {
-          if (instId === instanceId) notified = true;
+          return false;
         };
 
-        await store.startListening(listener);
-        try {
-          const done = await sendUpdate();
-          if (done) return;
-          while (!stream.aborted) {
-            if (notified) {
-              notified = false;
-              const done = await sendUpdate();
-              if (done) return;
+        if (store) {
+          let notified = false;
+          const listener = (_machineName: string, instId: string) => {
+            if (instId === instanceId) notified = true;
+          };
+
+          await store.startListening(listener);
+          try {
+            const done = await sendUpdate();
+            if (done) return;
+            while (!stream.aborted) {
+              if (notified) {
+                notified = false;
+                const done = await sendUpdate();
+                if (done) return;
+              }
+              await sleep(200);
             }
-            await sleep(200);
+          } finally {
+            await store.stopListening();
           }
-        } finally {
-          await store.stopListening();
+        } else {
+          // Poll fallback
+          while (!stream.aborted) {
+            const done = await sendUpdate();
+            if (done) return;
+            await sleep(pollIntervalMs);
+          }
         }
-      } else {
-        // Poll fallback
-        while (!stream.aborted) {
-          const done = await sendUpdate();
-          if (done) return;
-          await sleep(pollIntervalMs);
-        }
+      } finally {
+        sseConnections--;
       }
     });
   });

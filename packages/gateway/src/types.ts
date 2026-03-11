@@ -1,4 +1,4 @@
-import type { Context } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
 import type { GatewayMetrics } from "./metrics.js";
 
 /** Minimal XState event — no dependency on xstate package. */
@@ -82,6 +82,19 @@ export interface GatewayOptions {
   basePath?: string;
   /** Optional metrics instance for Prometheus instrumentation. */
   metrics?: GatewayMetrics;
+  /** Maximum allowed request body size in bytes (default 1 MB). */
+  maxBodyBytes?: number;
+}
+
+/** Pluggable auth middleware for gateway routes. */
+export type AuthMiddleware = MiddlewareHandler;
+
+/** Security options for the gateway. */
+export interface GatewaySecurityOptions {
+  /** Auth middleware for REST API routes. */
+  restAuth?: AuthMiddleware;
+  /** Auth middleware for dashboard routes (pages and SSE streams). */
+  dashboardAuth?: AuthMiddleware;
 }
 
 /**

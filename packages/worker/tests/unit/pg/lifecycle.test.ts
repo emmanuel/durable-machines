@@ -58,6 +58,8 @@ const mockStore: PgStore = {
   markEffectCompleted: vi.fn(),
   markEffectFailed: vi.fn(),
   listEffects: vi.fn().mockResolvedValue([]),
+  resetStaleEffects: vi.fn().mockResolvedValue(0),
+  withTransaction: vi.fn(async (fn: any) => fn({})),
 };
 
 vi.mock("@durable-xstate/durable-machine/pg", async () => {

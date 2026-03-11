@@ -122,6 +122,7 @@ export function layout(options: LayoutOptions, body: string): string {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; connect-src 'self'">
   <title>${esc(title)}</title>
   <style>${CSS}</style>
 </head>

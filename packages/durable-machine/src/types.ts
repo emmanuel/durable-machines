@@ -426,6 +426,8 @@ export interface DurableMachineOptions {
   channels?: ChannelAdapter[];
   /** When `true`, the workflow emits a transition stream that visualization tools can subscribe to. */
   enableTransitionStream?: boolean;
+  /** Maximum time in ms to wait for a single actor invocation before treating it as an error. @defaultValue `30000` (30 seconds) */
+  invokeTimeoutMs?: number;
   /** Registry of effect handlers. When provided, effects declared via `durableState({ effects: [...] })` are executed via the transactional outbox. */
   effectHandlers?: import("./effects.js").EffectHandlerRegistry;
   /** Retry policy for effect execution. @defaultValue `{ maxAttempts: 3, intervalSeconds: 1, backoffRate: 2 }` */

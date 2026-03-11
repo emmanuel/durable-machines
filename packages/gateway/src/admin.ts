@@ -6,11 +6,13 @@ import type { IncomingMessage, ServerResponse, Server } from "node:http";
 
 export interface AdminServerOptions {
   metricsHandler?: (req: IncomingMessage, res: ServerResponse) => void;
+  /** Optional auth guard for the `/metrics` endpoint. Return `false` to reject with 401. */
+  metricsAuth?: (req: IncomingMessage) => boolean | Promise<boolean>;
   isReady?: () => boolean | Promise<boolean>;
 }
 
 export function createAdminServer(options?: AdminServerOptions): Server {
-  const { metricsHandler, isReady = () => true } = options ?? {};
+  const { metricsHandler, metricsAuth, isReady = () => true } = options ?? {};
 
   return createServer(async (req, res) => {
     if (req.url === "/healthz") {
@@ -31,6 +33,14 @@ export function createAdminServer(options?: AdminServerOptions): Server {
         res.writeHead(404);
         res.end();
         return;
+      }
+      if (metricsAuth) {
+        const allowed = await metricsAuth(req);
+        if (!allowed) {
+          res.writeHead(401, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "Unauthorized" }));
+          return;
+        }
       }
       metricsHandler(req, res);
       return;

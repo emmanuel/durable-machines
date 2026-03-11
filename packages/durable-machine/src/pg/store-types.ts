@@ -182,6 +182,8 @@ export interface PgStore {
   markEffectCompleted(effectId: string): Promise<void>;
   markEffectFailed(effectId: string, error: string, nextRetryAt: number | null): Promise<void>;
   listEffects(instanceId: string): Promise<EffectOutboxRow[]>;
+  /** Reset effects stuck in "executing" since before `olderThanMs` back to "pending". Returns count of reset rows. */
+  resetStaleEffects(olderThanMs: number): Promise<number>;
 
   // LISTEN/NOTIFY
   startListening(

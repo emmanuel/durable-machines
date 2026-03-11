@@ -1,4 +1,4 @@
-import { computeHmac } from "../hmac.js";
+import { verifyHmac } from "../hmac.js";
 import { WebhookVerificationError } from "../types.js";
 import type { WebhookSource, RawRequest } from "../types.js";
 import type { SlackInteractivePayload } from "./slack-types.js";
@@ -28,6 +28,9 @@ export function slackSource(signingSecret: string): WebhookSource<SlackInteracti
 
       // Replay protection
       const ts = parseInt(timestamp, 10);
+      if (Number.isNaN(ts)) {
+        throw new WebhookVerificationError("Invalid timestamp", "slack");
+      }
       const now = Math.floor(Date.now() / 1000);
       if (Math.abs(now - ts) > MAX_TIMESTAMP_AGE_S) {
         throw new WebhookVerificationError("Timestamp too old", "slack");
@@ -35,20 +38,8 @@ export function slackSource(signingSecret: string): WebhookSource<SlackInteracti
 
       // HMAC verification
       const basestring = `v0:${timestamp}:${req.body}`;
-      const computed = computeHmac("sha256", signingSecret, basestring);
       const expected = signature.replace(/^v0=/, "");
-
-      const expectedBuf = Buffer.from(expected, "hex");
-      const computedBuf = Buffer.from(computed, "hex");
-
-      if (expectedBuf.length !== computedBuf.length) {
-        throw new WebhookVerificationError("Signature mismatch", "slack");
-      }
-
-      const { timingSafeEqual } = await import("node:crypto");
-      if (!timingSafeEqual(expectedBuf, computedBuf)) {
-        throw new WebhookVerificationError("Signature mismatch", "slack");
-      }
+      verifyHmac("sha256", signingSecret, basestring, expected, "slack");
     },
 
     async parse(req: RawRequest): Promise<SlackInteractivePayload> {

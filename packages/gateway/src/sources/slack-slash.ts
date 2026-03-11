@@ -1,4 +1,4 @@
-import { computeHmac } from "../hmac.js";
+import { verifyHmac } from "../hmac.js";
 import { WebhookVerificationError } from "../types.js";
 import type {
   WebhookSource,
@@ -72,26 +72,17 @@ function slashCommandSource(signingSecret: string): WebhookSource<ParsedSlashCom
       }
 
       const ts = parseInt(timestamp, 10);
+      if (Number.isNaN(ts)) {
+        throw new WebhookVerificationError("Invalid timestamp", "slack-slash");
+      }
       const now = Math.floor(Date.now() / 1000);
       if (Math.abs(now - ts) > MAX_TIMESTAMP_AGE_S) {
         throw new WebhookVerificationError("Timestamp too old", "slack-slash");
       }
 
       const basestring = `v0:${timestamp}:${req.body}`;
-      const computed = computeHmac("sha256", signingSecret, basestring);
       const expected = signature.replace(/^v0=/, "");
-
-      const expectedBuf = Buffer.from(expected, "hex");
-      const computedBuf = Buffer.from(computed, "hex");
-
-      if (expectedBuf.length !== computedBuf.length) {
-        throw new WebhookVerificationError("Signature mismatch", "slack-slash");
-      }
-
-      const { timingSafeEqual } = await import("node:crypto");
-      if (!timingSafeEqual(expectedBuf, computedBuf)) {
-        throw new WebhookVerificationError("Signature mismatch", "slack-slash");
-      }
+      verifyHmac("sha256", signingSecret, basestring, expected, "slack-slash");
     },
 
     async parse(req: RawRequest): Promise<ParsedSlashCommand> {
@@ -132,11 +123,12 @@ export function slashCommandBinding(
 
   const transform: ItemTransform<ParsedSlashCommand> = {
     transform(payload: ParsedSlashCommand): XStateEvent {
+      const { type: _, ...safeArgs } = payload.args; // Strip 'type' key to prevent override
       const eventType = config.eventMap[payload.subcommand];
       if (!eventType) {
-        return { type: payload.subcommand, ...payload.args };
+        return { type: payload.subcommand, ...safeArgs };
       }
-      return { type: eventType, ...payload.args };
+      return { type: eventType, ...safeArgs };
     },
   };
 

@@ -114,10 +114,16 @@ describe("xapiSource", () => {
     });
   });
 
-  describe("No auth", () => {
-    const source = xapiSource({});
+  describe("No auth (default-deny)", () => {
+    it("rejects when no auth is configured", async () => {
+      const source = xapiSource({});
+      await expect(
+        source.verify({ headers: {}, body: "{}" }),
+      ).rejects.toThrow("No auth configured");
+    });
 
-    it("passes with no headers", async () => {
+    it("passes with explicit no-op validateAuth", async () => {
+      const source = xapiSource({ validateAuth: async () => {} });
       await expect(
         source.verify({ headers: {}, body: "{}" }),
       ).resolves.toBeUndefined();
@@ -126,21 +132,21 @@ describe("xapiSource", () => {
 
   describe("Version header", () => {
     it("does not require version by default", async () => {
-      const source = xapiSource({});
+      const source = xapiSource({ validateAuth: async () => {} });
       await expect(
         source.verify({ headers: {}, body: "{}" }),
       ).resolves.toBeUndefined();
     });
 
     it("rejects absent version when required", async () => {
-      const source = xapiSource({ requireVersion: true });
+      const source = xapiSource({ validateAuth: async () => {}, requireVersion: true });
       await expect(
         source.verify({ headers: {}, body: "{}" }),
       ).rejects.toThrow("Missing X-Experience-API-Version");
     });
 
     it("passes when version header present and required", async () => {
-      const source = xapiSource({ requireVersion: true });
+      const source = xapiSource({ validateAuth: async () => {}, requireVersion: true });
       await expect(
         source.verify({
           headers: { "x-experience-api-version": "1.0.3" },
@@ -151,7 +157,7 @@ describe("xapiSource", () => {
   });
 
   describe("parse", () => {
-    const source = xapiSource({});
+    const source = xapiSource({ validateAuth: async () => {} });
 
     it("normalizes single statement to array", async () => {
       const statement = {

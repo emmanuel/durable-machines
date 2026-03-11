@@ -8,7 +8,7 @@ describe("xapiBinding", () => {
 
   const binding = xapiBinding({
     path: "/webhooks/xapi",
-    source: {},
+    source: { validateAuth: async () => {} },
     router: {
       route(statement) {
         return statement.context?.registration ?? null;

@@ -156,6 +156,15 @@ export const Q_LIST_EFFECTS = {
   text: `SELECT * FROM effect_outbox WHERE instance_id = $1 ORDER BY created_at ASC`,
 } as const;
 
+export const Q_RESET_STALE_EFFECTS = {
+  name: "dm_reset_stale_effects",
+  text: `UPDATE effect_outbox
+         SET status = 'pending'
+         WHERE status = 'executing'
+           AND created_at < $1
+         RETURNING id`,
+} as const;
+
 // ─── List Instances (4 filter combinations) ─────────────────────────────────
 
 export const Q_LIST_INSTANCES = {

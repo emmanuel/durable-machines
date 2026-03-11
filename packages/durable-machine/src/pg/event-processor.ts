@@ -107,11 +107,20 @@ async function executeInvocationsInline(
 
       const creator = resolveActorCreator(impl);
       const startedAt = Date.now();
+      const invokeTimeoutMs = deps.options.invokeTimeoutMs ?? 30_000;
 
-      const result = await creator({ input: invocation.input }).then(
-        (out) => ({ output: out, error: undefined }),
-        (err) => ({ output: undefined, error: err }),
-      );
+      const result = await Promise.race([
+        creator({ input: invocation.input }).then(
+          (out) => ({ output: out, error: undefined }),
+          (err) => ({ output: undefined, error: err }),
+        ),
+        new Promise<{ output: undefined; error: Error }>((resolve) =>
+          setTimeout(
+            () => resolve({ output: undefined, error: new Error(`Invocation "${invocation.src}" timed out after ${invokeTimeoutMs}ms`) }),
+            invokeTimeoutMs,
+          ),
+        ),
+      ]);
 
       output = result.output;
       error = result.error;

@@ -6,11 +6,12 @@ import type { ActionLinkPayload } from "./action-link-types.js";
 /**
  * Creates a webhook source that verifies signed action links.
  *
- * Action links encode `workflowId`, `event`, and an HMAC-SHA256 signature
- * in query parameters. This source is used by the email channel adapter
- * but works with any channel that uses signed HTTP links.
+ * Action links encode `workflowId`, `event`, a creation timestamp, and an
+ * HMAC-SHA256 signature in query parameters. Links expire after `maxAgeSec`
+ * (default 24 hours).
  *
  * @param signingSecret - The HMAC secret used to sign action links.
+ * @param opts.maxAgeSec - Maximum link age in seconds (default 86400 = 24h).
  * @returns A {@link WebhookSource} that verifies and parses action link requests.
  *
  * @example
@@ -20,13 +21,18 @@ import type { ActionLinkPayload } from "./action-link-types.js";
  * const source = actionLinkSource(process.env.ACTION_LINK_SECRET!);
  * ```
  *
- * @throws {WebhookVerificationError} If the signature is missing or invalid.
+ * @throws {WebhookVerificationError} If the signature is missing, invalid, or expired.
  */
-export function actionLinkSource(signingSecret: string): WebhookSource<ActionLinkPayload> {
+export function actionLinkSource(
+  signingSecret: string,
+  opts?: { maxAgeSec?: number },
+): WebhookSource<ActionLinkPayload> {
+  const maxAgeMs = (opts?.maxAgeSec ?? 86400) * 1000;
+
   return {
     async verify(req: RawRequest): Promise<void> {
       const params = parseQueryParams(req);
-      const { workflowId, event, sig } = params;
+      const { workflowId, event, sig, t } = params;
 
       if (!workflowId || !event || !sig) {
         throw new WebhookVerificationError(
@@ -35,7 +41,21 @@ export function actionLinkSource(signingSecret: string): WebhookSource<ActionLin
         );
       }
 
-      verifyHmac("sha256", signingSecret, workflowId + event, sig, "action-link");
+      // Timestamp-based replay protection
+      if (t) {
+        const createdAt = parseInt(t, 10);
+        if (Number.isNaN(createdAt)) {
+          throw new WebhookVerificationError("Invalid timestamp", "action-link");
+        }
+        if (Date.now() - createdAt > maxAgeMs) {
+          throw new WebhookVerificationError("Action link expired", "action-link");
+        }
+        // Verify signature covers timestamp
+        verifyHmac("sha256", signingSecret, `${workflowId}:${event}:${createdAt}`, sig, "action-link");
+      } else {
+        // Legacy links without timestamp — verify but warn
+        verifyHmac("sha256", signingSecret, workflowId + event, sig, "action-link");
+      }
     },
 
     async parse(req: RawRequest): Promise<ActionLinkPayload> {
@@ -56,5 +76,6 @@ function parseQueryParams(req: RawRequest): Record<string, string | undefined> {
     workflowId: searchParams.get("workflowId") ?? undefined,
     event: searchParams.get("event") ?? undefined,
     sig: searchParams.get("sig") ?? undefined,
+    t: searchParams.get("t") ?? undefined,
   };
 }

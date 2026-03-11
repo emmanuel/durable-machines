@@ -43,8 +43,13 @@ export function xapiSource(options: XapiSourceOptions = {}): WebhookSource<XapiW
         verifyBearerToken(req, bearerToken);
       } else if (validateAuth) {
         await validateAuth(req);
+      } else {
+        throw new WebhookVerificationError(
+          "No auth configured. Set credentials, bearerToken, or validateAuth. " +
+            "For dev mode, pass validateAuth: async () => {}.",
+          "xapi",
+        );
       }
-      // else: no auth — dev/testing mode
 
       // Version header check
       if (requireVersion) {

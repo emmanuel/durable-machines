@@ -87,9 +87,14 @@ export function createDurableMachine<T extends AnyStateMachine>(
 
   const useBatch = options.useBatchProcessing !== false;
 
+  const MAX_DRAIN_ROUNDS = 20;
+
   async function consumeAndProcessMessages(instanceId: string): Promise<void> {
-    const count = await processBatchFromLog(deps, instanceId, useBatch ? undefined : 1);
-    if (count > 0) await consumeAndProcessMessages(instanceId);
+    for (let i = 0; i < MAX_DRAIN_ROUNDS; i++) {
+      const count = await processBatchFromLog(deps, instanceId, useBatch ? undefined : 1);
+      if (count === 0) return;
+    }
+    // Remaining events will be picked up by next NOTIFY or poll cycle
   }
 
   // ── Handle Factory ──────────────────────────────────────────────────────

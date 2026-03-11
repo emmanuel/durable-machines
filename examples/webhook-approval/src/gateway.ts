@@ -11,6 +11,12 @@ import {
 } from "@durable-xstate/gateway/dbos";
 import type { SlackInteractivePayload } from "@durable-xstate/gateway";
 
+function requireEnv(name: string): string {
+  const val = process.env[name];
+  if (!val) throw new Error(`Missing required environment variable: ${name}`);
+  return val;
+}
+
 interface GenericPayload {
   workflowId?: string;
   event?: string;
@@ -20,7 +26,7 @@ interface GenericPayload {
 // Phase 1: config (all env reads here)
 const config = {
   ...parseDBOSGatewayConfig(),
-  slackSigningSecret: process.env.SLACK_SIGNING_SECRET ?? "dev-secret",
+  slackSigningSecret: requireEnv("SLACK_SIGNING_SECRET"),
 };
 
 // Phase 2: context (no process.env)

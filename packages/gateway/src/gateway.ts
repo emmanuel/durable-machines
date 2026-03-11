@@ -31,7 +31,7 @@ import type {
  * ```
  */
 export function createWebhookGateway(options: GatewayOptions): Hono {
-  const { client, bindings, basePath = "", metrics } = options;
+  const { client, bindings, basePath = "", metrics, maxBodyBytes } = options;
   const app = new Hono();
 
   // Global error handler
@@ -59,7 +59,7 @@ export function createWebhookGateway(options: GatewayOptions): Hono {
   }
 
   for (const binding of bindings) {
-    registerBinding(app, binding, client, basePath, metrics);
+    registerBinding(app, binding, client, basePath, metrics, maxBodyBytes);
   }
 
   return app;
@@ -103,10 +103,11 @@ function registerBinding(
   client: GatewayClient,
   basePath: string,
   metrics?: GatewayOptions["metrics"],
+  maxBodyBytes?: number,
 ): void {
   const path = `${basePath}${binding.path}`;
 
-  app.post(path, rawBody(), async (c) => {
+  app.post(path, rawBody({ maxBodyBytes }), async (c) => {
     const body = c.get("rawBody" as never) as string;
     const headers: Record<string, string | undefined> = {};
 

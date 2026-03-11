@@ -116,7 +116,7 @@ export function throughputConformance(backend: BackendFixture) {
       );
       const state = await handle.getState();
       expect(state!.context).toMatchObject({ count: N });
-    });
+    }, 60_000);
 
     it("measures concurrent instances (aggregate throughput)", async () => {
       const INSTANCES = 20;

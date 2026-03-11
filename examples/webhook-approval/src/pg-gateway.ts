@@ -14,6 +14,12 @@ import type { SlackInteractivePayload } from "@durable-xstate/gateway";
 import { createDurableMachine, createStore } from "@durable-xstate/durable-machine/pg";
 import { approvalMachine } from "./machine.js";
 
+function requireEnv(name: string): string {
+  const val = process.env[name];
+  if (!val) throw new Error(`Missing required environment variable: ${name}`);
+  return val;
+}
+
 interface GenericPayload {
   workflowId?: string;
   event?: string;
@@ -23,7 +29,7 @@ interface GenericPayload {
 // Phase 1: config
 const config = {
   ...parseGatewayConfig(),
-  slackSigningSecret: process.env.SLACK_SIGNING_SECRET ?? "dev-secret",
+  slackSigningSecret: requireEnv("SLACK_SIGNING_SECRET"),
 };
 
 const pool = new pg.Pool({

@@ -37,9 +37,9 @@ export function parsePgConfig(
 
   if (env.WAKE_POLLING_INTERVAL_MS) {
     const val = Number(env.WAKE_POLLING_INTERVAL_MS);
-    if (Number.isNaN(val) || val <= 0) {
+    if (Number.isNaN(val) || val <= 0 || val > 300_000) {
       throw new Error(
-        `WAKE_POLLING_INTERVAL_MS must be a positive number, got "${env.WAKE_POLLING_INTERVAL_MS}"`,
+        `WAKE_POLLING_INTERVAL_MS must be 1-300000, got "${env.WAKE_POLLING_INTERVAL_MS}"`,
       );
     }
     config.wakePollingIntervalMs = val;
@@ -47,9 +47,9 @@ export function parsePgConfig(
 
   if (env.EFFECT_POLLING_INTERVAL_MS) {
     const val = Number(env.EFFECT_POLLING_INTERVAL_MS);
-    if (Number.isNaN(val) || val <= 0) {
+    if (Number.isNaN(val) || val <= 0 || val > 60_000) {
       throw new Error(
-        `EFFECT_POLLING_INTERVAL_MS must be a positive number, got "${env.EFFECT_POLLING_INTERVAL_MS}"`,
+        `EFFECT_POLLING_INTERVAL_MS must be 1-60000, got "${env.EFFECT_POLLING_INTERVAL_MS}"`,
       );
     }
     config.effectPollingIntervalMs = val;
@@ -62,9 +62,9 @@ export function parsePgConfig(
 
   if (env.MAX_CONCURRENCY) {
     const val = Number(env.MAX_CONCURRENCY);
-    if (Number.isNaN(val) || val <= 0) {
+    if (Number.isNaN(val) || val <= 0 || val > 500) {
       throw new Error(
-        `MAX_CONCURRENCY must be a positive number, got "${env.MAX_CONCURRENCY}"`,
+        `MAX_CONCURRENCY must be 1-500, got "${env.MAX_CONCURRENCY}"`,
       );
     }
     config.maxConcurrency = val;
@@ -72,9 +72,9 @@ export function parsePgConfig(
 
   if (env.PG_POOL_SIZE) {
     const val = Number(env.PG_POOL_SIZE);
-    if (Number.isNaN(val) || val <= 0) {
+    if (Number.isNaN(val) || val <= 0 || val > 200) {
       throw new Error(
-        `PG_POOL_SIZE must be a positive number, got "${env.PG_POOL_SIZE}"`,
+        `PG_POOL_SIZE must be 1-200, got "${env.PG_POOL_SIZE}"`,
       );
     }
     config.poolSize = val;

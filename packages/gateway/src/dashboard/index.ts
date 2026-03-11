@@ -18,6 +18,8 @@ export interface DashboardOptions {
   };
   /** Fallback poll interval in milliseconds (when store is not provided). @defaultValue `2000` */
   pollIntervalMs?: number;
+  /** Maximum concurrent SSE connections. @defaultValue `100` */
+  maxSseConnections?: number;
 }
 
 /**
@@ -44,5 +46,6 @@ export function createDashboard(options: DashboardOptions): Hono {
     restBasePath,
     store,
     pollIntervalMs,
+    maxSseConnections: options.maxSseConnections,
   });
 }

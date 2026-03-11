@@ -74,11 +74,15 @@ export function createPgWorkerContext(
   // ── Semaphore for cross-instance concurrency control ────────────────
 
   const maxConcurrency = config.maxConcurrency ?? 10;
+  const maxQueueSize = maxConcurrency * 10;
   let permits = maxConcurrency;
   const waitQueue: Array<() => void> = [];
 
   function acquirePermit(): Promise<void> {
     if (permits > 0) { permits--; return Promise.resolve(); }
+    if (waitQueue.length >= maxQueueSize) {
+      return Promise.reject(new Error("Dispatch queue full"));
+    }
     return new Promise<void>((resolve) => waitQueue.push(resolve));
   }
 
@@ -102,6 +106,8 @@ export function createPgWorkerContext(
         metrics?.activeDispatches.add(-1);
         releasePermit();
       }
+    }).catch((err) => {
+      logger.warn({ instanceId, err: String(err) }, "dispatch skipped — queue full");
     });
   }
 
@@ -121,7 +127,9 @@ export function createPgWorkerContext(
         currentMs = count > 0
           ? opts.minMs
           : Math.min(currentMs * opts.factor, opts.maxMs);
-      } catch { /* ignore */ }
+      } catch (err) {
+        logger.error({ err: String(err) }, "adaptive poll tick failed");
+      }
       if (!stopped) {
         timer = setTimeout(() => void tick(), currentMs);
         timer.unref();
@@ -211,6 +219,13 @@ export function createPgWorkerContext(
   const backend = {
     async start(): Promise<void> {
       await store.ensureSchema();
+
+      // Recover effects stuck in "executing" from a previous crash (older than 5 min)
+      const staleThreshold = Date.now() - 5 * 60 * 1000;
+      const resetCount = await store.resetStaleEffects(staleThreshold);
+      if (resetCount > 0) {
+        logger.info({ count: resetCount }, "reset stale effects from previous crash");
+      }
 
       await store.startListening(
         (machineName: string, instanceId: string, _topic: string) => {

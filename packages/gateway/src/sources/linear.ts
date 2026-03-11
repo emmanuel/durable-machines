@@ -27,13 +27,14 @@ export function linearSource(signingSecret: string): WebhookSource<LinearWebhook
 
       verifyHmac("sha256", signingSecret, req.body, signature, "linear");
 
-      // Replay protection: check webhookTimestamp in body
+      // Replay protection: webhookTimestamp is required
       const body = JSON.parse(req.body) as { webhookTimestamp?: number };
-      if (body.webhookTimestamp) {
-        const now = Date.now();
-        if (Math.abs(now - body.webhookTimestamp) > MAX_TIMESTAMP_AGE_S * 1000) {
-          throw new WebhookVerificationError("Timestamp too old", "linear");
-        }
+      if (body.webhookTimestamp == null) {
+        throw new WebhookVerificationError("Missing webhookTimestamp in body", "linear");
+      }
+      const now = Date.now();
+      if (Math.abs(now - body.webhookTimestamp) > MAX_TIMESTAMP_AGE_S * 1000) {
+        throw new WebhookVerificationError("Timestamp too old", "linear");
       }
     },
 

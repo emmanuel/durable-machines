@@ -21,7 +21,7 @@ import { createDashboard } from "./dashboard/index.js";
 import { createGatewayMetrics } from "./metrics.js";
 import type { GatewayMetrics } from "./metrics.js";
 import { createAdminServer } from "./admin.js";
-import type { GatewayClient, WebhookBinding } from "./types.js";
+import type { GatewayClient, GatewaySecurityOptions, WebhookBinding } from "./types.js";
 import type { MachineRegistry } from "./rest-types.js";
 import type { Logger, StreamBinding } from "./streams/types.js";
 import type { StreamConsumerHandle } from "./streams/consumer.js";
@@ -112,6 +112,10 @@ export interface GatewayContextOptions {
   logger?: Logger;
   /** Returns `true` when the gateway is shutting down. Used for readiness probes. */
   isShuttingDown?: () => boolean;
+  /** Pluggable auth middleware for REST API and dashboard routes. */
+  security?: GatewaySecurityOptions;
+  /** Maximum concurrent SSE connections for the dashboard. @defaultValue `100` */
+  maxSseConnections?: number;
 }
 
 export async function createGatewayContext(
@@ -130,6 +134,9 @@ export async function createGatewayContext(
       basePath: options.restBasePath,
       shorthand: options.restShorthand,
     });
+    if (options.security?.restAuth) {
+      restApi.use("*", options.security.restAuth);
+    }
     gateway.route("/", restApi);
 
     // Mount dashboard unless explicitly disabled
@@ -140,7 +147,11 @@ export async function createGatewayContext(
         basePath: dashboardPath,
         restBasePath: options.restBasePath,
         store: options.store,
+        maxSseConnections: options.maxSseConnections,
       });
+      if (options.security?.dashboardAuth) {
+        dashboard.use("*", options.security.dashboardAuth);
+      }
       gateway.route(dashboardPath, dashboard);
     }
   }

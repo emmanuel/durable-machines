@@ -26,6 +26,8 @@ import { toStateResponse } from "./hateoas.js";
  * serve({ fetch: app.fetch, port: 3000 });
  * ```
  */
+const ID_PATTERN = /^[\w.:-]{1,256}$/;
+
 export function createRestApi(options: RestApiOptions): Hono {
   const { machines, basePath = "", shorthand = false } = options;
   const app = new Hono();
@@ -61,6 +63,9 @@ export function createRestApi(options: RestApiOptions): Hono {
     const { instanceId, input } = await c.req.json<{ instanceId: string; input?: Record<string, unknown> }>();
     if (!instanceId || typeof instanceId !== "string") {
       return c.json({ error: "instanceId is required" }, 400);
+    }
+    if (!ID_PATTERN.test(instanceId)) {
+      return c.json({ error: "Invalid instanceId" }, 400);
     }
     const handle = await durable.start(instanceId, input ?? {});
     const snapshot = await handle.getState();
@@ -171,8 +176,20 @@ export function createRestApi(options: RestApiOptions): Hono {
     const limit = c.req.query("limit");
     const after = c.req.query("after");
     const opts: { limit?: number; afterSeq?: number } = {};
-    if (limit) opts.limit = Number(limit);
-    if (after) opts.afterSeq = Number(after);
+    if (limit) {
+      const n = Number(limit);
+      if (!Number.isFinite(n) || n <= 0 || n > 1000) {
+        return c.json({ error: "limit must be 1-1000" }, 400);
+      }
+      opts.limit = n;
+    }
+    if (after) {
+      const n = Number(after);
+      if (!Number.isFinite(n) || n < 0) {
+        return c.json({ error: "after must be a non-negative number" }, 400);
+      }
+      opts.afterSeq = n;
+    }
 
     const events = await handle.getEventLog(opts);
     return c.json(events);

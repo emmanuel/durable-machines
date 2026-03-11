@@ -34,7 +34,7 @@ const pool = new pg.Pool({
 // Register machines for the dashboard + REST API
 const store = createStore({ pool, useListenNotify: true });
 await store.ensureSchema();
-const dm = createDurableMachine(approvalMachine, { pool, store });
+const dm = createDurableMachine(approvalMachine, { pool, store, enableTransitionStream: true });
 const machines = new Map([["approvals", dm]]);
 
 // Phase 2: context

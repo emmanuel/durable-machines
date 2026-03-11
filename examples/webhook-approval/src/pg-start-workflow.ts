@@ -8,7 +8,7 @@ const requestId = process.argv[2] || `req-${Date.now()}`;
 const pg = parsePgConfig();
 const ctx = createPgWorkerContext(pg);
 
-const dm = ctx.register(approvalMachine, { channels: [consoleChannel()] });
+const dm = ctx.register(approvalMachine, { channels: [consoleChannel()], enableTransitionStream: true });
 
 const handle = await dm.start(`approval-${requestId}`, {
   requestId,

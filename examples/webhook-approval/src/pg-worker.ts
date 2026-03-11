@@ -11,6 +11,6 @@ await startPgWorker({
   pg,
   worker,
   machines: {
-    approvals: { machine: approvalMachine, options: { channels: [consoleChannel()] } },
+    approvals: { machine: approvalMachine, options: { channels: [consoleChannel()], enableTransitionStream: true } },
   },
 });

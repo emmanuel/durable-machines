@@ -97,6 +97,9 @@ export interface InsertEffectsParams {
 }
 
 export interface PgStore {
+  // Transaction management
+  withTransaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T>;
+
   // Schema
   ensureSchema(): Promise<void>;
 

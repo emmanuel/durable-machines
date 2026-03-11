@@ -1,4 +1,4 @@
-import type { Pool, PoolClient, Client as PgClient } from "pg";
+import type { PoolClient, Client as PgClient } from "pg";
 import type { StateValue } from "xstate";
 import type { StepInfo, TransitionRecord, InstanceStatus, EffectOutboxStatus } from "../types.js";
 import { SCHEMA_SQL } from "./schema.js";
@@ -56,6 +56,31 @@ export function createStore(options: PgStoreOptions): PgStore {
   function qStart(): number { return instr ? performance.now() : 0; }
   function qEnd(name: string, start: number): void {
     if (instr) instr.queryDuration.record(performance.now() - start, { query: name });
+  }
+
+  // ── Transaction management ──────────────────────────────────────────────
+
+  async function connect(): Promise<PoolClient> {
+    if (!instr) return pool.connect();
+    const start = performance.now();
+    const client = await pool.connect();
+    instr.poolCheckoutDuration.record(performance.now() - start);
+    return client;
+  }
+
+  async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
+    const client = await connect();
+    try {
+      await client.query("BEGIN");
+      const result = await fn(client);
+      await client.query("COMMIT");
+      return result;
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 
   // ── Schema ──────────────────────────────────────────────────────────────
@@ -521,8 +546,8 @@ export function createStore(options: PgStoreOptions): PgStore {
 
   // ── Return ────────────────────────────────────────────────────────────
 
-  const store: PgStore & { _pool: Pool } = {
-    _pool: pool,
+  const store: PgStore = {
+    withTransaction,
     ensureSchema,
     createInstance,
     getInstance,

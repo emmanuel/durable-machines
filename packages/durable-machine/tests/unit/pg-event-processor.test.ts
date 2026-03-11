@@ -4,7 +4,7 @@ import { durableState } from "../../src/durable-state.js";
 import { prompt } from "../../src/prompt.js";
 import {
   processStartup,
-  processNextFromLog,
+  processBatchFromLog,
 } from "../../src/pg/event-processor.js";
 import type { EventProcessorOptions } from "../../src/pg/event-processor.js";
 import type { PgStore, MachineRow } from "../../src/pg/store.js";
@@ -35,10 +35,7 @@ function createMockStore(): PgStore & {
     transitions,
     eventLog,
     get nextSeq() { return nextSeq; },
-    _pool: {
-      connect: vi.fn().mockResolvedValue(mockClient),
-      query: vi.fn().mockResolvedValue({ rows: [] }),
-    },
+    withTransaction: async (fn: any) => fn(mockClient),
 
     async ensureSchema() {},
 
@@ -466,7 +463,7 @@ describe("PG Event Processor", () => {
     });
   });
 
-  describe("processNextFromLog", () => {
+  describe("processBatchFromLog", () => {
     it("transitions on external event", async () => {
       const deps: EventProcessorOptions = {
         store,
@@ -477,7 +474,7 @@ describe("PG Event Processor", () => {
       await processStartup(deps, "evt-1", { value: "test" });
       await store.appendEvent("evt-1", { type: "GO" });
 
-      await processNextFromLog(deps, "evt-1");
+      await processBatchFromLog(deps, "evt-1", 1);
 
       const row = store.instances.get("evt-1");
       expect(row!.stateValue).toBe("done");
@@ -494,7 +491,7 @@ describe("PG Event Processor", () => {
       await processStartup(deps, "evt-inv", {});
       await store.appendEvent("evt-inv", { type: "START" });
 
-      await processNextFromLog(deps, "evt-inv");
+      await processBatchFromLog(deps, "evt-inv", 1);
 
       const row = store.instances.get("evt-inv");
       expect(row!.stateValue).toBe("complete");
@@ -511,7 +508,7 @@ describe("PG Event Processor", () => {
       await processStartup(deps, "evt-err", {});
       await store.appendEvent("evt-err", { type: "START" });
 
-      await processNextFromLog(deps, "evt-err");
+      await processBatchFromLog(deps, "evt-err", 1);
 
       const row = store.instances.get("evt-err");
       expect(row!.stateValue).toBe("failed");
@@ -534,7 +531,7 @@ describe("PG Event Processor", () => {
       });
 
       await store.appendEvent("evt-cache", { type: "START" });
-      await processNextFromLog(deps, "evt-cache");
+      await processBatchFromLog(deps, "evt-cache", 1);
 
       const row = store.instances.get("evt-cache");
       expect(row!.stateValue).toBe("complete");
@@ -577,14 +574,14 @@ describe("PG Event Processor", () => {
       await processStartup(deps, "evt-prompt-exit", {});
 
       await store.appendEvent("evt-prompt-exit", { type: "APPROVE" });
-      await processNextFromLog(deps, "evt-prompt-exit");
+      await processBatchFromLog(deps, "evt-prompt-exit", 1);
 
       expect(channel.resolvePrompt).toHaveBeenCalled();
       const call = channel.resolvePrompt.mock.calls[0][0];
       expect(call.newStateValue).toBe("approved");
     });
 
-    it("returns false when no unconsumed events", async () => {
+    it("returns 0 when no unconsumed events", async () => {
       const deps: EventProcessorOptions = {
         store,
         machine: simpleMachine,
@@ -593,8 +590,8 @@ describe("PG Event Processor", () => {
 
       await processStartup(deps, "evt-empty", { value: "test" });
 
-      const processed = await processNextFromLog(deps, "evt-empty");
-      expect(processed).toBe(false);
+      const processed = await processBatchFromLog(deps, "evt-empty", 1);
+      expect(processed).toBe(0);
     });
 
     it("advances event cursor after processing", async () => {
@@ -607,7 +604,7 @@ describe("PG Event Processor", () => {
       await processStartup(deps, "evt-cursor", { value: "test" });
       const { seq } = await store.appendEvent("evt-cursor", { type: "GO" });
 
-      await processNextFromLog(deps, "evt-cursor");
+      await processBatchFromLog(deps, "evt-cursor", 1);
 
       const row = store.instances.get("evt-cursor");
       expect(row!.eventCursor).toBe(seq);
@@ -662,7 +659,7 @@ describe("PG Event Processor", () => {
 
       await processStartup(deps, "evt-cancel", {});
       await store.appendEvent("evt-cancel", { type: "START" });
-      await processNextFromLog(deps, "evt-cancel");
+      await processBatchFromLog(deps, "evt-cancel", 1);
 
       const row = store.instances.get("evt-cancel");
       // Should stay cancelled — final state should not be persisted
@@ -720,7 +717,7 @@ describe("PG Event Processor", () => {
 
       await processStartup(deps, "evt-spy", {});
       await store.appendEvent("evt-spy", { type: "START" });
-      await processNextFromLog(deps, "evt-spy");
+      await processBatchFromLog(deps, "evt-spy", 1);
 
       // During invocation, state should have been persisted as "working"
       expect(stateValueDuringInvoke).toBe("working");
@@ -779,7 +776,7 @@ describe("PG Event Processor", () => {
 
       await processStartup(deps, "evt-cursor-inv", {});
       const { seq } = await store.appendEvent("evt-cursor-inv", { type: "START" });
-      await processNextFromLog(deps, "evt-cursor-inv");
+      await processBatchFromLog(deps, "evt-cursor-inv", 1);
 
       // During invocation, cursor should NOT have been advanced
       expect(cursorDuringInvoke).toBe(0);
@@ -807,7 +804,7 @@ describe("PG Event Processor", () => {
       const afterEvent = buildAfterEvent(afterMachine, snapshot, delays[0]);
       await store.appendEvent("timeout-1", afterEvent, "timeout", "system:timeout");
 
-      await processNextFromLog(deps, "timeout-1");
+      await processBatchFromLog(deps, "timeout-1", 1);
 
       const updated = store.instances.get("timeout-1");
       expect(updated!.stateValue).toBe("timedOut");

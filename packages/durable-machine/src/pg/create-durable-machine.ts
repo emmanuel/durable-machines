@@ -15,7 +15,7 @@ import { validateMachineForDurability } from "../validate.js";
 import { createStore } from "./store.js";
 import type { PgStore, MachineRow } from "./store.js";
 import { createStoreInstruments } from "./store-metrics.js";
-import { processStartup, processBatchFromLog, processNextFromLog } from "./event-processor.js";
+import { processStartup, processBatchFromLog } from "./event-processor.js";
 import type { EventProcessorOptions } from "./event-processor.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -88,13 +88,8 @@ export function createDurableMachine<T extends AnyStateMachine>(
   const useBatch = options.useBatchProcessing !== false;
 
   async function consumeAndProcessMessages(instanceId: string): Promise<void> {
-    if (useBatch) {
-      const count = await processBatchFromLog(deps, instanceId);
-      if (count > 0) await consumeAndProcessMessages(instanceId);
-    } else {
-      const didProcess = await processNextFromLog(deps, instanceId);
-      if (didProcess) await consumeAndProcessMessages(instanceId);
-    }
+    const count = await processBatchFromLog(deps, instanceId, useBatch ? undefined : 1);
+    if (count > 0) await consumeAndProcessMessages(instanceId);
   }
 
   // ── Handle Factory ──────────────────────────────────────────────────────

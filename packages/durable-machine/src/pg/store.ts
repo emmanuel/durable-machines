@@ -99,6 +99,7 @@ export function createStore(options: PgStoreOptions): PgStore {
   async function createInstance(params: CreateInstanceParams): Promise<void> {
     const { id, machineName, stateValue, context, input, wakeAt, firedDelays, queryable, wakeEvent } = params;
     const q = queryable ?? pool;
+    const t = qStart();
     const now = Date.now();
     await q.query({
       ...Q_CREATE_INSTANCE,
@@ -115,10 +116,13 @@ export function createStore(options: PgStoreOptions): PgStore {
         now,
       ],
     });
+    qEnd(Q_CREATE_INSTANCE.name, t);
   }
 
   async function getInstance(id: string): Promise<MachineRow | null> {
+    const t = qStart();
     const { rows } = await pool.query({ ...Q_GET_INSTANCE, values: [id] });
+    qEnd(Q_GET_INSTANCE.name, t);
     return rows.length > 0 ? rowToMachine(rows[0]) : null;
   }
 
@@ -150,6 +154,7 @@ export function createStore(options: PgStoreOptions): PgStore {
     machineName?: string;
     status?: string;
   }): Promise<MachineRow[]> {
+    const t = qStart();
     const hasMachine = !!filter?.machineName;
     const hasStatus = !!filter?.status;
     let result;
@@ -162,6 +167,7 @@ export function createStore(options: PgStoreOptions): PgStore {
     } else {
       result = await pool.query({ ...Q_LIST_INSTANCES, values: [] as unknown[] });
     }
+    qEnd("dm_list_instances", t);
     return result.rows.map(rowToMachine);
   }
 
@@ -239,6 +245,7 @@ export function createStore(options: PgStoreOptions): PgStore {
     instanceId: string,
     opts?: { afterSeq?: number; limit?: number },
   ): Promise<EventLogEntry[]> {
+    const t = qStart();
     const hasAfter = opts?.afterSeq !== undefined;
     const hasLimit = opts?.limit !== undefined;
     let result;
@@ -251,6 +258,7 @@ export function createStore(options: PgStoreOptions): PgStore {
     } else {
       result = await pool.query({ ...Q_GET_EVENT_LOG, values: [instanceId] });
     }
+    qEnd("dm_get_event_log", t);
     return result.rows.map((r: any) => ({
       seq: Number(r.seq),
       topic: r.topic as string,
@@ -291,7 +299,9 @@ export function createStore(options: PgStoreOptions): PgStore {
   }
 
   async function listInvokeResults(instanceId: string): Promise<StepInfo[]> {
+    const t = qStart();
     const { rows } = await pool.query({ ...Q_LIST_INVOKE_RESULTS, values: [instanceId] });
+    qEnd(Q_LIST_INVOKE_RESULTS.name, t);
     return rows.map(
       (row: any): StepInfo => ({
         name: row.step_key,
@@ -359,6 +369,7 @@ export function createStore(options: PgStoreOptions): PgStore {
     event: string | null,
     ts: number,
   ): Promise<void> {
+    const t = qStart();
     await pool.query({
       ...Q_APPEND_TRANSITION,
       values: [
@@ -369,12 +380,15 @@ export function createStore(options: PgStoreOptions): PgStore {
         ts,
       ],
     });
+    qEnd(Q_APPEND_TRANSITION.name, t);
   }
 
   async function getTransitions(
     instanceId: string,
   ): Promise<TransitionRecord[]> {
+    const t = qStart();
     const { rows } = await pool.query({ ...Q_GET_TRANSITIONS, values: [instanceId] });
+    qEnd(Q_GET_TRANSITIONS.name, t);
     return rows.map(
       (row: any): TransitionRecord => ({
         from: row.from_state as StateValue | null,
@@ -425,20 +439,26 @@ export function createStore(options: PgStoreOptions): PgStore {
       timestamps.push(now);
     }
 
+    const t = qStart();
     await client.query({
       ...Q_INSERT_EFFECTS,
       values: [instanceIds, stateValues, types, payloads, maxAttemptsList, timestamps],
     });
+    qEnd(Q_INSERT_EFFECTS.name, t);
   }
 
   async function claimPendingEffects(limit = 50): Promise<EffectOutboxRow[]> {
+    const t = qStart();
     const now = Date.now();
     const { rows } = await pool.query({ ...Q_CLAIM_PENDING_EFFECTS, values: [now, limit] });
+    qEnd(Q_CLAIM_PENDING_EFFECTS.name, t);
     return rows.map(rowToEffect);
   }
 
   async function markEffectCompleted(effectId: string): Promise<void> {
+    const t = qStart();
     await pool.query({ ...Q_MARK_EFFECT_COMPLETED, values: [Date.now(), effectId] });
+    qEnd(Q_MARK_EFFECT_COMPLETED.name, t);
   }
 
   async function markEffectFailed(
@@ -446,12 +466,16 @@ export function createStore(options: PgStoreOptions): PgStore {
     error: string,
     nextRetryAt: number | null,
   ): Promise<void> {
+    const t = qStart();
     const status = nextRetryAt != null ? "pending" : "failed";
     await pool.query({ ...Q_MARK_EFFECT_FAILED, values: [status, error, nextRetryAt, effectId] });
+    qEnd(Q_MARK_EFFECT_FAILED.name, t);
   }
 
   async function listEffects(instanceId: string): Promise<EffectOutboxRow[]> {
+    const t = qStart();
     const { rows } = await pool.query({ ...Q_LIST_EFFECTS, values: [instanceId] });
+    qEnd(Q_LIST_EFFECTS.name, t);
     return rows.map(rowToEffect);
   }
 

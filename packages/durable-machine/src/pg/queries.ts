@@ -156,6 +156,62 @@ export const Q_LIST_EFFECTS = {
   text: `SELECT * FROM effect_outbox WHERE instance_id = $1 ORDER BY created_at ASC`,
 } as const;
 
+// ─── List Instances (4 filter combinations) ─────────────────────────────────
+
+export const Q_LIST_INSTANCES = {
+  name: "dm_list_instances",
+  text: `SELECT * FROM machine_instances ORDER BY created_at ASC`,
+} as const;
+
+export const Q_LIST_INSTANCES_BY_MACHINE = {
+  name: "dm_list_instances_by_machine",
+  text: `SELECT * FROM machine_instances WHERE machine_name = $1 ORDER BY created_at ASC`,
+} as const;
+
+export const Q_LIST_INSTANCES_BY_STATUS = {
+  name: "dm_list_instances_by_status",
+  text: `SELECT * FROM machine_instances WHERE status = $1 ORDER BY created_at ASC`,
+} as const;
+
+export const Q_LIST_INSTANCES_BY_MACHINE_AND_STATUS = {
+  name: "dm_list_instances_by_machine_and_status",
+  text: `SELECT * FROM machine_instances WHERE machine_name = $1 AND status = $2 ORDER BY created_at ASC`,
+} as const;
+
+// ─── Event Log (4 filter combinations) ──────────────────────────────────────
+
+export const Q_GET_EVENT_LOG = {
+  name: "dm_get_event_log",
+  text: `SELECT seq, topic, payload, source, created_at FROM event_log
+         WHERE instance_id = $1 ORDER BY seq ASC`,
+} as const;
+
+export const Q_GET_EVENT_LOG_AFTER = {
+  name: "dm_get_event_log_after",
+  text: `SELECT seq, topic, payload, source, created_at FROM event_log
+         WHERE instance_id = $1 AND seq > $2 ORDER BY seq ASC`,
+} as const;
+
+export const Q_GET_EVENT_LOG_LIMIT = {
+  name: "dm_get_event_log_limit",
+  text: `SELECT seq, topic, payload, source, created_at FROM event_log
+         WHERE instance_id = $1 ORDER BY seq ASC LIMIT $2`,
+} as const;
+
+export const Q_GET_EVENT_LOG_AFTER_LIMIT = {
+  name: "dm_get_event_log_after_limit",
+  text: `SELECT seq, topic, payload, source, created_at FROM event_log
+         WHERE instance_id = $1 AND seq > $2 ORDER BY seq ASC LIMIT $3`,
+} as const;
+
+// ─── Effect Outbox Insert (UNNEST) ──────────────────────────────────────────
+
+export const Q_INSERT_EFFECTS = {
+  name: "dm_insert_effects",
+  text: `INSERT INTO effect_outbox (instance_id, state_value, effect_type, effect_payload, max_attempts, created_at)
+         SELECT * FROM UNNEST($1::text[], $2::jsonb[], $3::text[], $4::jsonb[], $5::int[], $6::bigint[])`,
+} as const;
+
 // ─── Client Queries ──────────────────────────────────────────────────────────
 
 export const Q_SEND_MACHINE_EVENT = {

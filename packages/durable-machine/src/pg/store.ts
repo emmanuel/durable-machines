@@ -11,6 +11,11 @@ import {
   Q_APPEND_TRANSITION, Q_GET_TRANSITIONS,
   Q_CLAIM_PENDING_EFFECTS, Q_MARK_EFFECT_COMPLETED, Q_MARK_EFFECT_FAILED,
   Q_LIST_EFFECTS,
+  Q_LIST_INSTANCES, Q_LIST_INSTANCES_BY_MACHINE, Q_LIST_INSTANCES_BY_STATUS,
+  Q_LIST_INSTANCES_BY_MACHINE_AND_STATUS,
+  Q_GET_EVENT_LOG, Q_GET_EVENT_LOG_AFTER, Q_GET_EVENT_LOG_LIMIT,
+  Q_GET_EVENT_LOG_AFTER_LIMIT,
+  Q_INSERT_EFFECTS,
 } from "./queries.js";
 import type {
   PgStoreOptions, MachineRow, PgStore,
@@ -145,26 +150,19 @@ export function createStore(options: PgStoreOptions): PgStore {
     machineName?: string;
     status?: string;
   }): Promise<MachineRow[]> {
-    const conditions: string[] = [];
-    const values: unknown[] = [];
-    let idx = 1;
-
-    if (filter?.machineName) {
-      conditions.push(`machine_name = $${idx++}`);
-      values.push(filter.machineName);
+    const hasMachine = !!filter?.machineName;
+    const hasStatus = !!filter?.status;
+    let result;
+    if (hasMachine && hasStatus) {
+      result = await pool.query({ ...Q_LIST_INSTANCES_BY_MACHINE_AND_STATUS, values: [filter!.machineName, filter!.status] });
+    } else if (hasMachine) {
+      result = await pool.query({ ...Q_LIST_INSTANCES_BY_MACHINE, values: [filter!.machineName] });
+    } else if (hasStatus) {
+      result = await pool.query({ ...Q_LIST_INSTANCES_BY_STATUS, values: [filter!.status] });
+    } else {
+      result = await pool.query({ ...Q_LIST_INSTANCES, values: [] as unknown[] });
     }
-    if (filter?.status) {
-      conditions.push(`status = $${idx++}`);
-      values.push(filter.status);
-    }
-
-    const where =
-      conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
-    const { rows } = await pool.query(
-      `SELECT * FROM machine_instances${where} ORDER BY created_at ASC`,
-      values,
-    );
-    return rows.map(rowToMachine);
+    return result.rows.map(rowToMachine);
   }
 
   // ── Locking ─────────────────────────────────────────────────────────────
@@ -241,26 +239,19 @@ export function createStore(options: PgStoreOptions): PgStore {
     instanceId: string,
     opts?: { afterSeq?: number; limit?: number },
   ): Promise<EventLogEntry[]> {
-    const conditions = ["instance_id = $1"];
-    const values: unknown[] = [instanceId];
-    let idx = 2;
-
-    if (opts?.afterSeq !== undefined) {
-      conditions.push(`seq > $${idx++}`);
-      values.push(opts.afterSeq);
+    const hasAfter = opts?.afterSeq !== undefined;
+    const hasLimit = opts?.limit !== undefined;
+    let result;
+    if (hasAfter && hasLimit) {
+      result = await pool.query({ ...Q_GET_EVENT_LOG_AFTER_LIMIT, values: [instanceId, opts!.afterSeq, opts!.limit] });
+    } else if (hasAfter) {
+      result = await pool.query({ ...Q_GET_EVENT_LOG_AFTER, values: [instanceId, opts!.afterSeq] });
+    } else if (hasLimit) {
+      result = await pool.query({ ...Q_GET_EVENT_LOG_LIMIT, values: [instanceId, opts!.limit] });
+    } else {
+      result = await pool.query({ ...Q_GET_EVENT_LOG, values: [instanceId] });
     }
-
-    let sql = `SELECT seq, topic, payload, source, created_at FROM event_log
-       WHERE ${conditions.join(" AND ")}
-       ORDER BY seq ASC`;
-
-    if (opts?.limit !== undefined) {
-      sql += ` LIMIT $${idx++}`;
-      values.push(opts.limit);
-    }
-
-    const { rows } = await pool.query(sql, values);
-    return rows.map((r: any) => ({
+    return result.rows.map((r: any) => ({
       seq: Number(r.seq),
       topic: r.topic as string,
       payload: r.payload,
@@ -417,25 +408,27 @@ export function createStore(options: PgStoreOptions): PgStore {
     const now = Date.now();
     const stateJson = JSON.stringify(stateValue);
 
-    // Build multi-row INSERT (dynamic placeholder count)
-    const placeholders: string[] = [];
-    const values: unknown[] = [];
-    let idx = 1;
+    const instanceIds: string[] = [];
+    const stateValues: string[] = [];
+    const types: string[] = [];
+    const payloads: string[] = [];
+    const maxAttemptsList: number[] = [];
+    const timestamps: number[] = [];
+
     for (const effect of effects) {
       const { type, ...payload } = effect;
-      placeholders.push(
-        `($${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++})`,
-      );
-      values.push(
-        instanceId, stateJson, type, JSON.stringify(payload), maxAttempts, now,
-      );
+      instanceIds.push(instanceId);
+      stateValues.push(stateJson);
+      types.push(type);
+      payloads.push(JSON.stringify(payload));
+      maxAttemptsList.push(maxAttempts);
+      timestamps.push(now);
     }
 
-    await client.query(
-      `INSERT INTO effect_outbox (instance_id, state_value, effect_type, effect_payload, max_attempts, created_at)
-       VALUES ${placeholders.join(", ")}`,
-      values,
-    );
+    await client.query({
+      ...Q_INSERT_EFFECTS,
+      values: [instanceIds, stateValues, types, payloads, maxAttemptsList, timestamps],
+    });
   }
 
   async function claimPendingEffects(limit = 50): Promise<EffectOutboxRow[]> {

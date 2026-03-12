@@ -42,6 +42,24 @@ describe("linearSource", () => {
     ).rejects.toThrow(WebhookVerificationError);
   });
 
+  it("rejects non-numeric webhookTimestamp", async () => {
+    const payload = { action: "create", type: "Issue", data: {}, webhookTimestamp: "notanumber" };
+    const body = JSON.stringify(payload);
+    const sig = computeHmac("sha256", SECRET, body);
+    await expect(
+      source.verify({ headers: { "linear-signature": sig }, body }),
+    ).rejects.toThrow("Missing or invalid webhookTimestamp");
+  });
+
+  it("rejects null webhookTimestamp", async () => {
+    const payload = { action: "create", type: "Issue", data: {}, webhookTimestamp: null };
+    const body = JSON.stringify(payload);
+    const sig = computeHmac("sha256", SECRET, body);
+    await expect(
+      source.verify({ headers: { "linear-signature": sig }, body }),
+    ).rejects.toThrow("Missing or invalid webhookTimestamp");
+  });
+
   it("rejects old timestamp", async () => {
     const oldPayload = {
       action: "create",

@@ -72,6 +72,16 @@ export function xapiSource(options: XapiSourceOptions = {}): WebhookSource<XapiW
   };
 }
 
+/** Constant-time comparison that doesn't leak buffer lengths via early exit. */
+function constantTimeCompare(a: Buffer, b: Buffer): boolean {
+  const len = Math.max(a.length, b.length);
+  const padA = Buffer.alloc(len);
+  const padB = Buffer.alloc(len);
+  a.copy(padA);
+  b.copy(padB);
+  return timingSafeEqual(padA, padB) && a.length === b.length;
+}
+
 function verifyBasicAuth(req: RawRequest, username: string, password: string): void {
   const authHeader = req.headers["authorization"];
   if (!authHeader) {
@@ -97,12 +107,7 @@ function verifyBasicAuth(req: RawRequest, username: string, password: string): v
   const expectedPass = Buffer.from(password, "utf-8");
   const actualPass = Buffer.from(reqPass, "utf-8");
 
-  const userMatch = expectedUser.length === actualUser.length &&
-    timingSafeEqual(expectedUser, actualUser);
-  const passMatch = expectedPass.length === actualPass.length &&
-    timingSafeEqual(expectedPass, actualPass);
-
-  if (!userMatch || !passMatch) {
+  if (!constantTimeCompare(expectedUser, actualUser) || !constantTimeCompare(expectedPass, actualPass)) {
     throw new WebhookVerificationError("Invalid credentials", "xapi");
   }
 }
@@ -121,7 +126,7 @@ function verifyBearerToken(req: RawRequest, token: string): void {
   const expectedBuf = Buffer.from(token, "utf-8");
   const actualBuf = Buffer.from(reqToken, "utf-8");
 
-  if (expectedBuf.length !== actualBuf.length || !timingSafeEqual(expectedBuf, actualBuf)) {
+  if (!constantTimeCompare(expectedBuf, actualBuf)) {
     throw new WebhookVerificationError("Invalid bearer token", "xapi");
   }
 }

@@ -17,6 +17,9 @@ earlier phases block production readiness; later phases are defense-in-depth.
 | 8 (partial) | `ID_PATTERN` validation, status filter allowlist, event log pagination with bounds checking, NOTIFY payload validation | `c05e608` |
 | — | Shorthand routes removed (bypassed `ID_PATTERN` validation) | current |
 | — | `restShorthand` option removed from `RestApiOptions` and `GatewayContextOptions` | current |
+| 2 | NaN timestamp checks (already had `Number.isNaN`); Linear type-confusion bypass fixed (`typeof !== "number"` guard) | current |
+| 3 | Timing side-channels: all HMAC sources use `verifyHmac()`; xAPI basic auth padded to constant-time (`constantTimeCompare`) | current |
+| 5 | Email header injection: `sanitizeSubject` extended to strip `\0`, `\u2028`, `\u2029` | current |
 
 ---
 
@@ -86,7 +89,7 @@ Add `MAX_EVENT_PAYLOAD_BYTES = 256 * 1024` (256 KB) as a module constant.
 
 ---
 
-## Phase 2: Fix Timestamp Validation Bypasses
+## Phase 2: Fix Timestamp Validation Bypasses ✅
 
 ### Problem
 
@@ -135,7 +138,7 @@ if (Math.abs(now - body.webhookTimestamp) > MAX_TIMESTAMP_AGE_S * 1000) {
 
 ---
 
-## Phase 3: Fix Timing Side-Channels in Signature Verification
+## Phase 3: Fix Timing Side-Channels in Signature Verification ✅
 
 ### Problem
 
@@ -281,7 +284,7 @@ export function actionLinkSource(
 
 ---
 
-## Phase 5: Email Header Injection Prevention
+## Phase 5: Email Header Injection Prevention ✅
 
 ### Problem
 
@@ -736,10 +739,10 @@ on missing values.
 | Phase | Scope | Severity | Status | Files |
 |-------|-------|----------|--------|-------|
 | 1 | Request body limits | Critical (DoS) | **Done** | middleware.ts, gateway.ts, store.ts |
-| 2 | Timestamp NaN bypass | High (Replay) | Open | stripe.ts, slack.ts, slack-slash.ts, linear.ts |
-| 3 | Timing side-channels | High (Crypto) | Open | stripe.ts, slack.ts, slack-slash.ts, twilio.ts, xapi.ts |
+| 2 | Timestamp NaN bypass | High (Replay) | **Done** | stripe.ts, slack.ts, slack-slash.ts, linear.ts |
+| 3 | Timing side-channels | High (Crypto) | **Done** | stripe.ts, slack.ts, slack-slash.ts, twilio.ts, xapi.ts |
 | 4 | Action link replay | High (Replay) | **Done** | email.ts, action-link.ts |
-| 5 | Email header injection | Critical (Injection) | Open | email.ts |
+| 5 | Email header injection | Critical (Injection) | **Done** | email.ts |
 | 6 | Auth + SSE limits | Critical (AuthZ, DoS) | **Partial** | lifecycle.ts, types.ts, admin.ts, routes.ts, generic.ts, xapi.ts |
 | 7 | Worker resilience | High (DoS, Data loss) | Open | create-durable-machine.ts, event-processor.ts, lifecycle.ts, store.ts, queries.ts |
 | 8 | Defense-in-depth | Medium (Various) | **Partial** | rest-api.ts, routes.ts, store.ts, html.ts, client.ts, slack-slash.ts, config.ts |

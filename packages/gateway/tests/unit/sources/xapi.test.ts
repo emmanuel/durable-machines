@@ -43,6 +43,14 @@ describe("xapiSource", () => {
       await expect(source.verify(req)).rejects.toThrow("Invalid credentials");
     });
 
+    it("rejects credentials of different length (constant-time)", async () => {
+      const req: RawRequest = {
+        headers: { authorization: basicAuth("lrs-user", "short") },
+        body: "{}",
+      };
+      await expect(source.verify(req)).rejects.toThrow("Invalid credentials");
+    });
+
     it("rejects Bearer scheme when Basic expected", async () => {
       const req: RawRequest = {
         headers: { authorization: "Bearer some-token" },
@@ -72,6 +80,14 @@ describe("xapiSource", () => {
     it("rejects wrong token", async () => {
       const req: RawRequest = {
         headers: { authorization: "Bearer wrong-token" },
+        body: "{}",
+      };
+      await expect(source.verify(req)).rejects.toThrow("Invalid bearer token");
+    });
+
+    it("rejects bearer token of different length (constant-time)", async () => {
+      const req: RawRequest = {
+        headers: { authorization: "Bearer short" },
         body: "{}",
       };
       await expect(source.verify(req)).rejects.toThrow("Invalid bearer token");

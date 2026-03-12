@@ -38,6 +38,15 @@ describe("stripeSource", () => {
     ).rejects.toThrow(WebhookVerificationError);
   });
 
+  it("rejects non-numeric timestamp", async () => {
+    await expect(
+      source.verify({
+        headers: { "stripe-signature": `t=notanumber,v1=${"a".repeat(64)}` },
+        body: "{}",
+      }),
+    ).rejects.toThrow("Invalid timestamp");
+  });
+
   it("rejects old timestamp", async () => {
     const oldTs = String(Math.floor(Date.now() / 1000) - 400);
     const body = "{}";

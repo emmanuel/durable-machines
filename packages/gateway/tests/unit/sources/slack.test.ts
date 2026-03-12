@@ -33,6 +33,18 @@ describe("slackSource", () => {
     ).rejects.toThrow(WebhookVerificationError);
   });
 
+  it("rejects non-numeric timestamp", async () => {
+    await expect(
+      source.verify({
+        headers: {
+          "x-slack-request-timestamp": "notanumber",
+          "x-slack-signature": "v0=" + "a".repeat(64),
+        },
+        body: "payload={}",
+      }),
+    ).rejects.toThrow("Invalid timestamp");
+  });
+
   it("rejects old timestamps", async () => {
     const oldTimestamp = String(Math.floor(Date.now() / 1000) - 400);
     const body = "payload={}";

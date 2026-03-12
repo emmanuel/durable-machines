@@ -120,7 +120,7 @@ function escapeHtml(s: string): string {
 
 /** Strip control characters that could inject email headers. */
 function sanitizeSubject(s: string): string {
-  return s.replace(/[\r\n\t]/g, " ").trim();
+  return s.replace(/[\r\n\t\0\u2028\u2029]/g, " ").trim();
 }
 
 function styledButton(label: string, href: string, style?: string): string {

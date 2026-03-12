@@ -13,6 +13,25 @@ function signBody(body: string, timestamp?: string) {
   return { timestamp: ts, signature: sig };
 }
 
+describe("slashCommandBinding source verification", () => {
+  const binding = slashCommandBinding("/slack/command", {
+    signingSecret: SECRET,
+    eventMap: { approve: "APPROVE" },
+  }, createMockClient());
+
+  it("rejects non-numeric timestamp", async () => {
+    await expect(
+      binding.source.verify({
+        headers: {
+          "x-slack-request-timestamp": "abc",
+          "x-slack-signature": "v0=" + "a".repeat(64),
+        },
+        body: "command=/test&text=approve wf-1",
+      }),
+    ).rejects.toThrow("Invalid timestamp");
+  });
+});
+
 describe("slashCommandBinding", () => {
   const client = createMockClient();
 

@@ -29,8 +29,8 @@ export function linearSource(signingSecret: string): WebhookSource<LinearWebhook
 
       // Replay protection: webhookTimestamp is required
       const body = JSON.parse(req.body) as { webhookTimestamp?: number };
-      if (body.webhookTimestamp == null) {
-        throw new WebhookVerificationError("Missing webhookTimestamp in body", "linear");
+      if (body.webhookTimestamp == null || typeof body.webhookTimestamp !== "number") {
+        throw new WebhookVerificationError("Missing or invalid webhookTimestamp in body", "linear");
       }
       const now = Date.now();
       if (Math.abs(now - body.webhookTimestamp) > MAX_TIMESTAMP_AGE_S * 1000) {

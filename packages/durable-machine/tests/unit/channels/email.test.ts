@@ -220,6 +220,75 @@ describe("emailChannel()", () => {
       );
     });
 
+    it("strips CRLF from subject text", async () => {
+      sendEmail.mockClear();
+      const channel = emailChannel({
+        sendEmail,
+        callbackUrl: CALLBACK_URL,
+        signingSecret: SIGNING_SECRET,
+        defaultRecipient: "user@example.com",
+      });
+      const prompt: PromptConfig = {
+        type: "confirm",
+        text: "Approve?\r\nBcc: attacker@evil.com",
+        confirmEvent: "YES",
+        cancelEvent: "NO",
+      };
+
+      await channel.sendPrompt(makeSendParams(prompt));
+
+      const subject = sendEmail.mock.calls[0][0].subject;
+      expect(subject).not.toContain("\r");
+      expect(subject).not.toContain("\n");
+      expect(subject).toBe("Approve?  Bcc: attacker@evil.com");
+    });
+
+    it("strips CRLF from subjectPrefix", async () => {
+      sendEmail.mockClear();
+      const channel = emailChannel({
+        sendEmail,
+        callbackUrl: CALLBACK_URL,
+        signingSecret: SIGNING_SECRET,
+        defaultRecipient: "user@example.com",
+        subjectPrefix: "[Action]\nInjected:",
+      });
+      const prompt: PromptConfig = {
+        type: "confirm",
+        text: "OK?",
+        confirmEvent: "YES",
+        cancelEvent: "NO",
+      };
+
+      await channel.sendPrompt(makeSendParams(prompt));
+
+      const subject = sendEmail.mock.calls[0][0].subject;
+      expect(subject).not.toContain("\n");
+      expect(subject).toBe("[Action] Injected: OK?");
+    });
+
+    it("strips Unicode line separators from subject", async () => {
+      sendEmail.mockClear();
+      const channel = emailChannel({
+        sendEmail,
+        callbackUrl: CALLBACK_URL,
+        signingSecret: SIGNING_SECRET,
+        defaultRecipient: "user@example.com",
+      });
+      const prompt: PromptConfig = {
+        type: "confirm",
+        text: "Approve?\u2028injected\u2029line",
+        confirmEvent: "YES",
+        cancelEvent: "NO",
+      };
+
+      await channel.sendPrompt(makeSendParams(prompt));
+
+      const subject = sendEmail.mock.calls[0][0].subject;
+      expect(subject).not.toContain("\u2028");
+      expect(subject).not.toContain("\u2029");
+      expect(subject).toBe("Approve? injected line");
+    });
+
     it("resolves dynamic text from function", async () => {
       sendEmail.mockClear();
       const channel = emailChannel({

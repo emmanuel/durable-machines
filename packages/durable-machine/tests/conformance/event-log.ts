@@ -5,7 +5,7 @@ import type { BackendFixture } from "../fixtures/helpers.js";
 
 export function eventLogConformance(backend: BackendFixture) {
   describe(`event-log [${backend.name}]`, () => {
-    const durable = backend.createMachine(orderMachine, { enableTransitionStream: true });
+    const durable = backend.createMachine(orderMachine, { enableAnalytics: true });
 
     beforeAll(() => backend.setup());
     afterAll(() => backend.teardown());

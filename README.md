@@ -194,7 +194,7 @@ Options:
 - **`maxWaitSeconds`** — max seconds to wait for events in durable states (default: 86400)
 - **`stepRetryPolicy`** — retry policy for invoke steps
 - **`channels`** — channel adapters for prompt delivery
-- **`enableTransitionStream`** — when `true`, records every state transition with timestamps for visualization (default: `false`)
+- **`enableAnalytics`** — when `true`, records every state transition with timestamps for visualization and analytics (default: `false`)
 
 Returns a `DurableMachine` with:
 

@@ -16,7 +16,7 @@ export function vizConformance(backend: BackendFixture) {
     const vizMachineNoStream = makeVizMachine("vizOrderNoStream");
 
     const durable = backend.createMachine(vizMachine, {
-      enableTransitionStream: true,
+      enableAnalytics: true,
     });
     const durableNoStream = backend.createMachine(vizMachineNoStream);
 

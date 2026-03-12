@@ -447,12 +447,12 @@ describe("PG Event Processor", () => {
       expect(row!.context).toMatchObject({ result: "auto" });
     });
 
-    it("records transition when enableTransitionStream is true", async () => {
+    it("records transition when enableAnalytics is true", async () => {
       const deps: EventProcessorOptions = {
         store,
         machine: simpleMachine,
         options: {},
-        enableTransitionStream: true,
+        enableAnalytics: true,
       };
 
       await processStartup(deps, "startup-ts", { value: "v" });

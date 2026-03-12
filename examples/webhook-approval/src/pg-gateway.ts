@@ -43,8 +43,8 @@ const pool = new pg.Pool({
 const store = createStore({ pool, useListenNotify: true });
 await store.ensureSchema();
 const machines = new Map<string, DurableMachine>();
-machines.set("approvals", createDurableMachine(approvalMachine, { pool, store, enableTransitionStream: true }));
-machines.set("recruiting", createDurableMachine(recruitingPipeline, { pool, store, enableTransitionStream: true }));
+machines.set("approvals", createDurableMachine(approvalMachine, { pool, store, enableAnalytics: true }));
+machines.set("recruiting", createDurableMachine(recruitingPipeline, { pool, store, enableAnalytics: true }));
 
 // Phase 2: context
 const ctx = await createPgGatewayContext(config, pool, {

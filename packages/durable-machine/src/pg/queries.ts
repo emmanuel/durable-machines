@@ -221,6 +221,59 @@ export const Q_INSERT_EFFECTS = {
          SELECT * FROM UNNEST($1::text[], $2::jsonb[], $3::text[], $4::jsonb[], $5::int[], $6::bigint[])`,
 } as const;
 
+// ─── Analytics ───────────────────────────────────────────────────────────────
+
+export const Q_STATE_DURATIONS = {
+  name: "dm_state_durations",
+  text: `SELECT t.to_state AS state_value, t.ts AS entered_at,
+                LEAD(t.ts) OVER (PARTITION BY t.instance_id ORDER BY t.seq) AS exited_at
+         FROM transition_log t
+         WHERE t.instance_id = $1
+         ORDER BY t.seq ASC`,
+} as const;
+
+export const Q_AGGREGATE_STATE_DURATIONS = {
+  name: "dm_agg_state_durations",
+  text: `WITH durations AS (
+           SELECT t.to_state AS state_value, t.ts AS entered_at,
+                  LEAD(t.ts) OVER (PARTITION BY t.instance_id ORDER BY t.seq) AS exited_at
+           FROM transition_log t
+           JOIN machine_instances mi ON t.instance_id = mi.id
+           WHERE mi.machine_name = $1
+         )
+         SELECT state_value,
+                AVG(exited_at - entered_at)::bigint AS avg_ms,
+                MIN(exited_at - entered_at)::bigint AS min_ms,
+                MAX(exited_at - entered_at)::bigint AS max_ms,
+                COUNT(*)::int AS count
+         FROM durations
+         WHERE exited_at IS NOT NULL
+         GROUP BY state_value`,
+} as const;
+
+export const Q_TRANSITION_COUNTS = {
+  name: "dm_transition_counts",
+  text: `SELECT t.from_state, t.to_state, t.event, COUNT(*)::int AS count
+         FROM transition_log t
+         JOIN machine_instances mi ON t.instance_id = mi.id
+         WHERE mi.machine_name = $1
+         GROUP BY t.from_state, t.to_state, t.event
+         ORDER BY count DESC`,
+} as const;
+
+export const Q_INSTANCE_SUMMARIES = {
+  name: "dm_instance_summaries",
+  text: `SELECT mi.id AS instance_id, mi.machine_name, mi.status,
+                mi.created_at AS started_at, mi.updated_at,
+                mi.state_value AS current_state,
+                COUNT(t.seq)::int AS total_transitions
+         FROM machine_instances mi
+         LEFT JOIN transition_log t ON t.instance_id = mi.id
+         WHERE mi.machine_name = $1
+         GROUP BY mi.id
+         ORDER BY mi.created_at DESC`,
+} as const;
+
 // ─── Client Queries ──────────────────────────────────────────────────────────
 
 export const Q_SEND_MACHINE_EVENT = {

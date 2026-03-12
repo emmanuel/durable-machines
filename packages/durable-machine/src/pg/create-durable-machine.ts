@@ -79,7 +79,7 @@ export function createDurableMachine<T extends AnyStateMachine>(
     store,
     machine,
     options,
-    enableTransitionStream: options.enableTransitionStream ?? false,
+    enableAnalytics: options.enableAnalytics ?? false,
     instruments,
   };
 
@@ -228,6 +228,15 @@ export function createDurableMachine<T extends AnyStateMachine>(
       });
       return rows.map(rowToStatus);
     },
+
+    getAnalytics: options.enableAnalytics
+      ? () => ({
+          getStateDurations: (instanceId: string) => store.getStateDurations(instanceId),
+          getAggregateStateDurations: () => store.getAggregateStateDurations(machine.id),
+          getTransitionCounts: () => store.getTransitionCounts(machine.id),
+          getInstanceSummaries: () => store.getInstanceSummaries(machine.id),
+        })
+      : undefined,
 
     async consumeAndProcess(instanceId: string): Promise<void> {
       await consumeAndProcessMessages(instanceId);

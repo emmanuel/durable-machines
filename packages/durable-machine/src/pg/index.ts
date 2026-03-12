@@ -5,6 +5,7 @@ export type {
   PgStore, PgStoreOptions, MachineRow, EffectOutboxRow, EventLogEntry,
   CreateInstanceParams, FinalizeParams, TransitionData,
   RecordInvokeResultParams, InsertEffectsParams,
+  StateDurationRow, AggregateStateDuration, TransitionCountRow, InstanceSummaryRow,
 } from "./store.js";
 export { createStoreInstruments } from "./store-metrics.js";
 export type { StoreInstruments } from "./store-metrics.js";

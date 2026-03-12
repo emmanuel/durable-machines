@@ -219,8 +219,72 @@ export interface DurableMachine<T extends AnyStateMachine = AnyStateMachine> {
   /** List machine instances, optionally filtered by status. */
   list(filter?: { status?: InstanceStatus | string }): Promise<DurableMachineStatus[]>;
 
+  /** Return analytics queries for this machine's transition log, or `undefined` if analytics are not enabled. */
+  getAnalytics?(): {
+    getStateDurations(instanceId: string): Promise<StateDurationRow[]>;
+    getAggregateStateDurations(): Promise<AggregateStateDuration[]>;
+    getTransitionCounts(): Promise<TransitionCountRow[]>;
+    getInstanceSummaries(): Promise<InstanceSummaryRow[]>;
+  };
+
   /** The underlying XState machine definition. */
   readonly machine: T;
+}
+
+// ─── Analytics Result Types ─────────────────────────────────────────────────
+
+/** A single state duration entry for a specific instance. */
+export interface StateDurationRow {
+  /** The state value entered. */
+  stateValue: StateValue;
+  /** Unix epoch timestamp (milliseconds) when the state was entered. */
+  enteredAt: number;
+  /** Unix epoch timestamp (milliseconds) when the state was exited, or `null` if still active. */
+  exitedAt: number | null;
+}
+
+/** Aggregate state duration statistics across all instances of a machine. */
+export interface AggregateStateDuration {
+  /** The state value measured. */
+  stateValue: StateValue;
+  /** Average time spent in this state (milliseconds). */
+  avgMs: number;
+  /** Minimum time spent in this state (milliseconds). */
+  minMs: number;
+  /** Maximum time spent in this state (milliseconds). */
+  maxMs: number;
+  /** Number of completed visits to this state. */
+  count: number;
+}
+
+/** Counts of transitions grouped by from_state, to_state, and event. */
+export interface TransitionCountRow {
+  /** The source state, or `null` for the initial transition. */
+  fromState: StateValue | null;
+  /** The target state. */
+  toState: StateValue;
+  /** The event that triggered the transition, or `null`. */
+  event: string | null;
+  /** Number of times this transition occurred. */
+  count: number;
+}
+
+/** Per-instance summary including lifecycle status and transition count. */
+export interface InstanceSummaryRow {
+  /** The unique instance ID. */
+  instanceId: string;
+  /** The registered machine name. */
+  machineName: string;
+  /** Current lifecycle status. */
+  status: string;
+  /** Unix epoch timestamp (milliseconds) when the instance was created. */
+  startedAt: number;
+  /** Unix epoch timestamp (milliseconds) of the last update. */
+  updatedAt: number;
+  /** Current state value. */
+  currentState: StateValue;
+  /** Total number of transitions recorded. */
+  totalTransitions: number;
 }
 
 /** Metadata for a single durable step executed within a workflow. */
@@ -424,8 +488,8 @@ export interface DurableMachineOptions {
   stepRetryPolicy?: StepRetryPolicy;
   /** Channel adapters for delivering prompts to external systems (Slack, email, console, etc.). */
   channels?: ChannelAdapter[];
-  /** When `true`, the workflow emits a transition stream that visualization tools can subscribe to. */
-  enableTransitionStream?: boolean;
+  /** When `true`, records every state transition with timestamps for visualization and analytics. */
+  enableAnalytics?: boolean;
   /** Maximum time in ms to wait for a single actor invocation before treating it as an error. @defaultValue `30000` (30 seconds) */
   invokeTimeoutMs?: number;
   /** Registry of effect handlers. When provided, effects declared via `durableState({ effects: [...] })` are executed via the transactional outbox. */

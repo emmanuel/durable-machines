@@ -12,7 +12,7 @@ await startPgWorker({
   pg,
   worker,
   machines: {
-    approvals: { machine: approvalMachine, options: { channels: [consoleChannel()], enableTransitionStream: true } },
-    recruiting: { machine: recruitingPipeline, options: { channels: [consoleChannel()], enableTransitionStream: true } },
+    approvals: { machine: approvalMachine, options: { channels: [consoleChannel()], enableAnalytics: true } },
+    recruiting: { machine: recruitingPipeline, options: { channels: [consoleChannel()], enableAnalytics: true } },
   },
 });

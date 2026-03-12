@@ -195,6 +195,61 @@ export function createRestApi(options: RestApiOptions): Hono {
     return c.json(events);
   });
 
+  // ── Analytics routes ──────────────────────────────────────────────────
+
+  // GET /machines/:machineId/instances/analytics/state-durations — aggregate state durations
+  r.get("/analytics/state-durations", async (c) => {
+    const machineId = c.req.param("machineId")!;
+    const durable = machines.get(machineId);
+    if (!durable) return c.json({ error: "Machine not found" }, 404);
+
+    const analytics = durable.getAnalytics?.();
+    if (!analytics) return c.json({ error: "Analytics not enabled for this machine" }, 404);
+
+    const durations = await analytics.getAggregateStateDurations();
+    return c.json(durations);
+  });
+
+  // GET /machines/:machineId/instances/analytics/transitions — transition count heatmap
+  r.get("/analytics/transitions", async (c) => {
+    const machineId = c.req.param("machineId")!;
+    const durable = machines.get(machineId);
+    if (!durable) return c.json({ error: "Machine not found" }, 404);
+
+    const analytics = durable.getAnalytics?.();
+    if (!analytics) return c.json({ error: "Analytics not enabled for this machine" }, 404);
+
+    const counts = await analytics.getTransitionCounts();
+    return c.json(counts);
+  });
+
+  // GET /machines/:machineId/instances/analytics/summary — per-instance lifecycle summaries
+  r.get("/analytics/summary", async (c) => {
+    const machineId = c.req.param("machineId")!;
+    const durable = machines.get(machineId);
+    if (!durable) return c.json({ error: "Machine not found" }, 404);
+
+    const analytics = durable.getAnalytics?.();
+    if (!analytics) return c.json({ error: "Analytics not enabled for this machine" }, 404);
+
+    const summaries = await analytics.getInstanceSummaries();
+    return c.json(summaries);
+  });
+
+  // GET /machines/:machineId/instances/:instanceId/analytics/durations — state durations for a single instance
+  r.get("/:instanceId/analytics/durations", async (c) => {
+    const machineId = c.req.param("machineId")!;
+    const instanceId = c.req.param("instanceId")!;
+    const durable = machines.get(machineId);
+    if (!durable) return c.json({ error: "Machine not found" }, 404);
+
+    const analytics = durable.getAnalytics?.();
+    if (!analytics) return c.json({ error: "Analytics not enabled for this machine" }, 404);
+
+    const durations = await analytics.getStateDurations(instanceId);
+    return c.json(durations);
+  });
+
   // DELETE /machines/:machineId/instances/:instanceId — cancel
   r.delete("/:instanceId", async (c) => {
     const machineId = c.req.param("machineId")!;

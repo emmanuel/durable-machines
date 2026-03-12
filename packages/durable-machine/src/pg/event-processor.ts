@@ -28,7 +28,7 @@ export interface EventProcessorOptions {
   store: PgStore;
   machine: AnyStateMachine;
   options: DurableMachineOptions;
-  enableTransitionStream?: boolean;
+  enableAnalytics?: boolean;
   instruments?: StoreInstruments;
 }
 
@@ -161,7 +161,7 @@ export async function processStartup(
   instanceId: string,
   input: Record<string, unknown>,
 ): Promise<void> {
-  const { store, machine, options, enableTransitionStream } = deps;
+  const { store, machine, options, enableAnalytics } = deps;
   const channels = options.channels ?? [];
   const now = Date.now();
 
@@ -211,7 +211,7 @@ export async function processStartup(
   }
 
   // Transition log
-  if (enableTransitionStream) {
+  if (enableAnalytics) {
     await store.appendTransition(instanceId, null, snapshot.value, null, now);
   }
 
@@ -240,7 +240,7 @@ async function finalize(
   eventSeq: number,
   firedDelays: Array<string | number>,
 ): Promise<void> {
-  const { store, machine, options, enableTransitionStream } = deps;
+  const { store, machine, options, enableAnalytics } = deps;
   const channels = options.channels ?? [];
 
   // Compute wakeAt + wakeEvent
@@ -264,7 +264,7 @@ async function finalize(
   const stateChanged = !stateValueEquals(prevStateValue, current.value);
 
   // Atomic: state change + cursor advance (+ transition log if applicable)
-  if (enableTransitionStream && stateChanged) {
+  if (enableAnalytics && stateChanged) {
     await store.finalizeWithTransition({
       client, instanceId,
       stateValue: current.value, context: current.context as Record<string, unknown>,

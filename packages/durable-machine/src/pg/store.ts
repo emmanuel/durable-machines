@@ -17,6 +17,10 @@ import {
   Q_GET_EVENT_LOG, Q_GET_EVENT_LOG_AFTER, Q_GET_EVENT_LOG_LIMIT,
   Q_GET_EVENT_LOG_AFTER_LIMIT,
   Q_INSERT_EFFECTS,
+  Q_STATE_DURATIONS,
+  Q_AGGREGATE_STATE_DURATIONS,
+  Q_TRANSITION_COUNTS,
+  Q_INSTANCE_SUMMARIES,
 } from "./queries.js";
 import { DurableMachineError } from "../types.js";
 import type {
@@ -24,12 +28,14 @@ import type {
   CreateInstanceParams, FinalizeParams, TransitionData,
   RecordInvokeResultParams, InsertEffectsParams,
   EventLogEntry, EffectOutboxRow,
+  StateDurationRow, AggregateStateDuration, TransitionCountRow, InstanceSummaryRow,
 } from "./store-types.js";
 
 export type {
   PgStoreOptions, MachineRow, EventLogEntry, EffectOutboxRow,
   CreateInstanceParams, FinalizeParams, TransitionData,
   RecordInvokeResultParams, InsertEffectsParams, PgStore,
+  StateDurationRow, AggregateStateDuration, TransitionCountRow, InstanceSummaryRow,
 } from "./store-types.js";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -505,6 +511,59 @@ export function createStore(options: PgStoreOptions): PgStore {
     return rowCount ?? 0;
   }
 
+  // ── Analytics ───────────────────────────────────────────────────────
+
+  async function getStateDurations(instanceId: string): Promise<StateDurationRow[]> {
+    const t = qStart();
+    const { rows } = await pool.query({ ...Q_STATE_DURATIONS, values: [instanceId] });
+    qEnd(Q_STATE_DURATIONS.name, t);
+    return rows.map((r: any): StateDurationRow => ({
+      stateValue: r.state_value as StateValue,
+      enteredAt: Number(r.entered_at),
+      exitedAt: r.exited_at != null ? Number(r.exited_at) : null,
+    }));
+  }
+
+  async function getAggregateStateDurations(machineName: string): Promise<AggregateStateDuration[]> {
+    const t = qStart();
+    const { rows } = await pool.query({ ...Q_AGGREGATE_STATE_DURATIONS, values: [machineName] });
+    qEnd(Q_AGGREGATE_STATE_DURATIONS.name, t);
+    return rows.map((r: any): AggregateStateDuration => ({
+      stateValue: r.state_value as StateValue,
+      avgMs: Number(r.avg_ms),
+      minMs: Number(r.min_ms),
+      maxMs: Number(r.max_ms),
+      count: Number(r.count),
+    }));
+  }
+
+  async function getTransitionCounts(machineName: string): Promise<TransitionCountRow[]> {
+    const t = qStart();
+    const { rows } = await pool.query({ ...Q_TRANSITION_COUNTS, values: [machineName] });
+    qEnd(Q_TRANSITION_COUNTS.name, t);
+    return rows.map((r: any): TransitionCountRow => ({
+      fromState: r.from_state as StateValue | null,
+      toState: r.to_state as StateValue,
+      event: r.event as string | null,
+      count: Number(r.count),
+    }));
+  }
+
+  async function getInstanceSummaries(machineName: string): Promise<InstanceSummaryRow[]> {
+    const t = qStart();
+    const { rows } = await pool.query({ ...Q_INSTANCE_SUMMARIES, values: [machineName] });
+    qEnd(Q_INSTANCE_SUMMARIES.name, t);
+    return rows.map((r: any): InstanceSummaryRow => ({
+      instanceId: r.instance_id,
+      machineName: r.machine_name,
+      status: r.status,
+      startedAt: Number(r.started_at),
+      updatedAt: Number(r.updated_at),
+      currentState: r.current_state as StateValue,
+      totalTransitions: Number(r.total_transitions),
+    }));
+  }
+
   // ── LISTEN/NOTIFY ─────────────────────────────────────────────────────
 
   const listener = createListenNotify(pool, useListenNotify);
@@ -537,6 +596,10 @@ export function createStore(options: PgStoreOptions): PgStore {
     markEffectFailed,
     listEffects,
     resetStaleEffects,
+    getStateDurations,
+    getAggregateStateDurations,
+    getTransitionCounts,
+    getInstanceSummaries,
     startListening: listener.startListening,
     stopListening: listener.stopListening,
     close: listener.stopListening,

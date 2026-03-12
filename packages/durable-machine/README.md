@@ -184,7 +184,7 @@ Options:
 | `maxWaitSeconds` | `number` | `300` | Max seconds to wait for events in durable states |
 | `stepRetryPolicy` | `StepRetryPolicy` | `{ maxAttempts: 3 }` | Retry policy for invoke steps |
 | `channels` | `ChannelAdapter[]` | `[]` | Channel adapters for prompt delivery |
-| `enableTransitionStream` | `boolean` | `false` | Record every transition with timestamps for visualization |
+| `enableAnalytics` | `boolean` | `false` | Record every transition with timestamps for visualization and analytics |
 
 Returns a `DurableMachine` with:
 

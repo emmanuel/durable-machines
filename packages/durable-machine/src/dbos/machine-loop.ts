@@ -32,7 +32,7 @@ export function createMachineLoop(
 ) {
   const actorImpls = extractActorImplementations(machine);
   const channels: ChannelAdapter[] = options.channels ?? [];
-  const enableTransitionStream = options.enableTransitionStream ?? false;
+  const enableAnalytics = options.enableAnalytics ?? false;
   const effectHandlers = options.effectHandlers;
   const effectRetryPolicy = options.effectRetryPolicy;
 
@@ -70,7 +70,7 @@ export function createMachineLoop(
 
     // Transition history (opt-in)
     const transitions: TransitionRecord[] = [];
-    if (enableTransitionStream) {
+    if (enableAnalytics) {
       const initTs = await DBOS.now();
       transitions.push({ from: null, to: snapshot.value, ts: initTs });
       await DBOS.setEvent("xstate.transitions", transitions);
@@ -84,14 +84,14 @@ export function createMachineLoop(
     // Helper: persist state + transitions at boundary points
     async function persistSnapshot() {
       await DBOS.setEvent("xstate.state", serializeSnapshot(snapshot));
-      if (enableTransitionStream) {
+      if (enableAnalytics) {
         await DBOS.setEvent("xstate.transitions", transitions);
       }
     }
 
     // Helper: record a transition in-memory (flushed at boundaries)
     async function recordTransition(from: import("xstate").StateValue, to: import("xstate").StateValue) {
-      if (enableTransitionStream) {
+      if (enableAnalytics) {
         const ts = await DBOS.now();
         transitions.push({ from, to, ts });
       }

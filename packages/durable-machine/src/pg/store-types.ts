@@ -96,6 +96,39 @@ export interface InsertEffectsParams {
   maxAttempts?: number;
 }
 
+// ─── Analytics Result Types ──────────────────────────────────────────────────
+
+export interface StateDurationRow {
+  stateValue: StateValue;
+  enteredAt: number;
+  exitedAt: number | null;
+}
+
+export interface AggregateStateDuration {
+  stateValue: StateValue;
+  avgMs: number;
+  minMs: number;
+  maxMs: number;
+  count: number;
+}
+
+export interface TransitionCountRow {
+  fromState: StateValue | null;
+  toState: StateValue;
+  event: string | null;
+  count: number;
+}
+
+export interface InstanceSummaryRow {
+  instanceId: string;
+  machineName: string;
+  status: string;
+  startedAt: number;
+  updatedAt: number;
+  currentState: StateValue;
+  totalTransitions: number;
+}
+
 export interface PgStore {
   // Transaction management
   withTransaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T>;
@@ -184,6 +217,12 @@ export interface PgStore {
   listEffects(instanceId: string): Promise<EffectOutboxRow[]>;
   /** Reset effects stuck in "executing" since before `olderThanMs` back to "pending". Returns count of reset rows. */
   resetStaleEffects(olderThanMs: number): Promise<number>;
+
+  // Analytics (read-only, query transition_log directly)
+  getStateDurations(instanceId: string): Promise<StateDurationRow[]>;
+  getAggregateStateDurations(machineName: string): Promise<AggregateStateDuration[]>;
+  getTransitionCounts(machineName: string): Promise<TransitionCountRow[]>;
+  getInstanceSummaries(machineName: string): Promise<InstanceSummaryRow[]>;
 
   // LISTEN/NOTIFY
   startListening(

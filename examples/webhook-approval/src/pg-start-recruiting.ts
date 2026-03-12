@@ -9,7 +9,7 @@ const role = process.argv[3] || "Senior Engineer";
 const pg = parsePgConfig();
 const ctx = createPgWorkerContext(pg);
 
-const dm = ctx.register(recruitingPipeline, { channels: [consoleChannel()], enableTransitionStream: true });
+const dm = ctx.register(recruitingPipeline, { channels: [consoleChannel()], enableAnalytics: true });
 
 const handle = await dm.start(`recruit-${Date.now()}`, {
   candidateName,

@@ -9,8 +9,6 @@ export interface RestApiOptions {
   machines: MachineRegistry;
   /** Base path prefix for all routes. @defaultValue `""` */
   basePath?: string;
-  /** Enable URL-as-API shorthand routes (single-machine mode). @defaultValue `false` */
-  shorthand?: boolean;
 }
 
 /** HATEOAS links included in every state response. */

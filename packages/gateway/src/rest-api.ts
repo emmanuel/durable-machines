@@ -29,7 +29,7 @@ import { toStateResponse } from "./hateoas.js";
 const ID_PATTERN = /^[\w.:-]{1,256}$/;
 
 export function createRestApi(options: RestApiOptions): Hono {
-  const { machines, basePath = "", shorthand = false } = options;
+  const { machines, basePath = "" } = options;
   const app = new Hono();
 
   // ── Global error handler ────────────────────────────────────────────────
@@ -208,46 +208,6 @@ export function createRestApi(options: RestApiOptions): Hono {
 
   const prefix = basePath ? `${basePath}/machines/:machineId/instances` : "/machines/:machineId/instances";
   app.route(prefix, r);
-
-  // ── Shorthand routes ────────────────────────────────────────────────────
-
-  if (shorthand) {
-    if (machines.size !== 1) {
-      throw new Error("Shorthand mode requires exactly one machine in the registry");
-    }
-
-    const [machineId, durable] = [...machines.entries()][0];
-    const sp = basePath || "";
-
-    // GET /:instanceId — read state
-    app.get(`${sp}/:instanceId`, async (c) => {
-      const instanceId = c.req.param("instanceId")!;
-      const snapshot = await durable.get(instanceId).getState();
-      if (!snapshot) return c.json({ error: "Not found" }, 404);
-      return c.json(toStateResponse(durable, { basePath: sp, machineId, instanceId }, snapshot));
-    });
-
-    // POST /:instanceId/:event — send event
-    app.post(`${sp}/:instanceId/:event`, async (c) => {
-      const instanceId = c.req.param("instanceId")!;
-      const event = c.req.param("event")!;
-      const handle = durable.get(instanceId);
-      await handle.send({ type: event });
-      const snapshot = await handle.getState();
-      if (!snapshot) return c.json({ error: "Not found" }, 404);
-      return c.json(toStateResponse(durable, { basePath: sp, machineId, instanceId }, snapshot));
-    });
-
-    // POST /:instanceId — start instance
-    app.post(`${sp}/:instanceId`, async (c) => {
-      const instanceId = c.req.param("instanceId")!;
-      const { input } = await c.req.json<{ input?: Record<string, unknown> }>();
-      const handle = await durable.start(instanceId, input ?? {});
-      const snapshot = await handle.getState();
-      if (!snapshot) return c.json({ error: "Not found" }, 404);
-      return c.json(toStateResponse(durable, { basePath: sp, machineId, instanceId }, snapshot), 201);
-    });
-  }
 
   return app;
 }

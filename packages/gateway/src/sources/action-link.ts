@@ -41,21 +41,22 @@ export function actionLinkSource(
         );
       }
 
-      // Timestamp-based replay protection
-      if (t) {
-        const createdAt = parseInt(t, 10);
-        if (Number.isNaN(createdAt)) {
-          throw new WebhookVerificationError("Invalid timestamp", "action-link");
-        }
-        if (Date.now() - createdAt > maxAgeMs) {
-          throw new WebhookVerificationError("Action link expired", "action-link");
-        }
-        // Verify signature covers timestamp
-        verifyHmac("sha256", signingSecret, `${workflowId}:${event}:${createdAt}`, sig, "action-link");
-      } else {
-        // Legacy links without timestamp — verify but warn
-        verifyHmac("sha256", signingSecret, workflowId + event, sig, "action-link");
+      if (!t) {
+        throw new WebhookVerificationError(
+          "Missing timestamp — unsigned action links are not accepted",
+          "action-link",
+        );
       }
+
+      const createdAt = parseInt(t, 10);
+      if (Number.isNaN(createdAt)) {
+        throw new WebhookVerificationError("Invalid timestamp", "action-link");
+      }
+      if (Date.now() - createdAt > maxAgeMs) {
+        throw new WebhookVerificationError("Action link expired", "action-link");
+      }
+
+      verifyHmac("sha256", signingSecret, `${workflowId}:${event}:${createdAt}`, sig, "action-link");
     },
 
     async parse(req: RawRequest): Promise<ActionLinkPayload> {

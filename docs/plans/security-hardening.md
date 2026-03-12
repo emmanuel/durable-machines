@@ -1,15 +1,26 @@
 # Plan: Security Hardening
 
-## Status: Proposed
+## Status: In Progress
 
 Full-stack remediation of vulnerabilities identified through security audit of the
 gateway, worker, durable-machine, and dashboard packages. Organized into eight
 work streams, each independently shippable. Phases are ordered by blast radius —
 earlier phases block production readiness; later phases are defense-in-depth.
 
+### Completed
+
+| Phase | What shipped | Commit |
+|-------|-------------|--------|
+| 1 | Request body limits (1 MB cap in `rawBody()`) | `c05e608` |
+| 4 | Action link replay protection (timestamped HMAC, 24h expiry, legacy mode removed) | `c05e608`, current |
+| 6 (partial) | Pluggable `GatewaySecurityOptions` (`restAuth`, `dashboardAuth`), SSE connection limits | `c05e608` |
+| 8 (partial) | `ID_PATTERN` validation, status filter allowlist, event log pagination with bounds checking, NOTIFY payload validation | `c05e608` |
+| — | Shorthand routes removed (bypassed `ID_PATTERN` validation) | current |
+| — | `restShorthand` option removed from `RestApiOptions` and `GatewayContextOptions` | current |
+
 ---
 
-## Phase 1: Request Body Limits and DoS Prevention
+## Phase 1: Request Body Limits and DoS Prevention ✅
 
 ### Problem
 
@@ -192,7 +203,7 @@ function constantTimeCompare(a: Buffer, b: Buffer): boolean {
 
 ---
 
-## Phase 4: Action Link Replay Protection
+## Phase 4: Action Link Replay Protection ✅
 
 ### Problem
 
@@ -722,16 +733,16 @@ on missing values.
 
 ## Summary
 
-| Phase | Scope | Severity Addressed | Files |
-|-------|-------|-------------------|-------|
-| 1 | Request body limits | Critical (DoS) | middleware.ts, gateway.ts, store.ts |
-| 2 | Timestamp NaN bypass | High (Replay) | stripe.ts, slack.ts, slack-slash.ts, linear.ts |
-| 3 | Timing side-channels | High (Crypto) | stripe.ts, slack.ts, slack-slash.ts, twilio.ts, xapi.ts |
-| 4 | Action link replay | High (Replay) | email.ts, action-link.ts |
-| 5 | Email header injection | Critical (Injection) | email.ts |
-| 6 | Auth + SSE limits | Critical (AuthZ, DoS) | lifecycle.ts, types.ts, admin.ts, routes.ts, generic.ts, xapi.ts |
-| 7 | Worker resilience | High (DoS, Data loss) | create-durable-machine.ts, event-processor.ts, lifecycle.ts, store.ts, queries.ts |
-| 8 | Defense-in-depth | Medium (Various) | rest-api.ts, routes.ts, store.ts, html.ts, client.ts, slack-slash.ts, config.ts |
+| Phase | Scope | Severity | Status | Files |
+|-------|-------|----------|--------|-------|
+| 1 | Request body limits | Critical (DoS) | **Done** | middleware.ts, gateway.ts, store.ts |
+| 2 | Timestamp NaN bypass | High (Replay) | Open | stripe.ts, slack.ts, slack-slash.ts, linear.ts |
+| 3 | Timing side-channels | High (Crypto) | Open | stripe.ts, slack.ts, slack-slash.ts, twilio.ts, xapi.ts |
+| 4 | Action link replay | High (Replay) | **Done** | email.ts, action-link.ts |
+| 5 | Email header injection | Critical (Injection) | Open | email.ts |
+| 6 | Auth + SSE limits | Critical (AuthZ, DoS) | **Partial** | lifecycle.ts, types.ts, admin.ts, routes.ts, generic.ts, xapi.ts |
+| 7 | Worker resilience | High (DoS, Data loss) | Open | create-durable-machine.ts, event-processor.ts, lifecycle.ts, store.ts, queries.ts |
+| 8 | Defense-in-depth | Medium (Various) | **Partial** | rest-api.ts, routes.ts, store.ts, html.ts, client.ts, slack-slash.ts, config.ts |
 
 ### Verification
 

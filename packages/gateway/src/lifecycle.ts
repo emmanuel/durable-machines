@@ -99,8 +99,6 @@ export interface GatewayContextOptions {
   machines?: MachineRegistry;
   /** Base path prefix for REST API routes. @defaultValue `""` */
   restBasePath?: string;
-  /** Enable URL-as-API shorthand routes for the REST API (single-machine mode). @defaultValue `false` */
-  restShorthand?: boolean;
   /** Mount the server-rendered dashboard at this path. Set to `false` to disable. @defaultValue `"/dashboard"` */
   dashboardPath?: string | false;
   /** Optional PgStore — enables NOTIFY-driven SSE for the dashboard instead of polling. */
@@ -132,7 +130,6 @@ export async function createGatewayContext(
     const restApi = createRestApi({
       machines: options.machines,
       basePath: options.restBasePath,
-      shorthand: options.restShorthand,
     });
     if (options.security?.restAuth) {
       restApi.use("*", options.security.restAuth);

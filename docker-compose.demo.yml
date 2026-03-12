@@ -1,0 +1,37 @@
+services:
+  postgres:
+    image: postgres:17
+    ports:
+      - "5442:5432"
+    environment:
+      POSTGRES_USER: durable_xstate
+      POSTGRES_PASSWORD: durable_xstate
+      POSTGRES_DB: durable_xstate_test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U durable_xstate -d durable_xstate_test"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+    tmpfs:
+      - /var/lib/postgresql/data
+
+  worker:
+    build: .
+    command: node examples/webhook-approval/dist/pg-worker.js
+    environment:
+      DATABASE_URL: postgresql://durable_xstate:durable_xstate@postgres:5432/durable_xstate_test
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  gateway:
+    build: .
+    command: node examples/webhook-approval/dist/pg-gateway.js
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://durable_xstate:durable_xstate@postgres:5432/durable_xstate_test
+      SLACK_SIGNING_SECRET: dummy
+    depends_on:
+      worker:
+        condition: service_started

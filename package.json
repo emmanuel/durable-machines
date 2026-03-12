@@ -15,6 +15,9 @@
     "lint:deps": "depcruise packages/*/src --config .dependency-cruiser.mjs",
     "lint:complexity": "fta packages/ --config-path fta.json",
     "lint:arch": "pnpm lint:deps && pnpm lint:complexity",
+    "demo": "pnpm --filter @durable-xstate/example-webhook-approval pg:demo",
+    "demo:up": "docker compose -f docker-compose.demo.yml up -d --build --wait",
+    "demo:down": "docker compose -f docker-compose.demo.yml down",
     "db:up": "docker compose up -d --wait",
     "db:down": "docker compose down"
   },

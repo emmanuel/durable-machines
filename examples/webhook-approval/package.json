@@ -12,6 +12,7 @@
     "pg:gateway": "tsx src/pg-gateway.ts",
     "pg:start-workflow": "tsx src/pg-start-workflow.ts",
     "pg:start-recruiting": "tsx src/pg-start-recruiting.ts",
+    "pg:demo": "DATABASE_URL=${DATABASE_URL:-postgresql://durable_xstate:durable_xstate@localhost:5442/durable_xstate_test} SLACK_SIGNING_SECRET=${SLACK_SIGNING_SECRET:-dummy} tsx src/pg-demo.ts",
     "start-recruiting": "tsx src/start-recruiting.ts"
   },
   "dependencies": {

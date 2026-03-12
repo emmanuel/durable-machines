@@ -4,10 +4,7 @@ import type { StoreInstruments } from "../../../src/pg/index.js";
 import type { PgDurableMachine } from "../../../src/pg/create-durable-machine.js";
 import type { BackendFixture } from "../../fixtures/helpers.js";
 import type { EffectHandler, ResolvedEffect } from "../../../src/effects.js";
-
-const TEST_DB_URL =
-  process.env.PG_TEST_DATABASE_URL ??
-  "postgresql://xstate_dbos:xstate_dbos@localhost:5442/xstate_dbos_test";
+import { TEST_DB_URL } from "../../test-db.js";
 
 export function createPgFixture(opts?: {
   useBatchProcessing?: boolean;

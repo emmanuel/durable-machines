@@ -2,14 +2,11 @@ import { DBOS } from "@dbos-inc/dbos-sdk";
 import { createDurableMachine, getVisualizationState } from "../../../src/dbos/index.js";
 import { vizConformance } from "../../conformance/visualization.js";
 import type { BackendFixture } from "../../fixtures/helpers.js";
-
-const SYSTEM_DB_URL =
-  process.env.DBOS_SYSTEM_DATABASE_URL ??
-  "postgresql://xstate_dbos:xstate_dbos@localhost:5442/xstate_dbos_test";
+import { DBOS_SYSTEM_DB_URL } from "../../test-db.js";
 
 DBOS.setConfig({
   name: "visualization-test",
-  systemDatabaseUrl: SYSTEM_DB_URL,
+  systemDatabaseUrl: DBOS_SYSTEM_DB_URL,
 });
 
 const dbosFixture: BackendFixture = {

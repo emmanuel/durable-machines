@@ -1,0 +1,14 @@
+{
+  extends: ["config:recommended", "helpers:pinGitHubActionDigests"],
+  lockFileMaintenance: { enabled: true },
+  minimumReleaseAge: "14 days",
+  dependencyDashboard: true,
+  packageRules: [
+    { matchManagers: ["github-actions"], minimumReleaseAge: "0 days" },
+    { groupName: "xstate", matchPackageNames: ["xstate"] },
+    { groupName: "opentelemetry", matchPackageNames: ["@opentelemetry/**"] },
+    { groupName: "hono", matchPackageNames: ["hono", "@hono/**"] },
+    { groupName: "node toolchain", matchDepTypes: ["engines", "packageManager"], matchPackageNames: ["node", "pnpm"], rangeStrategy: "bump" },
+    { groupName: "all npm patch dependencies", matchDatasources: ["npm"], matchUpdateTypes: ["patch"] }
+  ]
+}

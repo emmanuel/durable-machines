@@ -11,8 +11,10 @@ import {
   startPgGateway,
 } from "@durable-xstate/gateway/pg";
 import type { SlackInteractivePayload } from "@durable-xstate/gateway";
+import type { DurableMachine } from "@durable-xstate/durable-machine";
 import { createDurableMachine, createStore } from "@durable-xstate/durable-machine/pg";
 import { approvalMachine } from "./machine.js";
+import { recruitingPipeline } from "./recruiting-pipeline.js";
 
 function requireEnv(name: string): string {
   const val = process.env[name];
@@ -40,8 +42,9 @@ const pool = new pg.Pool({
 // Register machines for the dashboard + REST API
 const store = createStore({ pool, useListenNotify: true });
 await store.ensureSchema();
-const dm = createDurableMachine(approvalMachine, { pool, store, enableTransitionStream: true });
-const machines = new Map([["approvals", dm]]);
+const machines = new Map<string, DurableMachine>();
+machines.set("approvals", createDurableMachine(approvalMachine, { pool, store, enableTransitionStream: true }));
+machines.set("recruiting", createDurableMachine(recruitingPipeline, { pool, store, enableTransitionStream: true }));
 
 // Phase 2: context
 const ctx = await createPgGatewayContext(config, pool, {

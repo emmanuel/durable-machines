@@ -1,0 +1,27 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "01e3968fee6120b7b3c627eeeacebf287394bd6c",
+  "include-component-in-tag": true,
+  "include-v-in-tag": true,
+  "tag-separator": "/",
+  "separate-pull-requests": true,
+  "release-type": "node",
+  "packages": {
+    "packages/durable-machine": { "component": "durable-machine" },
+    "packages/gateway": { "component": "gateway" },
+    "packages/worker": { "component": "worker" }
+  },
+  "changelog-sections": [
+    { "type": "feat", "section": "Features" },
+    { "type": "fix", "section": "Bug Fixes" },
+    { "type": "revert", "section": "Reverts" },
+    { "type": "perf", "section": "Performance" },
+    { "type": "refactor", "section": "Refactors" },
+    { "type": "chore", "section": "Chores" },
+    { "type": "ci", "section": "Chores" },
+    { "type": "build", "section": "Chores" },
+    { "type": "style", "section": "Chores" },
+    { "type": "docs", "section": "Docs" },
+    { "type": "test", "section": "Tests" }
+  ]
+}

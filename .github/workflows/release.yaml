@@ -1,0 +1,71 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      durable-machine--release_created: ${{ steps.rp.outputs['packages/durable-machine--release_created'] }}
+      durable-machine--tag_name: ${{ steps.rp.outputs['packages/durable-machine--tag_name'] }}
+      gateway--release_created: ${{ steps.rp.outputs['packages/gateway--release_created'] }}
+      gateway--tag_name: ${{ steps.rp.outputs['packages/gateway--tag_name'] }}
+      worker--release_created: ${{ steps.rp.outputs['packages/worker--release_created'] }}
+      worker--tag_name: ${{ steps.rp.outputs['packages/worker--tag_name'] }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: rp
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-durable-machine:
+    needs: release-please
+    if: needs.release-please.outputs.durable-machine--release_created == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.durable-machine--tag_name }}
+      - uses: ./.github/actions/setup-pnpm
+      - run: pnpm -r build
+      - run: pnpm publish --provenance --access public --no-git-checks
+        working-directory: packages/durable-machine
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-gateway:
+    needs: release-please
+    if: needs.release-please.outputs.gateway--release_created == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.gateway--tag_name }}
+      - uses: ./.github/actions/setup-pnpm
+      - run: pnpm -r build
+      - run: pnpm publish --provenance --access public --no-git-checks
+        working-directory: packages/gateway
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-worker:
+    needs: release-please
+    if: needs.release-please.outputs.worker--release_created == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.worker--tag_name }}
+      - uses: ./.github/actions/setup-pnpm
+      - run: pnpm -r build
+      - run: pnpm publish --provenance --access public --no-git-checks
+        working-directory: packages/worker
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

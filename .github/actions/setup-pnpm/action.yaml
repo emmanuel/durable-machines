@@ -1,0 +1,13 @@
+name: Setup pnpm
+description: Install pnpm and Node, restore store cache
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@v4
+    - uses: actions/setup-node@v4
+      with:
+        node-version-file: .nvmrc
+        cache: pnpm
+        registry-url: https://registry.npmjs.org
+    - run: pnpm install --frozen-lockfile
+      shell: bash

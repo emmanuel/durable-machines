@@ -53,6 +53,15 @@ const ctx = await createDBOSGatewayContext(config, {
         ...payload.data,
       })),
     },
+    {
+      path: "/webhooks/recruiting",
+      source: genericSource<GenericPayload>(),
+      router: fieldRouter<GenericPayload>((payload) => payload.workflowId || null),
+      transform: directTransform<GenericPayload>((payload) => ({
+        type: payload.event || "UNKNOWN",
+        ...payload.data,
+      })),
+    },
   ],
 });
 

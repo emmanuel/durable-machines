@@ -10,7 +10,9 @@
     "start-workflow": "tsx src/start-workflow.ts",
     "pg:worker": "tsx src/pg-worker.ts",
     "pg:gateway": "tsx src/pg-gateway.ts",
-    "pg:start-workflow": "tsx src/pg-start-workflow.ts"
+    "pg:start-workflow": "tsx src/pg-start-workflow.ts",
+    "pg:start-recruiting": "tsx src/pg-start-recruiting.ts",
+    "start-recruiting": "tsx src/start-recruiting.ts"
   },
   "dependencies": {
     "@durable-xstate/durable-machine": "workspace:*",

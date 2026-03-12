@@ -13,6 +13,7 @@ import type { ResourceMetrics, HistogramMetricData } from "@opentelemetry/sdk-me
 import { durableState } from "../../../src/durable-state.js";
 import { createPgFixture } from "./fixture.js";
 import { snapshotPgStats, diffPgStats, formatPgStats } from "./pg-stat-collector.js";
+import { TEST_DB_URL } from "../../test-db.js";
 
 /**
  * Scaled throughput benchmarks — tests pool size and concurrency limiting
@@ -21,10 +22,6 @@ import { snapshotPgStats, diffPgStats, formatPgStats } from "./pg-stat-collector
  * Instruments the PG store with OTel metrics and queries pg_stat views
  * for full visibility into query timing, pool utilization, and PG internals.
  */
-
-const TEST_DB_URL =
-  process.env.PG_TEST_DATABASE_URL ??
-  "postgresql://xstate_dbos:xstate_dbos@localhost:5442/xstate_dbos_test";
 
 const machine = setup({
   types: {

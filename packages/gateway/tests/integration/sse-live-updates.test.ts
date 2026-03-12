@@ -170,9 +170,7 @@ async function sseWithAction(
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-const TEST_DB_URL =
-  process.env.PG_TEST_DATABASE_URL ??
-  "postgresql://xstate_dbos:xstate_dbos@localhost:5442/xstate_dbos_test";
+import { TEST_DB_URL } from "../test-db.js";
 
 function post(app: Hono, path: string, body: unknown) {
   return app.request(path, {

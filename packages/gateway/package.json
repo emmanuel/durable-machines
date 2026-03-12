@@ -109,12 +109,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/emmanuel/xstate-dbos.git",
+    "url": "https://github.com/emmanuel/durable-xstate.git",
     "directory": "packages/gateway"
   },
-  "homepage": "https://github.com/emmanuel/xstate-dbos/tree/main/packages/gateway",
+  "homepage": "https://github.com/emmanuel/durable-xstate/tree/main/packages/gateway",
   "bugs": {
-    "url": "https://github.com/emmanuel/xstate-dbos/issues"
+    "url": "https://github.com/emmanuel/durable-xstate/issues"
   },
   "author": "Emmanuel Gomez",
   "dependencies": {
@@ -146,6 +146,7 @@
     "pg": "^8.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
+    "vite": "^7.3.1",
     "vitest": "^4.0.18",
     "xstate": "^5.19.0"
   }

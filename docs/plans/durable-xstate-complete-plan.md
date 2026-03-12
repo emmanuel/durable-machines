@@ -808,7 +808,7 @@ DBOS Conductor solves this in hosted deployments. For self-hosted, we build the 
 One table:
 
 ```sql
-CREATE TABLE IF NOT EXISTS xstate_dbos_executors (
+CREATE TABLE IF NOT EXISTS durable_xstate_executors (
   executor_id    TEXT PRIMARY KEY,
   last_heartbeat TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   started_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -826,7 +826,7 @@ WITH reaper_lock AS (
   SELECT pg_try_advisory_xact_lock(hashtext('durable-xstate-reaper')) AS acquired
 ),
 dead AS (
-  DELETE FROM xstate_dbos_executors
+  DELETE FROM durable_xstate_executors
   WHERE last_heartbeat < NOW() - INTERVAL '30 seconds'
     AND (SELECT acquired FROM reaper_lock)
   RETURNING executor_id
@@ -837,7 +837,7 @@ orphaned_executors AS (
   WHERE ws.status = 'PENDING' AND ws.name LIKE 'xstate:%'
     AND ws.executor_id != $MY_EXECUTOR_ID
     AND NOT EXISTS (
-      SELECT 1 FROM xstate_dbos_executors xe WHERE xe.executor_id = ws.executor_id
+      SELECT 1 FROM durable_xstate_executors xe WHERE xe.executor_id = ws.executor_id
     )
 )
 UPDATE dbos.workflow_status
@@ -1413,7 +1413,7 @@ durable-xstate/
 ├── adapters/
 │   └── keda.ts                     # KEDA manifest generator (~50 lines)
 ├── migrations/
-│   └── 001_executors.sql           # CREATE TABLE xstate_dbos_executors
+│   └── 001_executors.sql           # CREATE TABLE durable_xstate_executors
 ├── tests/
 │   ├── unit/
 │   │   ├── machine-logic.test.ts   # pure XState transition tests

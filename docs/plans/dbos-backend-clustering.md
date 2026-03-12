@@ -48,7 +48,7 @@ Worker Pod A                    Worker Pod B
               │  DBOS System DB  │
               │  (Postgres)      │
               │                  │
-              │  xstate_dbos_executors (heartbeats)
+              │  durable_xstate_executors (heartbeats)
               │  dbos.workflow_status  (ownership)
               └──────────────────┘
 ```
@@ -63,7 +63,7 @@ Generated via `crypto.randomUUID()` at startup. Passed to
 ### Heartbeat Table
 
 ```sql
-CREATE TABLE IF NOT EXISTS xstate_dbos_executors (
+CREATE TABLE IF NOT EXISTS durable_xstate_executors (
   executor_id    TEXT PRIMARY KEY,
   last_heartbeat TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   started_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS xstate_dbos_executors (
 
 **Heartbeat** (default 5s):
 ```sql
-INSERT INTO xstate_dbos_executors (executor_id, last_heartbeat, started_at)
+INSERT INTO durable_xstate_executors (executor_id, last_heartbeat, started_at)
 VALUES ($1, NOW(), NOW())
 ON CONFLICT (executor_id) DO UPDATE SET last_heartbeat = NOW()
 ```
@@ -85,7 +85,7 @@ WITH reaper_lock AS (
   SELECT pg_try_advisory_xact_lock(hashtext('durable-xstate-reaper')) AS acquired
 ),
 dead AS (
-  DELETE FROM xstate_dbos_executors
+  DELETE FROM durable_xstate_executors
   WHERE last_heartbeat < NOW() - INTERVAL '30 seconds'
     AND (SELECT acquired FROM reaper_lock)
   RETURNING executor_id
@@ -96,7 +96,7 @@ orphaned_executors AS (
   WHERE ws.status = 'PENDING' AND ws.name LIKE 'xstate:%'
     AND ws.executor_id != $1
     AND NOT EXISTS (
-      SELECT 1 FROM xstate_dbos_executors xe
+      SELECT 1 FROM durable_xstate_executors xe
       WHERE xe.executor_id = ws.executor_id
     )
 )

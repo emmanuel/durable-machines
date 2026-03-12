@@ -1,6 +1,6 @@
 # Plan: Security Hardening
 
-## Status: In Progress
+## Status: Complete
 
 Full-stack remediation of vulnerabilities identified through security audit of the
 gateway, worker, durable-machine, and dashboard packages. Organized into eight
@@ -17,9 +17,12 @@ earlier phases block production readiness; later phases are defense-in-depth.
 | 8 (partial) | `ID_PATTERN` validation, status filter allowlist, event log pagination with bounds checking, NOTIFY payload validation | `c05e608` |
 | — | Shorthand routes removed (bypassed `ID_PATTERN` validation) | current |
 | — | `restShorthand` option removed from `RestApiOptions` and `GatewayContextOptions` | current |
-| 2 | NaN timestamp checks (already had `Number.isNaN`); Linear type-confusion bypass fixed (`typeof !== "number"` guard) | current |
-| 3 | Timing side-channels: all HMAC sources use `verifyHmac()`; xAPI basic auth padded to constant-time (`constantTimeCompare`) | current |
-| 5 | Email header injection: `sanitizeSubject` extended to strip `\0`, `\u2028`, `\u2029` | current |
+| 2 | NaN timestamp checks (already had `Number.isNaN`); Linear type-confusion bypass fixed (`typeof !== "number"` guard) | `9994927` |
+| 3 | Timing side-channels: all HMAC sources use `verifyHmac()`; xAPI basic auth padded to constant-time (`constantTimeCompare`) | `9994927` |
+| 5 | Email header injection: `sanitizeSubject` extended to strip `\0`, `\u2028`, `\u2029` | `9994927` |
+| 6 | `genericSource()` optional logger, `xapiSource({})` default-deny, `metricsAuth` admin auth | `c05e608` |
+| 7 | Bounded drain loop, invocation timeout, bounded semaphore queue, stale effect reaper, LISTEN reconnect backoff | `c05e608` |
+| 8 | Prototype pollution guard, CSP, slack-slash type stripping, config bounds, CORS configuration, poll error logging | `c05e608`, `e89896f` |
 
 ---
 
@@ -320,7 +323,7 @@ const subject = sanitizeSubject(
 
 ---
 
-## Phase 6: Authentication and Authorization
+## Phase 6: Authentication and Authorization ✅
 
 ### Problem
 
@@ -433,7 +436,7 @@ with explicit opt-in:
 
 ---
 
-## Phase 7: Worker Resilience
+## Phase 7: Worker Resilience ✅
 
 ### Problem
 
@@ -578,7 +581,7 @@ reconnectAttempt = 0;
 
 ---
 
-## Phase 8: Defense-in-Depth Hardening
+## Phase 8: Defense-in-Depth Hardening ✅
 
 ### Input validation
 
@@ -743,9 +746,9 @@ on missing values.
 | 3 | Timing side-channels | High (Crypto) | **Done** | stripe.ts, slack.ts, slack-slash.ts, twilio.ts, xapi.ts |
 | 4 | Action link replay | High (Replay) | **Done** | email.ts, action-link.ts |
 | 5 | Email header injection | Critical (Injection) | **Done** | email.ts |
-| 6 | Auth + SSE limits | Critical (AuthZ, DoS) | **Partial** | lifecycle.ts, types.ts, admin.ts, routes.ts, generic.ts, xapi.ts |
-| 7 | Worker resilience | High (DoS, Data loss) | Open | create-durable-machine.ts, event-processor.ts, lifecycle.ts, store.ts, queries.ts |
-| 8 | Defense-in-depth | Medium (Various) | **Partial** | rest-api.ts, routes.ts, store.ts, html.ts, client.ts, slack-slash.ts, config.ts |
+| 6 | Auth + SSE limits | Critical (AuthZ, DoS) | **Done** | lifecycle.ts, types.ts, admin.ts, routes.ts, generic.ts, xapi.ts |
+| 7 | Worker resilience | High (DoS, Data loss) | **Done** | create-durable-machine.ts, event-processor.ts, lifecycle.ts, store.ts, queries.ts |
+| 8 | Defense-in-depth | Medium (Various) | **Done** | rest-api.ts, routes.ts, store.ts, html.ts, client.ts, slack-slash.ts, config.ts, lifecycle.ts |
 
 ### Verification
 

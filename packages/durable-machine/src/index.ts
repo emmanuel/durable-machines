@@ -84,6 +84,10 @@ export type {
   SendPromptParams,
   ResolvePromptParams,
   UpdatePromptParams,
+  StateDurationRow,
+  AggregateStateDuration,
+  TransitionCountRow,
+  InstanceSummaryRow,
 } from "./types.js";
 
 export type { DurableMachineErrorCode } from "./types.js";

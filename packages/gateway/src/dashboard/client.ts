@@ -21,14 +21,38 @@ export const CLIENT_JS = /* js */ `
     });
   }
 
-  function toElkGraph(graphData) {
+  function toElkGraph(graphData, runtimeState) {
+    // Analytics lookup maps (built once, reused for node heights and edge labels)
+    var durationByState = {};
+    var hasAnalytics = false;
+    if (runtimeState && runtimeState.aggregateStateDurations) {
+      hasAnalytics = true;
+      for (var ai = 0; ai < runtimeState.aggregateStateDurations.length; ai++) {
+        var ad = runtimeState.aggregateStateDurations[ai];
+        var aKey = typeof ad.stateValue === 'string' ? ad.stateValue : JSON.stringify(ad.stateValue);
+        durationByState[aKey] = ad;
+      }
+    }
+    var countByEdge = {};
+    var maxEdgeCount = 1;
+    if (runtimeState && runtimeState.transitionCounts) {
+      hasAnalytics = true;
+      for (var ci = 0; ci < runtimeState.transitionCounts.length; ci++) {
+        var tc = runtimeState.transitionCounts[ci];
+        var fromKey = tc.fromState != null ? (typeof tc.fromState === 'string' ? tc.fromState : JSON.stringify(tc.fromState)) : '';
+        var toKey = typeof tc.toState === 'string' ? tc.toState : JSON.stringify(tc.toState);
+        countByEdge[fromKey + '->' + toKey] = tc.count;
+        if (tc.count > maxEdgeCount) maxEdgeCount = tc.count;
+      }
+    }
+
     const nodeMap = new Map();
     for (const n of graphData.nodes) {
       nodeMap.set(n.id, {
         id: n.id,
         labels: [{ text: n.label }],
         width: Math.max(120, n.label.length * 9 + 40),
-        height: 40,
+        height: hasAnalytics ? 56 : 40,
         layoutOptions: n.children.length > 0 ? {
           'elk.algorithm': 'layered',
           'elk.direction': 'DOWN',
@@ -36,6 +60,7 @@ export const CLIENT_JS = /* js */ `
         } : {},
         children: [],
         _meta: n,
+        _analytics: durationByState[n.id] || null,
       });
     }
 
@@ -50,13 +75,23 @@ export const CLIENT_JS = /* js */ `
       }
     }
 
-    const edges = graphData.edges.map((e, i) => ({
-      id: 'e' + i,
-      sources: [e.source],
-      targets: [e.target],
-      labels: e.label ? [{ text: e.label }] : [],
-      _meta: e,
-    }));
+    const edges = graphData.edges.map(function(e, i) {
+      var edgeKey = (e.source || '') + '->' + (e.target || '');
+      var cnt = countByEdge[edgeKey];
+      var labelText = e.label || '';
+      if (cnt != null) {
+        labelText = labelText ? labelText + ' (' + cnt + '\u00d7)' : cnt + '\u00d7';
+      }
+      return {
+        id: 'e' + i,
+        sources: [e.source],
+        targets: [e.target],
+        labels: labelText ? [{ text: labelText }] : [],
+        _meta: e,
+        _count: cnt || 0,
+        _countRatio: cnt ? cnt / maxEdgeCount : 0,
+      };
+    });
 
     return {
       id: 'root',
@@ -76,6 +111,17 @@ export const CLIENT_JS = /* js */ `
     const activeStates = runtimeState?.activeStates || [];
     const visitedStates = runtimeState?.visitedStates || [];
     const activeSleep = runtimeState?.activeSleep || null;
+
+    // Analytics lookup for heat map computation
+    var durationByState = {};
+    if (runtimeState && runtimeState.aggregateStateDurations) {
+      for (var di = 0; di < runtimeState.aggregateStateDurations.length; di++) {
+        var dd = runtimeState.aggregateStateDurations[di];
+        var dk = typeof dd.stateValue === 'string' ? dd.stateValue : JSON.stringify(dd.stateValue);
+        durationByState[dk] = dd;
+      }
+    }
+
     const pad = 20;
     const w = (layout.width || 600) + pad * 2;
     const h = (layout.height || 400) + pad * 2;
@@ -110,13 +156,28 @@ export const CLIENT_JS = /* js */ `
         if (isActive) cls += ' active';
         else if (isVisited) cls += ' visited';
 
+        // Analytics heat mapping
+        if (node._analytics) {
+          var maxAvg = 0;
+          for (var hk in durationByState) {
+            if (durationByState[hk].avgMs > maxAvg) maxAvg = durationByState[hk].avgMs;
+          }
+          var ratio = maxAvg > 0 ? node._analytics.avgMs / maxAvg : 0;
+          cls += ratio > 0.66 ? ' analytics-hot' : ratio > 0.33 ? ' analytics-warm' : ' analytics-cool';
+        }
+
         out += '<g class="' + cls + '">';
         out += '<rect x="' + x + '" y="' + y + '" width="' + (node.width || 120) + '" height="' + (node.height || 40) + '"/>';
 
-        // Label
+        // Label — shift up when analytics sublabel present
         let labelX = x + (node.width || 120) / 2;
-        const labelY = y + (node.height || 40) / 2 + 4;
+        const labelY = node._analytics ? y + (node.height || 40) / 2 - 2 : y + (node.height || 40) / 2 + 4;
         out += '<text x="' + labelX + '" y="' + labelY + '" text-anchor="middle">' + esc(meta.label) + '</text>';
+
+        // Analytics: dwell-time sublabel inside node
+        if (node._analytics) {
+          out += '<text class="analytics-duration" x="' + labelX + '" y="' + (labelY + 14) + '" text-anchor="middle">avg ' + formatDuration(node._analytics.avgMs) + '</text>';
+        }
 
         // Icons
         let iconX = x + (node.width || 120) - 14;
@@ -154,6 +215,13 @@ export const CLIENT_JS = /* js */ `
         const cls = 'graph-edge' + (isActive ? ' active' : '');
         svg += '<g class="' + cls + '">';
 
+        // Scale edge stroke-width by relative frequency
+        var edgeStroke = '';
+        if (edge._countRatio > 0) {
+          var sw = 1.5 + edge._countRatio * 3;
+          edgeStroke = ' style="stroke-width:' + sw.toFixed(1) + '"';
+        }
+
         if (edge.sections) {
           for (const section of edge.sections) {
             let d = 'M' + (section.startPoint.x + pad) + ',' + (section.startPoint.y + pad);
@@ -163,7 +231,7 @@ export const CLIENT_JS = /* js */ `
               }
             }
             d += ' L' + (section.endPoint.x + pad) + ',' + (section.endPoint.y + pad);
-            svg += '<path d="' + d + '" marker-end="url(#arrow)"/>';
+            svg += '<path d="' + d + '"' + edgeStroke + ' marker-end="url(#arrow)"/>';
           }
         }
 
@@ -201,10 +269,35 @@ export const CLIENT_JS = /* js */ `
     const activeSleep = runtimeState?.activeSleep || null;
     const leaves = graphData.nodes.filter(n => n.children.length === 0);
     const nodeW = 140;
-    const nodeH = 40;
     const gapX = 30;
     const gapY = 60;
     const pad = 30;
+
+    // Analytics lookup maps
+    var fbDurationByState = {};
+    var fbHasAnalytics = false;
+    if (runtimeState && runtimeState.aggregateStateDurations) {
+      fbHasAnalytics = true;
+      for (var fai = 0; fai < runtimeState.aggregateStateDurations.length; fai++) {
+        var fad = runtimeState.aggregateStateDurations[fai];
+        var faKey = typeof fad.stateValue === 'string' ? fad.stateValue : JSON.stringify(fad.stateValue);
+        fbDurationByState[faKey] = fad;
+      }
+    }
+    var fbCountByEdge = {};
+    var fbMaxEdgeCount = 1;
+    if (runtimeState && runtimeState.transitionCounts) {
+      fbHasAnalytics = true;
+      for (var fci = 0; fci < runtimeState.transitionCounts.length; fci++) {
+        var ftc = runtimeState.transitionCounts[fci];
+        var ffk = ftc.fromState != null ? (typeof ftc.fromState === 'string' ? ftc.fromState : JSON.stringify(ftc.fromState)) : '';
+        var ftk = typeof ftc.toState === 'string' ? ftc.toState : JSON.stringify(ftc.toState);
+        fbCountByEdge[ffk + '->' + ftk] = ftc.count;
+        if (ftc.count > fbMaxEdgeCount) fbMaxEdgeCount = ftc.count;
+      }
+    }
+
+    var nodeH = fbHasAnalytics ? 56 : 40;
 
     // Assign depth by BFS from initial
     const depth = new Map();
@@ -275,12 +368,28 @@ export const CLIENT_JS = /* js */ `
       if (!from || !to) continue;
       const isActive = activeStates.includes(e.source);
       const cls = 'graph-edge' + (isActive ? ' active' : '');
+
+      // Edge stroke-width scaling
+      var fbEdgeKey = (e.source || '') + '->' + (e.target || '');
+      var fbEdgeCount = fbCountByEdge[fbEdgeKey];
+      var fbEdgeStroke = '';
+      if (fbEdgeCount > 0) {
+        var fbSw = 1.5 + (fbEdgeCount / fbMaxEdgeCount) * 3;
+        fbEdgeStroke = ' style="stroke-width:' + fbSw.toFixed(1) + '"';
+      }
+
+      // Build label with optional count
+      var fbLabelText = e.label || '';
+      if (fbEdgeCount != null) {
+        fbLabelText = fbLabelText ? fbLabelText + ' (' + fbEdgeCount + '\u00d7)' : fbEdgeCount + '\u00d7';
+      }
+
       svg += '<g class="' + cls + '">';
-      svg += '<path d="M' + (from.x + nodeW / 2) + ',' + (from.y + nodeH) + ' L' + (to.x + nodeW / 2) + ',' + to.y + '" marker-end="url(#arrow)"/>';
-      if (e.label) {
+      svg += '<path d="M' + (from.x + nodeW / 2) + ',' + (from.y + nodeH) + ' L' + (to.x + nodeW / 2) + ',' + to.y + '"' + fbEdgeStroke + ' marker-end="url(#arrow)"/>';
+      if (fbLabelText) {
         const mx = (from.x + to.x + nodeW) / 2;
         const my = (from.y + nodeH + to.y) / 2 - 4;
-        svg += '<text x="' + mx + '" y="' + my + '" text-anchor="middle">' + esc(e.label) + '</text>';
+        svg += '<text x="' + mx + '" y="' + my + '" text-anchor="middle">' + esc(fbLabelText) + '</text>';
         // Add countdown for active after-edges
         if (e.type === 'after' && activeSleep && activeSleep.stateId === e.source) {
           var remaining = activeSleep.wakeAt - Date.now();
@@ -303,9 +412,28 @@ export const CLIENT_JS = /* js */ `
       if (isActive) cls += ' active';
       else if (isVisited) cls += ' visited';
 
+      // Analytics heat mapping
+      var fbNodeDur = fbDurationByState[n.id];
+      if (fbNodeDur) {
+        var fbMaxAvg = 0;
+        for (var fbhk in fbDurationByState) {
+          if (fbDurationByState[fbhk].avgMs > fbMaxAvg) fbMaxAvg = fbDurationByState[fbhk].avgMs;
+        }
+        var fbRatio = fbMaxAvg > 0 ? fbNodeDur.avgMs / fbMaxAvg : 0;
+        cls += fbRatio > 0.66 ? ' analytics-hot' : fbRatio > 0.33 ? ' analytics-warm' : ' analytics-cool';
+      }
+
       svg += '<g class="' + cls + '">';
       svg += '<rect x="' + pos.x + '" y="' + pos.y + '" width="' + nodeW + '" height="' + nodeH + '"/>';
-      svg += '<text x="' + (pos.x + nodeW / 2) + '" y="' + (pos.y + nodeH / 2 + 4) + '" text-anchor="middle">' + esc(n.label) + '</text>';
+
+      var fbLabelY = fbNodeDur ? pos.y + nodeH / 2 - 2 : pos.y + nodeH / 2 + 4;
+      svg += '<text x="' + (pos.x + nodeW / 2) + '" y="' + fbLabelY + '" text-anchor="middle">' + esc(n.label) + '</text>';
+
+      // Analytics: dwell-time sublabel
+      if (fbNodeDur) {
+        svg += '<text class="analytics-duration" x="' + (pos.x + nodeW / 2) + '" y="' + (fbLabelY + 14) + '" text-anchor="middle">avg ' + formatDuration(fbNodeDur.avgMs) + '</text>';
+      }
+
       svg += '</g>';
     }
 
@@ -322,7 +450,7 @@ export const CLIENT_JS = /* js */ `
 
     try {
       const elk = await loadElk();
-      const elkGraph = toElkGraph(graphData);
+      const elkGraph = toElkGraph(graphData, runtimeState);
       const layout = await elk.layout(elkGraph);
       container.innerHTML = renderSvg(layout, graphData, runtimeState);
     } catch (e) {
@@ -813,11 +941,17 @@ export const CLIENT_JS = /* js */ `
           }
         }
 
-        // Update graph with new active states
+        // Update graph with new active states and analytics
         if (graphData && data.snapshot) {
           const activeStates = data.activeStates || [];
           const visitedStates = data.visitedStates || [];
-          renderGraph(graphData, { activeStates: activeStates, visitedStates: visitedStates, activeSleep: data.activeSleep || null });
+          renderGraph(graphData, {
+            activeStates: activeStates,
+            visitedStates: visitedStates,
+            activeSleep: data.activeSleep || null,
+            aggregateStateDurations: data.aggregateStateDurations || null,
+            transitionCounts: data.transitionCounts || null,
+          });
         }
 
         // Update error panel
@@ -831,6 +965,11 @@ export const CLIENT_JS = /* js */ `
         // Update event log
         if (data.eventLog) {
           updateEventLog(data.eventLog);
+        }
+
+        // Update analytics panel
+        if (data.aggregateStateDurations || data.transitionCounts) {
+          updateAnalyticsPanel(data.aggregateStateDurations, data.transitionCounts);
         }
       },
     });
@@ -950,6 +1089,34 @@ export const CLIENT_JS = /* js */ `
       html += '<span class="event-log-topic">' + esc(entry.topic) + '</span>';
       html += '<span class="event-log-time">' + formatTime(entry.createdAt) + '</span>';
       html += '</div>';
+    }
+    el.innerHTML = html;
+  }
+
+  function updateAnalyticsPanel(aggDurations, transCounts) {
+    var el = document.getElementById('analytics-content');
+    if (!el) return;
+    var html = '';
+    if (aggDurations && aggDurations.length > 0) {
+      html += '<h3 style="font-size:12px;color:var(--text-dim);margin-bottom:8px">Aggregate State Durations</h3>';
+      html += '<table><thead><tr><th>State</th><th>Avg</th><th>Min</th><th>Max</th><th>Count</th></tr></thead><tbody>';
+      for (var i = 0; i < aggDurations.length; i++) {
+        var d = aggDurations[i];
+        var sv = typeof d.stateValue === 'string' ? d.stateValue : JSON.stringify(d.stateValue);
+        html += '<tr><td class="mono">' + esc(sv) + '</td><td class="mono">' + formatDuration(d.avgMs) + '</td><td class="mono">' + formatDuration(d.minMs) + '</td><td class="mono">' + formatDuration(d.maxMs) + '</td><td class="mono">' + d.count + '</td></tr>';
+      }
+      html += '</tbody></table>';
+    }
+    if (transCounts && transCounts.length > 0) {
+      html += '<h3 style="font-size:12px;color:var(--text-dim);margin:16px 0 8px">Transition Counts</h3>';
+      html += '<table><thead><tr><th>From</th><th>To</th><th>Event</th><th>Count</th></tr></thead><tbody>';
+      for (var j = 0; j < transCounts.length; j++) {
+        var t = transCounts[j];
+        var fromSv = t.fromState != null ? (typeof t.fromState === 'string' ? t.fromState : JSON.stringify(t.fromState)) : '-';
+        var toSv = typeof t.toState === 'string' ? t.toState : JSON.stringify(t.toState);
+        html += '<tr><td class="mono">' + esc(fromSv) + '</td><td class="mono">' + esc(toSv) + '</td><td class="mono">' + esc(t.event || '-') + '</td><td class="mono">' + t.count + '</td></tr>';
+      }
+      html += '</tbody></table>';
     }
     el.innerHTML = html;
   }

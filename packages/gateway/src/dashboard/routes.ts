@@ -195,6 +195,15 @@ export function createDashboardRoutes(options: DashboardRouteOptions): Hono {
             const sseStateDurations = computeStateDurations(sseTransitions);
             const sseSleep = computeActiveSleep(sseGraphData, sseActiveStates, sseStateDurations);
 
+            // Fetch aggregate analytics if enabled
+            const sseAnalytics = durable.getAnalytics?.();
+            const [sseAggDurations, sseTransCounts] = sseAnalytics
+              ? await Promise.all([
+                  sseAnalytics.getAggregateStateDurations(),
+                  sseAnalytics.getTransitionCounts(),
+                ])
+              : [undefined, undefined];
+
             const stateData = {
               snapshot,
               steps,
@@ -204,6 +213,8 @@ export function createDashboardRoutes(options: DashboardRouteOptions): Hono {
               eventLog,
               activeStep: detectActiveStep(steps),
               activeSleep: sseSleep,
+              aggregateStateDurations: sseAggDurations,
+              transitionCounts: sseTransCounts,
             };
 
             const json = JSON.stringify(stateData);
@@ -347,6 +358,15 @@ async function buildDetailData(
   // Compute active sleep countdown if in a state with an `after` transition
   const activeSleep = computeActiveSleep(graphData, activeStates, stateDurations);
 
+  // Fetch aggregate analytics if enabled
+  const analytics = durable.getAnalytics?.();
+  const [aggregateStateDurations, transitionCounts] = analytics
+    ? await Promise.all([
+        analytics.getAggregateStateDurations(),
+        analytics.getTransitionCounts(),
+      ])
+    : [undefined, undefined];
+
   return {
     machineId,
     instanceId,
@@ -362,6 +382,8 @@ async function buildDetailData(
     activeStates,
     visitedStates,
     activeSleep,
+    aggregateStateDurations,
+    transitionCounts,
   };
 }
 

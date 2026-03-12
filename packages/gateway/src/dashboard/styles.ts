@@ -621,6 +621,35 @@ svg .sleep-countdown.firing {
   fill: var(--orange);
 }
 
+/* ── Analytics (SVG graph) ────────────────────── */
+
+svg .analytics-duration {
+  fill: var(--text-dim);
+  font-size: 9px;
+  font-family: var(--font-mono);
+  font-weight: 500;
+}
+
+/* Heat map: tint node rect fill based on relative dwell time */
+.graph-node.analytics-cool rect {
+  fill: rgba(52, 211, 153, 0.06);
+}
+
+.graph-node.analytics-warm rect {
+  fill: rgba(251, 191, 36, 0.08);
+}
+
+.graph-node.analytics-hot rect {
+  fill: rgba(248, 113, 113, 0.10);
+}
+
+/* Don't override active/visited stroke colors */
+.graph-node.active.analytics-cool rect,
+.graph-node.active.analytics-warm rect,
+.graph-node.active.analytics-hot rect {
+  stroke: var(--accent);
+}
+
 /* ── Schema Form Fields ───────────────────────── */
 
 .event-form label,

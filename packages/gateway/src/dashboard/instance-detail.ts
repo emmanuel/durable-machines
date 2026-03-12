@@ -176,6 +176,8 @@ export function instanceDetailPage(
     activeStates,
     visitedStates,
     activeSleep,
+    aggregateStateDurations,
+    transitionCounts,
   } = data;
 
   const sseUrl = `${basePath}/machines/${machineId}/instances/${instanceId}/stream`;
@@ -187,7 +189,7 @@ export function instanceDetailPage(
       <h2>State Graph</h2>
       <div id="graph-container"></div>
       <script type="application/json" id="graph-data">${JSON.stringify(graphData)}</script>
-      <script type="application/json" id="runtime-data">${JSON.stringify({ activeStates, visitedStates, activeSleep: activeSleep ?? null, eventSchemas: eventSchemas ?? {} })}</script>
+      <script type="application/json" id="runtime-data">${JSON.stringify({ activeStates, visitedStates, activeSleep: activeSleep ?? null, eventSchemas: eventSchemas ?? {}, aggregateStateDurations: aggregateStateDurations ?? null, transitionCounts: transitionCounts ?? null })}</script>
     </div>`;
 
   // Timeline panel
@@ -287,6 +289,40 @@ export function instanceDetailPage(
       </div>
     </div>` : "";
 
+  // Analytics panel (only shown when analytics data is available)
+  const analyticsPanel = aggregateStateDurations && aggregateStateDurations.length > 0 ? `
+    <div class="card">
+      <h2>Analytics</h2>
+      <div id="analytics-content">
+        <h3 style="font-size:12px;color:var(--text-dim);margin-bottom:8px">Aggregate State Durations</h3>
+        <table>
+          <thead><tr><th>State</th><th>Avg</th><th>Min</th><th>Max</th><th>Count</th></tr></thead>
+          <tbody>
+            ${aggregateStateDurations.map((d) => `<tr>
+              <td class="mono">${esc(stateValueStr(d.stateValue))}</td>
+              <td class="mono">${formatDuration(d.avgMs)}</td>
+              <td class="mono">${formatDuration(d.minMs)}</td>
+              <td class="mono">${formatDuration(d.maxMs)}</td>
+              <td class="mono">${d.count}</td>
+            </tr>`).join("")}
+          </tbody>
+        </table>
+        ${transitionCounts && transitionCounts.length > 0 ? `
+          <h3 style="font-size:12px;color:var(--text-dim);margin:16px 0 8px">Transition Counts</h3>
+          <table>
+            <thead><tr><th>From</th><th>To</th><th>Event</th><th>Count</th></tr></thead>
+            <tbody>
+              ${transitionCounts.map((t) => `<tr>
+                <td class="mono">${t.fromState != null ? esc(stateValueStr(t.fromState)) : "-"}</td>
+                <td class="mono">${esc(stateValueStr(t.toState))}</td>
+                <td class="mono">${t.event ? esc(t.event) : "-"}</td>
+                <td class="mono">${t.count}</td>
+              </tr>`).join("")}
+            </tbody>
+          </table>` : ""}
+      </div>
+    </div>` : "";
+
   // Error panel
   const errorPanel = renderErrorPanel(snapshot, steps, effects);
 
@@ -309,7 +345,8 @@ export function instanceDetailPage(
     </div>
     ${stepsPanel}
     ${effectsPanel}
-    ${eventLogPanel}`;
+    ${eventLogPanel}
+    ${analyticsPanel}`;
 
   return layout(
     {

@@ -6,6 +6,8 @@ import type {
   TransitionRecord,
   StateDuration,
   FormField,
+  AggregateStateDuration,
+  TransitionCountRow,
 } from "@durable-xstate/durable-machine";
 import type { GraphData } from "./graph.js";
 
@@ -39,4 +41,8 @@ export interface InstanceDetailData {
   activeStates: string[];
   visitedStates: string[];
   activeSleep?: { stateId: string; delay: number; enteredAt: number; wakeAt: number } | null;
+  /** Aggregate state durations across all instances of this machine. Present when analytics enabled. */
+  aggregateStateDurations?: AggregateStateDuration[];
+  /** Transition counts for this machine. Present when analytics enabled. */
+  transitionCounts?: TransitionCountRow[];
 }

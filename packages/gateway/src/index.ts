@@ -23,7 +23,7 @@ export type { GatewayMetrics } from "./metrics.js";
 
 // Lifecycle (generic, backend-agnostic)
 export { parseGatewayConfig, createGatewayContext, startGateway } from "./lifecycle.js";
-export type { GatewayConfig, GatewayContext, InternalGatewayContext, GatewayContextOptions, GatewayStoreAdapter, GatewayHandle } from "./lifecycle.js";
+export type { GatewayConfig, GatewayContext, InternalGatewayContext, GatewayContextOptions, GatewayCorsOptions, GatewayStoreAdapter, GatewayHandle } from "./lifecycle.js";
 
 // Durable machine type (re-exported for consumers using MachineRegistry)
 export type { DurableMachine } from "@durable-xstate/durable-machine";
@@ -54,6 +54,7 @@ export { rawBody } from "./middleware.js";
 
 // Sources
 export { genericSource } from "./sources/generic.js";
+export type { GenericSourceOptions } from "./sources/generic.js";
 export { slackSource } from "./sources/slack.js";
 export { slashCommandBinding } from "./sources/slack-slash.js";
 export type { SlashCommandConfig } from "./sources/slack-slash.js";

@@ -15,6 +15,7 @@ import { serve } from "@hono/node-server";
 import type { Hono } from "hono";
 import type { Server } from "node:http";
 import { trimTrailingSlash } from "hono/trailing-slash";
+import { cors } from "hono/cors";
 import { createWebhookGateway } from "./gateway.js";
 import { createRestApi } from "./rest-api.js";
 import { createDashboard } from "./dashboard/index.js";
@@ -93,6 +94,22 @@ export interface GatewayStoreAdapter {
   stopListening(): Promise<void>;
 }
 
+/**
+ * CORS configuration for the gateway.
+ *
+ * - `false` — disable CORS headers entirely (use when behind a reverse proxy that handles CORS).
+ * - Object — configure `hono/cors` middleware with the given options.
+ * - Omitted / `undefined` — no CORS middleware applied (Hono default: no CORS headers).
+ */
+export type GatewayCorsOptions = false | {
+  origin: string | string[] | ((origin: string) => string | undefined | null);
+  allowMethods?: string[];
+  allowHeaders?: string[];
+  maxAge?: number;
+  credentials?: boolean;
+  exposeHeaders?: string[];
+};
+
 export interface GatewayContextOptions {
   bindings: WebhookBinding<any>[];
   /** Register durable machines to expose via the REST API with HATEOAS responses. */
@@ -114,6 +131,13 @@ export interface GatewayContextOptions {
   security?: GatewaySecurityOptions;
   /** Maximum concurrent SSE connections for the dashboard. @defaultValue `100` */
   maxSseConnections?: number;
+  /**
+   * CORS configuration.
+   * - `false` — strip any CORS headers (for reverse-proxy deployments).
+   * - Object — apply `hono/cors` middleware with these options.
+   * - Omitted — no CORS middleware (no headers added or removed).
+   */
+  cors?: GatewayCorsOptions;
 }
 
 export async function createGatewayContext(
@@ -124,6 +148,22 @@ export async function createGatewayContext(
   const metrics = createGatewayMetrics();
   const gateway = createWebhookGateway({ client, bindings: options.bindings, metrics });
   gateway.use(trimTrailingSlash());
+
+  // CORS configuration
+  if (options.cors === false) {
+    // Strip CORS headers (reverse-proxy mode)
+    gateway.use("*", async (c, next) => {
+      await next();
+      c.res.headers.delete("Access-Control-Allow-Origin");
+      c.res.headers.delete("Access-Control-Allow-Methods");
+      c.res.headers.delete("Access-Control-Allow-Headers");
+      c.res.headers.delete("Access-Control-Allow-Credentials");
+      c.res.headers.delete("Access-Control-Expose-Headers");
+      c.res.headers.delete("Access-Control-Max-Age");
+    });
+  } else if (options.cors) {
+    gateway.use("*", cors(options.cors));
+  }
 
   // Mount REST API if machines are registered
   if (options.machines && options.machines.size > 0) {

@@ -1,4 +1,9 @@
+import type { Logger } from "@durable-xstate/durable-machine";
 import type { WebhookSource, RawRequest } from "../types.js";
+
+export interface GenericSourceOptions {
+  logger?: Logger;
+}
 
 /**
  * Generic webhook source with no verification.
@@ -6,11 +11,13 @@ import type { WebhookSource, RawRequest } from "../types.js";
  *
  * @returns A {@link WebhookSource} that skips verification and JSON-parses the body.
  */
-export function genericSource<TPayload = unknown>(): WebhookSource<TPayload> {
-  console.warn(
-    "[durable-xstate] WARNING: genericSource() has no webhook verification. " +
-      "Do NOT use in production.",
-  );
+export function genericSource<TPayload = unknown>(opts?: GenericSourceOptions): WebhookSource<TPayload> {
+  const msg = "genericSource() has no webhook verification. Do NOT use in production.";
+  if (opts?.logger) {
+    opts.logger.warn({}, msg);
+  } else {
+    console.warn(`[durable-xstate] WARNING: ${msg}`);
+  }
 
   return {
     async verify(_req: RawRequest): Promise<void> {

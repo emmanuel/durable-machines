@@ -1,6 +1,6 @@
 {
   "name": "@durable-xstate/gateway",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "description": "Webhook gateway for routing external webhooks to durable XState machines",
   "type": "module",
   "main": "./dist/index.js",

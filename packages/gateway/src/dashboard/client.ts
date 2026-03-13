@@ -534,9 +534,16 @@ export const CLIENT_JS = /* js */ `
     return String(v);
   }
 
+  // ── Timeline Sort State ──────────────────────────────────────
+  var timelineSortDesc = true; // newest first by default
+  var lastTimelineData = null;
+
   function renderTimeline(transitions, durations, activeSleep) {
     const el = document.getElementById('timeline-entries');
     if (!el) return;
+
+    // Cache for re-render on sort toggle
+    lastTimelineData = { transitions: transitions, durations: durations, activeSleep: activeSleep };
 
     if (!transitions || transitions.length === 0) {
       el.innerHTML = '<div class="empty">No transitions yet</div>';
@@ -544,8 +551,10 @@ export const CLIENT_JS = /* js */ `
     }
 
     let html = '';
-    // Show newest first
-    for (let i = transitions.length - 1; i >= 0; i--) {
+    var start = timelineSortDesc ? transitions.length - 1 : 0;
+    var end = timelineSortDesc ? -1 : transitions.length;
+    var step = timelineSortDesc ? -1 : 1;
+    for (let i = start; i !== end; i += step) {
       const t = transitions[i];
       const dur = durations && durations[i];
       const isActive = dur && dur.exitedAt === null;
@@ -1136,6 +1145,20 @@ export const CLIENT_JS = /* js */ `
 
     if (graphData) {
       renderGraph(graphData, runtimeState);
+    }
+
+    // Timeline sort toggle
+    var sortBtn = document.getElementById('timeline-sort-toggle');
+    if (sortBtn) {
+      sortBtn.addEventListener('click', function() {
+        timelineSortDesc = !timelineSortDesc;
+        sortBtn.innerHTML = timelineSortDesc ? '&uarr;' : '&darr;';
+        sortBtn.title = timelineSortDesc ? 'Showing newest first' : 'Showing oldest first';
+        if (lastTimelineData) {
+          renderTimeline(lastTimelineData.transitions, lastTimelineData.durations, lastTimelineData.activeSleep);
+          startDurationTicker();
+        }
+      });
     }
 
     // Start ticker for both duration and sleep countdown

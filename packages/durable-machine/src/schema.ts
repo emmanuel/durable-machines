@@ -230,6 +230,8 @@ export function durableSetup<
     events?: TEvents;
     input?: TInputSchema;
     actors?: { [K in keyof TActors]: TActors[K] };
+    guards?: Record<string, (...args: any[]) => boolean>;
+    delays?: Record<string, number | ((...args: any[]) => number)>;
     label?: string;
     description?: string;
     tags?: string[];
@@ -240,15 +242,15 @@ export function durableSetup<
   TActors,
   {},
   {},
-  {},
-  never,
+  Record<string, any>,
+  string,
   string,
   InputFromSchema<TInputSchema>,
   NonReducibleUnknown,
   EventObject,
   MetaObject
 > {
-  const { events, input, actors, label, description, tags } = options;
+  const { events, input, actors, guards, delays, label, description, tags } = options;
 
   const schemas = {
     [SCHEMA_KEY]: {
@@ -266,6 +268,8 @@ export function durableSetup<
   return setup({
     schemas,
     actors,
+    guards,
+    delays,
     types: {} as {
       events: EventsFromSchema<TEvents>;
       input: InputFromSchema<TInputSchema>;

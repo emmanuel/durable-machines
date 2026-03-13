@@ -195,7 +195,7 @@ export function instanceDetailPage(
   // Timeline panel
   const timelinePanel = `
     <div class="card timeline-panel">
-      <h2>Transition Timeline</h2>
+      <h2>Transition Timeline <button id="timeline-sort-toggle" class="btn-sm" title="Toggle sort direction">&uarr;</button></h2>
       <div class="timeline" id="timeline-entries">
         ${renderTimelineEntries(transitions, stateDurations, activeSleep)}
       </div>

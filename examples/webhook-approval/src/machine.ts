@@ -1,11 +1,13 @@
-import { setup } from "xstate";
-import { durableState, prompt } from "@durable-xstate/durable-machine";
+import { durableSetup, durableState, prompt } from "@durable-xstate/durable-machine";
 
-export const approvalMachine = setup({
-  types: {
-    context: {} as { requestId: string; requester: string; description: string },
-    input: {} as { requestId: string; requester: string; description: string },
+export const approvalMachine = durableSetup({
+  input: {
+    requestId: "string",
+    requester: "string",
+    description: "string",
   },
+  label: "Approval",
+  description: "Simple approval/rejection workflow",
 }).createMachine({
   id: "approval",
   initial: "pending_review",

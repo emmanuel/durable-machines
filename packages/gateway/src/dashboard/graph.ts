@@ -30,6 +30,20 @@ export interface GraphData {
   initial: string;
 }
 
+/** Shorten verbose internal XState event descriptors for display. */
+function shortenEventType(eventType: string): string {
+  if (eventType.startsWith("xstate.done.state.")) return "done";
+  if (eventType.startsWith("xstate.done.actor.")) return "done";
+  if (eventType.startsWith("xstate.error.actor.")) return "error";
+  if (eventType.startsWith("xstate.after.")) {
+    // xstate.after.delayName.machine-id.state.path → after delayName
+    const rest = eventType.slice("xstate.after.".length);
+    const delayName = rest.split(".")[0];
+    return `after ${delayName}`;
+  }
+  return eventType;
+}
+
 /**
  * Extracts a flat graph data structure from a serialized machine definition
  * for client-side ELK layout and SVG rendering.
@@ -60,7 +74,8 @@ export function extractGraphData(definition: SerializedMachine): GraphData {
       for (const [eventType, transitions] of Object.entries(state.on)) {
         for (const t of transitions) {
           if (t.target) {
-            const label = t.guard ? `${eventType} [${t.guard}]` : eventType;
+            const shortEvent = shortenEventType(eventType);
+            const label = t.guard ? `${shortEvent} [${t.guard}]` : shortEvent;
             // Determine edge type based on event prefix
             const edgeType = eventType.startsWith("xstate.done.")
               ? "done" as const

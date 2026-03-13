@@ -1,5 +1,5 @@
-import { setup, fromPromise, assign } from "xstate";
-import { durableState, prompt } from "@durable-xstate/durable-machine";
+import { fromPromise, assign } from "xstate";
+import { durableSetup, durableState, prompt } from "@durable-xstate/durable-machine";
 
 // ─── Simulated async actors ────────────────────────────────────────────────
 
@@ -49,23 +49,14 @@ const runBackgroundCheck = fromPromise(
 
 // ─── Machine definition ────────────────────────────────────────────────────
 
-export const recruitingPipeline = setup({
-  types: {
-    context: {} as {
-      candidateName: string;
-      role: string;
-      screenScore: number;
-      techScore: number;
-      cultureScore: number;
-      backgroundClear: boolean;
-    },
-    input: {} as { candidateName: string; role: string },
-    events: {} as
-      | { type: "SCREEN" }
-      | { type: "TECH_FEEDBACK"; score: number }
-      | { type: "CULTURE_FEEDBACK"; score: number }
-      | { type: "ACCEPT" }
-      | { type: "DECLINE" },
+export const recruitingPipeline = durableSetup({
+  input: { candidateName: "string", role: "string" },
+  events: {
+    SCREEN: {},
+    TECH_FEEDBACK: { score: "number" },
+    CULTURE_FEEDBACK: { score: "number" },
+    ACCEPT: {},
+    DECLINE: {},
   },
   actors: {
     scoreResume,
@@ -74,17 +65,18 @@ export const recruitingPipeline = setup({
     runBackgroundCheck,
   },
   delays: {
-    applicationDeadline: 3_000,
-    interviewDeadline: 5_000,
-    offerDeadline: 5_000,
+    applicationDeadline: 60_000,
+    interviewDeadline: 60_000,
+    offerDeadline: 60_000,
   },
   guards: {
     passingScore: ({ context }) => context.screenScore >= 70,
     allPassed: ({ context }) =>
       context.techScore >= 7 &&
-      context.cultureScore >= 7 &&
-      context.backgroundClear,
+      context.cultureScore >= 7,
   },
+  label: "Recruiting Pipeline",
+  description: "Multi-stage hiring workflow: application → screening → parallel interviews → offer",
 }).createMachine({
   id: "recruiting-pipeline",
   initial: "applied",
@@ -142,7 +134,7 @@ export const recruitingPipeline = setup({
       ],
     },
 
-    // ── Parallel interview stage ─────────────────────────────────────────
+    // ── Parallel interview stage (technical + culture) ──────────────────
     interview: {
       type: "parallel",
       onDone: "evaluating_interviews",
@@ -242,39 +234,32 @@ export const recruitingPipeline = setup({
             expired: { type: "final" },
           },
         },
-
-        // ── Reference / background check ───────────────────────────────
-        references: {
-          initial: "checking",
-          states: {
-            checking: {
-              invoke: {
-                src: "runBackgroundCheck",
-                input: ({ context }) => ({
-                  candidateName: context.candidateName,
-                }),
-                onDone: [
-                  {
-                    guard: ({ event }) => (event.output as any).clear,
-                    target: "cleared",
-                    actions: assign({ backgroundClear: true }),
-                  },
-                  { target: "flagged" },
-                ],
-                onError: "flagged",
-              },
-            },
-            cleared: { type: "final" },
-            flagged: { type: "final" },
-          },
-        },
       },
     },
 
-    // ── Guard-based routing after interviews ─────────────────────────────
+    // ── Reference / background check (after both interviews) ──────────
+    references: {
+      invoke: {
+        src: "runBackgroundCheck",
+        input: ({ context }) => ({
+          candidateName: context.candidateName,
+        }),
+        onDone: [
+          {
+            guard: ({ event }) => (event.output as any).clear,
+            target: "offer",
+            actions: assign({ backgroundClear: true }),
+          },
+          { target: "rejected" },
+        ],
+        onError: "rejected",
+      },
+    },
+
+    // ── Guard-based routing after interviews ─────────────────────────
     evaluating_interviews: {
       always: [
-        { guard: "allPassed", target: "offer" },
+        { guard: "allPassed", target: "references" },
         { target: "rejected" },
       ],
     },

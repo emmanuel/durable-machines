@@ -514,7 +514,7 @@ export const CLIENT_JS = /* js */ `
     if (el) el.innerHTML = jsonTree(context, 0);
   }
 
-  // ── Timeline Rendering ─────────────────────────────────────
+  // ── Activity Feed Rendering ─────────────────────────────────
 
   function formatDuration(ms) {
     if (ms < 1000) return ms + 'ms';
@@ -534,50 +534,110 @@ export const CLIENT_JS = /* js */ `
     return String(v);
   }
 
-  // ── Timeline Sort State ──────────────────────────────────────
-  var timelineSortDesc = true; // newest first by default
-  var lastTimelineData = null;
+  var activitySortDesc = false;
+  var lastActivityFeed = null;
 
-  function renderTimeline(transitions, durations, activeSleep) {
-    const el = document.getElementById('timeline-entries');
+  function renderActivityFeed(feed) {
+    var el = document.getElementById('activity-feed');
     if (!el) return;
+    lastActivityFeed = feed;
 
-    // Cache for re-render on sort toggle
-    lastTimelineData = { transitions: transitions, durations: durations, activeSleep: activeSleep };
-
-    if (!transitions || transitions.length === 0) {
-      el.innerHTML = '<div class="empty">No transitions yet</div>';
+    if (!feed || feed.length === 0) {
+      el.innerHTML = '<div class="empty">No activity yet</div>';
       return;
     }
 
-    let html = '';
-    var start = timelineSortDesc ? transitions.length - 1 : 0;
-    var end = timelineSortDesc ? -1 : transitions.length;
-    var step = timelineSortDesc ? -1 : 1;
-    for (let i = start; i !== end; i += step) {
-      const t = transitions[i];
-      const dur = durations && durations[i];
-      const isActive = dur && dur.exitedAt === null;
-      html += '<div class="timeline-entry' + (isActive ? ' active' : '') + '">';
-      html += '<div class="timeline-dot"></div>';
-      html += '<div>';
-      html += '<div class="timeline-state">' + esc(stateValueStr(t.to)) + '</div>';
-      if (t.from !== null) {
-        html += '<div class="timeline-event">from: ' + esc(stateValueStr(t.from)) + '</div>';
-      }
-      html += '<div class="timeline-time">' + formatTime(t.ts) + '</div>';
-      if (dur) {
-        html += '<div class="timeline-duration' + (isActive ? ' active-duration" data-entered="' + dur.enteredAt : '') + '">' + formatDuration(dur.durationMs) + '</div>';
-      }
-      // Show sleep countdown on the active state entry
-      if (isActive && activeSleep) {
-        var remaining = activeSleep.wakeAt - Date.now();
-        var countdownText = remaining > 0 ? formatDuration(remaining) + ' remaining' : 'firing...';
-        html += '<div class="sleep-countdown' + (remaining <= 0 ? ' firing' : '') + '" data-wake-at="' + activeSleep.wakeAt + '">' + countdownText + '</div>';
-      }
-      html += '</div></div>';
+    var items = activitySortDesc ? feed.slice().reverse() : feed;
+    var html = '';
+    for (var i = 0; i < items.length; i++) {
+      html += renderActivityEntry(items[i]);
     }
     el.innerHTML = html;
+  }
+
+  function renderActivityEntry(entry) {
+    if (entry.kind === 'unmatched-event') {
+      return '<div class="af-row af-unmatched">'
+        + '<span class="af-dot af-dot-event"></span>'
+        + '<span class="af-event-type">' + esc(entry.eventType || 'event') + '</span>'
+        + '<span class="af-tag af-tag-ignored">no transition</span>'
+        + '<span class="af-ts">' + formatTime(entry.ts) + '</span>'
+        + '</div>';
+    }
+
+    var hasDetail = entry.event || entry.step || entry.eventPayload || entry.contextDiff;
+    var dotClass = entry.kind === 'self-transition' ? 'af-dot-self' : 'af-dot-transition';
+    var html = '';
+
+    if (hasDetail) {
+      html += '<details class="af-entry"><summary class="af-row">';
+    } else {
+      html += '<div class="af-row">';
+    }
+
+    html += '<span class="af-dot ' + dotClass + '"></span>';
+
+    if (entry.kind === 'self-transition') {
+      html += '<span class="af-state af-self">' + esc(stateValueStr(entry.to)) + '</span>';
+      html += '<span class="af-tag af-tag-self">self</span>';
+    } else {
+      if (entry.from != null) {
+        html += '<span class="af-state">' + esc(stateValueStr(entry.from)) + ' \\u2192 ' + esc(stateValueStr(entry.to)) + '</span>';
+      } else {
+        html += '<span class="af-state">\\u2192 ' + esc(stateValueStr(entry.to)) + '</span>';
+      }
+    }
+
+    if (entry.event && entry.event.indexOf('xstate.') !== 0) {
+      html += '<span class="af-tag af-tag-event">' + esc(entry.event) + '</span>';
+    }
+    if (entry.step) {
+      html += '<span class="af-tag af-tag-step">' + esc(entry.step.name) + '</span>';
+      if (entry.step.error != null) {
+        html += '<span class="af-tag af-tag-error">error</span>';
+      } else if (entry.step.durationMs != null) {
+        html += '<span class="af-tag af-tag-done">' + formatDuration(entry.step.durationMs) + '</span>';
+      }
+    }
+
+    html += '<span class="af-ts">' + formatTime(entry.ts) + '</span>';
+
+    if (hasDetail) {
+      html += '</summary><div class="af-detail">';
+      if (entry.event) {
+        html += '<div class="af-detail-line"><span class="af-detail-label">Trigger</span><span class="af-detail-val">' + esc(entry.event) + '</span></div>';
+      }
+      if (entry.eventPayload) {
+        html += '<div class="af-detail-section"><div class="af-section-head" style="color:var(--purple)">Event payload</div><div class="af-json">' + esc(JSON.stringify(entry.eventPayload, null, 2)) + '</div></div>';
+      }
+      if (entry.step) {
+        var s = entry.step;
+        var durStr = s.durationMs != null ? formatDuration(s.durationMs) : '\\u2014';
+        html += '<div class="af-detail-section"><div class="af-section-head" style="color:var(--green)">Step: ' + esc(s.name) + '</div>';
+        html += '<div class="af-detail-line"><span class="af-detail-label">Duration</span><span class="af-duration">' + esc(durStr) + '</span></div>';
+        if (s.error != null) {
+          var errMsg = typeof s.error === 'string' ? s.error : JSON.stringify(s.error, null, 2);
+          html += '<div class="af-error-box">' + esc(errMsg) + '</div>';
+        } else if (s.output != null) {
+          html += '<div class="af-detail-line"><span class="af-detail-label">Output</span><span class="af-detail-val">' + esc(JSON.stringify(s.output)) + '</span></div>';
+        }
+        html += '</div>';
+      }
+      if (entry.contextDiff && entry.contextDiff.length > 0) {
+        html += '<div class="af-detail-section"><div class="af-section-head" style="color:var(--text-dim)">Context</div>';
+        for (var di = 0; di < entry.contextDiff.length; di++) {
+          var d = entry.contextDiff[di];
+          var before = d.before === undefined ? '\\u2014' : JSON.stringify(d.before);
+          var after = d.after === undefined ? '\\u2014' : JSON.stringify(d.after);
+          html += '<div class="af-diff">' + esc(d.key) + ': <span class="af-diff-before">' + esc(before) + '</span> \\u2192 <span class="af-diff-after">' + esc(after) + '</span></div>';
+        }
+        html += '</div>';
+      }
+      html += '</div></details>';
+    } else {
+      html += '</div>';
+    }
+    return html;
   }
 
   // ── Live Duration Ticker ───────────────────────────────────
@@ -923,10 +983,9 @@ export const CLIENT_JS = /* js */ `
           }
         }
 
-        // Update timeline
-        if (data.transitions) {
-          renderTimeline(data.transitions, data.stateDurations, data.activeSleep || null);
-          startDurationTicker();
+        // Update activity feed
+        if (data.activityFeed) {
+          renderActivityFeed(data.activityFeed);
         }
 
         // Update event sender dropdown and schemas
@@ -1147,22 +1206,18 @@ export const CLIENT_JS = /* js */ `
       renderGraph(graphData, runtimeState);
     }
 
-    // Timeline sort toggle
-    var sortBtn = document.getElementById('timeline-sort-toggle');
-    if (sortBtn) {
-      sortBtn.addEventListener('click', function() {
-        timelineSortDesc = !timelineSortDesc;
-        sortBtn.innerHTML = timelineSortDesc ? '&uarr;' : '&darr;';
-        sortBtn.title = timelineSortDesc ? 'Showing newest first' : 'Showing oldest first';
-        if (lastTimelineData) {
-          renderTimeline(lastTimelineData.transitions, lastTimelineData.durations, lastTimelineData.activeSleep);
-          startDurationTicker();
-        }
-      });
-    }
-
     // Start ticker for both duration and sleep countdown
     startDurationTicker();
+
+    // Activity feed sort toggle
+    var sortBtn = document.getElementById('activity-sort-toggle');
+    if (sortBtn) {
+      sortBtn.addEventListener('click', function() {
+        activitySortDesc = !activitySortDesc;
+        sortBtn.textContent = activitySortDesc ? '\\u2191' : '\\u2193';
+        if (lastActivityFeed) renderActivityFeed(lastActivityFeed);
+      });
+    }
 
     initEventSender();
     initCancelButton();

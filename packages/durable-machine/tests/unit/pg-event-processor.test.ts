@@ -197,6 +197,7 @@ function createMockStore(): PgStore & {
       wakeAt: unknown; wakeEvent: unknown;
       firedDelays: unknown; status: string; eventCursor: number;
       fromState: unknown; toState: unknown; event: string | null; ts: number;
+      contextSnapshot?: Record<string, unknown> | null;
     }) {
       const { instanceId, stateValue, context, wakeAt, firedDelays, status, eventCursor, fromState, toState, event, ts } = params;
       const row = instances.get(instanceId);
@@ -212,14 +213,14 @@ function createMockStore(): PgStore & {
       transitions.push({ instanceId, from: fromState, to: toState, event, ts });
     },
 
-    async appendTransition(instanceId: string, from: unknown, to: unknown, event: string | null, ts: number) {
+    async appendTransition(instanceId: string, from: unknown, to: unknown, event: string | null, ts: number, _contextSnapshot?: Record<string, unknown> | null) {
       transitions.push({ instanceId, from, to, event, ts });
     },
 
     async getTransitions(instanceId: string) {
       return transitions
         .filter((t) => t.instanceId === instanceId)
-        .map((t) => ({ from: t.from, to: t.to, ts: t.ts }));
+        .map((t) => ({ from: t.from, to: t.to, event: t.event, ts: t.ts }));
     },
 
     async startListening() {},

@@ -408,8 +408,12 @@ export interface TransitionRecord {
   from: StateValue | null;
   /** The state value after the transition. */
   to: StateValue;
+  /** The event type that triggered this transition, or `null` for the initial transition. */
+  event: string | null;
   /** Unix epoch timestamp (milliseconds) when the transition occurred. */
   ts: number;
+  /** Snapshot of the machine context at this transition (opt-in, PG only). */
+  contextSnapshot?: Record<string, unknown> | null;
 }
 
 /** Tracks how long the machine stayed in a particular state. */

@@ -72,7 +72,7 @@ export function createMachineLoop(
     const transitions: TransitionRecord[] = [];
     if (enableAnalytics) {
       const initTs = await DBOS.now();
-      transitions.push({ from: null, to: snapshot.value, ts: initTs });
+      transitions.push({ from: null, to: snapshot.value, event: null, ts: initTs });
       await DBOS.setEvent("xstate.transitions", transitions);
     }
 
@@ -90,10 +90,10 @@ export function createMachineLoop(
     }
 
     // Helper: record a transition in-memory (flushed at boundaries)
-    async function recordTransition(from: import("xstate").StateValue, to: import("xstate").StateValue) {
+    async function recordTransition(from: import("xstate").StateValue, to: import("xstate").StateValue, eventType: string | null = null) {
       if (enableAnalytics) {
         const ts = await DBOS.now();
-        transitions.push({ from, to, ts });
+        transitions.push({ from, to, event: eventType, ts });
       }
     }
 
@@ -121,6 +121,9 @@ export function createMachineLoop(
     }
 
     while (snapshot.status !== "done") {
+      // Track the event type that causes the next state change
+      let lastEventType: string | null = null;
+
       // 1. Resolve transient transitions (always/eventless)
       snapshot = resolveTransientTransitions(machine, snapshot);
       if (snapshot.status === "done") break;
@@ -142,7 +145,7 @@ export function createMachineLoop(
         snapshot = await executeInvocation(machine, snapshot, invocation, actorImpls, options);
         // Persist after invocation returns
         if (!stateValueEquals(snapshot.value, prevStateValue)) {
-          await recordTransition(prevStateValue, snapshot.value);
+          await recordTransition(prevStateValue, snapshot.value, `xstate.done.actor.${invocation.id}`);
           await dispatchEffects(preInvokeSnapshot, snapshot, { type: `xstate.done.actor.${invocation.id}` } as AnyEventObject);
           firedDelays = new Set<number>();
           prevStateValue = snapshot.value;
@@ -183,6 +186,7 @@ export function createMachineLoop(
           firedDelays.add(result.firedDelay);
         }
         snapshot = result.snapshot;
+        lastEventType = result.eventType;
 
         // Resolve prompt after transition (if state changed and prompt was sent)
         if (promptHandles && !stateValueEquals(prevValue, snapshot.value)) {
@@ -221,7 +225,7 @@ export function createMachineLoop(
 
       // Track state changes after a step (accumulated in-memory)
       if (!stateValueEquals(snapshot.value, prevStateValue)) {
-        await recordTransition(prevStateValue, snapshot.value);
+        await recordTransition(prevStateValue, snapshot.value, lastEventType);
         firedDelays = new Set<number>();
         prevStateValue = snapshot.value;
       }
@@ -287,6 +291,8 @@ interface WaitResult {
   snapshot: AnyMachineSnapshot;
   /** The delay (ms) that fired, or null if an external event arrived or no timeout. */
   firedDelay: number | null;
+  /** The event type that triggered the transition, or null if no event. */
+  eventType: string | null;
 }
 
 /**
@@ -339,18 +345,18 @@ async function waitForEventOrTimeout(
   if (event !== null) {
     // External event arrived before timeout
     const [next] = transition(machine, snapshot, event);
-    return { snapshot: next, firedDelay: null };
+    return { snapshot: next, firedDelay: null, eventType: event.type };
   }
 
   if (hasAfter) {
     // Timeout expired — fire the next after event
     const afterEvent = buildAfterEvent(machine, snapshot, delays[0]);
     const [next] = transition(machine, snapshot, afterEvent as AnyEventObject);
-    return { snapshot: next, firedDelay: delays[0] };
+    return { snapshot: next, firedDelay: delays[0], eventType: (afterEvent as AnyEventObject).type };
   }
 
   // No event, no timeout — return same snapshot (loop re-enters)
-  return { snapshot, firedDelay: null };
+  return { snapshot, firedDelay: null, eventType: null };
 }
 
 /**

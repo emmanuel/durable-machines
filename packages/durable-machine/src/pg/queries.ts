@@ -107,21 +107,21 @@ export const Q_FINALIZE_WITH_TRANSITION = {
             fired_delays=$6, status=$7, event_cursor=$8, updated_at=$9
         WHERE id = $1
       )
-      INSERT INTO transition_log (instance_id, from_state, to_state, event, ts)
-      VALUES ($1, $10, $11, $12, $13)`,
+      INSERT INTO transition_log (instance_id, from_state, to_state, event, ts, context_snapshot)
+      VALUES ($1, $10, $11, $12, $13, $14)`,
 } as const;
 
 // ─── Transition Log ──────────────────────────────────────────────────────────
 
 export const Q_APPEND_TRANSITION = {
   name: "dm_append_transition",
-  text: `INSERT INTO transition_log (instance_id, from_state, to_state, event, ts)
-       VALUES ($1, $2, $3, $4, $5)`,
+  text: `INSERT INTO transition_log (instance_id, from_state, to_state, event, ts, context_snapshot)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
 } as const;
 
 export const Q_GET_TRANSITIONS = {
   name: "dm_get_transitions",
-  text: `SELECT from_state, to_state, ts FROM transition_log
+  text: `SELECT from_state, to_state, event, ts, context_snapshot FROM transition_log
        WHERE instance_id = $1 ORDER BY seq ASC`,
 } as const;
 

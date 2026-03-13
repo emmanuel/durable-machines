@@ -2,14 +2,12 @@ import type {
   DurableStateSnapshot,
   StepInfo,
   EffectStatus,
-  EventLogEntry,
-  TransitionRecord,
-  StateDuration,
   FormField,
   AggregateStateDuration,
   TransitionCountRow,
 } from "@durable-xstate/durable-machine";
 import type { GraphData } from "./graph.js";
+import type { ActivityEntry } from "./activity-feed.js";
 
 export interface LayoutOptions {
   title: string;
@@ -32,12 +30,10 @@ export interface InstanceDetailData {
   snapshot: DurableStateSnapshot;
   steps: StepInfo[];
   graphData: GraphData;
-  transitions: TransitionRecord[];
-  stateDurations: StateDuration[];
   availableEvents: string[];
   eventSchemas?: Record<string, FormField[]>;
   effects?: EffectStatus[];
-  eventLog?: EventLogEntry[];
+  activityFeed: ActivityEntry[];
   activeStates: string[];
   visitedStates: string[];
   activeSleep?: { stateId: string; delay: number; enteredAt: number; wakeAt: number } | null;

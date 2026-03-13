@@ -212,7 +212,7 @@ export async function processStartup(
 
   // Transition log
   if (enableAnalytics) {
-    await store.appendTransition(instanceId, null, snapshot.value, null, now);
+    await store.appendTransition(instanceId, null, snapshot.value, null, now, snapshot.context as Record<string, unknown>);
   }
 
   // Prompt lifecycle: send prompt if in durable state
@@ -270,6 +270,7 @@ async function finalize(
       stateValue: current.value, context: current.context as Record<string, unknown>,
       wakeAt, wakeEvent, firedDelays, status, eventCursor: eventSeq,
       fromState: prevStateValue, toState: current.value, event: event.type, ts: Date.now(),
+      contextSnapshot: current.context as Record<string, unknown>,
     });
   } else {
     await store.finalizeInstance({

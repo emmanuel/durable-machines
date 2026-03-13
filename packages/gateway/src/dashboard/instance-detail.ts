@@ -2,10 +2,9 @@ import type {
   DurableStateSnapshot,
   StepInfo,
   EffectStatus,
-  TransitionRecord,
-  StateDuration,
 } from "@durable-xstate/durable-machine";
 import { esc, statusBadge, layout } from "./html.js";
+import { renderActivityFeed } from "./activity-feed.js";
 import type { InstanceDetailData } from "./types.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -26,40 +25,7 @@ function formatDuration(ms: number): string {
   return `${(ms / 60000).toFixed(1)}m`;
 }
 
-function formatTime(ts: number): string {
-  return new Date(ts).toLocaleTimeString();
-}
-
 // ── Render Helpers ───────────────────────────────────────────────────────────
-
-function renderTimelineEntries(
-  transitions: TransitionRecord[],
-  durations: StateDuration[],
-  activeSleep?: { stateId: string; delay: number; enteredAt: number; wakeAt: number } | null,
-): string {
-  if (transitions.length === 0) {
-    return `<div class="empty">No transitions yet</div>`;
-  }
-
-  let html = "";
-  for (let i = transitions.length - 1; i >= 0; i--) {
-    const t = transitions[i];
-    const dur = durations[i];
-    const isActive = dur && dur.exitedAt === null;
-
-    html += `<div class="timeline-entry${isActive ? " active" : ""}">
-      <div class="timeline-dot"></div>
-      <div>
-        <div class="timeline-state">${esc(stateValueStr(t.to))}</div>
-        ${t.from !== null ? `<div class="timeline-event">from: ${esc(stateValueStr(t.from))}</div>` : ""}
-        <div class="timeline-time">${formatTime(t.ts)}</div>
-        ${dur ? `<div class="timeline-duration${isActive ? ` active-duration" data-entered="${dur.enteredAt}` : ""}">${formatDuration(dur.durationMs)}</div>` : ""}
-        ${isActive && activeSleep ? `<div class="sleep-countdown" data-wake-at="${activeSleep.wakeAt}">${formatDuration(Math.max(0, activeSleep.wakeAt - Date.now()))} remaining</div>` : ""}
-      </div>
-    </div>`;
-  }
-  return html;
-}
 
 function renderJsonTree(obj: unknown, depth: number): string {
   if (obj === null) return `<span class="json-null">null</span>`;
@@ -167,12 +133,9 @@ export function instanceDetailPage(
     snapshot,
     steps,
     graphData,
-    transitions,
-    stateDurations,
     availableEvents,
     eventSchemas,
     effects,
-    eventLog,
     activeStates,
     visitedStates,
     activeSleep,
@@ -192,12 +155,12 @@ export function instanceDetailPage(
       <script type="application/json" id="runtime-data">${JSON.stringify({ activeStates, visitedStates, activeSleep: activeSleep ?? null, eventSchemas: eventSchemas ?? {}, aggregateStateDurations: aggregateStateDurations ?? null, transitionCounts: transitionCounts ?? null })}</script>
     </div>`;
 
-  // Timeline panel
-  const timelinePanel = `
+  // Activity feed panel
+  const activityPanel = `
     <div class="card timeline-panel">
-      <h2>Transition Timeline <button id="timeline-sort-toggle" class="btn-sm" title="Toggle sort direction">&uarr;</button></h2>
-      <div class="timeline" id="timeline-entries">
-        ${renderTimelineEntries(transitions, stateDurations, activeSleep)}
+      <h2>Activity <button id="activity-sort-toggle" class="btn-sm" title="Toggle sort direction">\u2191</button></h2>
+      <div class="activity-feed" id="activity-feed">
+        ${renderActivityFeed(data.activityFeed)}
       </div>
     </div>`;
 
@@ -272,23 +235,6 @@ export function instanceDetailPage(
       </div>
     </div>` : "";
 
-  // Event log panel
-  const eventLogPanel = eventLog ? `
-    <div class="card">
-      <h2>Event Log</h2>
-      <div class="event-log" id="event-log-entries">
-        ${eventLog.length === 0
-          ? '<div class="empty">No events</div>'
-          : eventLog.map((entry) => `
-              <div class="event-log-entry">
-                <span class="event-log-seq">#${entry.seq}</span>
-                <span class="event-log-topic">${esc(entry.topic)}</span>
-                <span class="event-log-time">${formatTime(entry.createdAt)}</span>
-              </div>`).join("")
-        }
-      </div>
-    </div>` : "";
-
   // Analytics panel (only shown when analytics data is available)
   const analyticsPanel = aggregateStateDurations && aggregateStateDurations.length > 0 ? `
     <div class="card">
@@ -339,13 +285,12 @@ export function instanceDetailPage(
     <div id="error-panel-container">${errorPanel}</div>
     <div class="detail-grid">
       ${graphPanel}
-      ${timelinePanel}
+      ${activityPanel}
       ${contextPanel}
       ${eventPanel}
     </div>
     ${stepsPanel}
     ${effectsPanel}
-    ${eventLogPanel}
     ${analyticsPanel}`;
 
   return layout(

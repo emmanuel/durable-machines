@@ -14,6 +14,7 @@ import type { MachineRegistry } from "../rest-types.js";
 import { getAvailableEvents, getAvailableEventSchemas } from "../hateoas.js";
 import { extractGraphData } from "./graph.js";
 import type { GraphData } from "./graph.js";
+import { buildActivityFeed } from "./activity-feed.js";
 import {
   machineListPage,
   instanceListPage,
@@ -194,6 +195,13 @@ export function createDashboardRoutes(options: DashboardRouteOptions): Hono {
             const sseTransitions: TransitionRecord[] = await handle.getTransitions();
             const sseStateDurations = computeStateDurations(sseTransitions);
             const sseSleep = computeActiveSleep(sseGraphData, sseActiveStates, sseStateDurations);
+            const sseVisitedStates = extractVisitedStates(sseTransitions);
+
+            const sseActivityFeed = buildActivityFeed({
+              transitions: sseTransitions,
+              eventLog: eventLog ?? [],
+              steps,
+            });
 
             // Fetch aggregate analytics if enabled
             const sseAnalytics = durable.getAnalytics?.();
@@ -210,9 +218,11 @@ export function createDashboardRoutes(options: DashboardRouteOptions): Hono {
               availableEvents,
               eventSchemas,
               effects,
-              eventLog,
+              activityFeed: sseActivityFeed,
               activeStep: detectActiveStep(steps),
               activeSleep: sseSleep,
+              activeStates: sseActiveStates,
+              visitedStates: sseVisitedStates,
               aggregateStateDurations: sseAggDurations,
               transitionCounts: sseTransCounts,
             };
@@ -358,6 +368,12 @@ async function buildDetailData(
   // Compute active sleep countdown if in a state with an `after` transition
   const activeSleep = computeActiveSleep(graphData, activeStates, stateDurations);
 
+  const activityFeed = buildActivityFeed({
+    transitions,
+    eventLog: eventLog ?? [],
+    steps,
+  });
+
   // Fetch aggregate analytics if enabled
   const analytics = durable.getAnalytics?.();
   const [aggregateStateDurations, transitionCounts] = analytics
@@ -373,12 +389,10 @@ async function buildDetailData(
     snapshot,
     steps,
     graphData,
-    transitions,
-    stateDurations,
     availableEvents,
     eventSchemas,
     effects,
-    eventLog,
+    activityFeed,
     activeStates,
     visitedStates,
     activeSleep,

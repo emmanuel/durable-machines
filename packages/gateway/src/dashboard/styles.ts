@@ -262,54 +262,45 @@ tr:last-child td { border-bottom: none; }
   50% { filter: drop-shadow(0 0 12px rgba(79,110,247,0.6)); }
 }
 
-/* ── Timeline ───────────────────────────────────── */
+/* ── Activity Feed ──────────────────────────────── */
 
-.timeline {
-  max-height: 400px;
-  overflow-y: auto;
-  padding-right: 8px;
-}
+.activity-feed { max-height: 500px; overflow-y: auto; }
+.af-entry { border-bottom: 1px solid var(--border); }
+.af-entry[open] { background: rgba(79,110,247,0.03); }
+.af-entry summary { list-style: none; cursor: pointer; }
+.af-entry summary::-webkit-details-marker { display: none; }
+.af-row { display: flex; gap: 5px; align-items: center; padding: 5px 8px; font-size: 12px; font-family: var(--font-mono); color: var(--text-dim); border-bottom: 1px solid var(--border); }
+.af-entry > .af-row { border-bottom: none; }
+.af-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.af-dot-transition { background: var(--accent); }
+.af-dot-self { background: var(--yellow); }
+.af-dot-event { background: var(--purple); opacity: 0.55; }
+.af-state { color: var(--text); font-weight: 600; }
+.af-self { color: var(--yellow); }
+.af-tag { font-size: 9px; padding: 0 4px; border-radius: 3px; }
+.af-tag-event { background: rgba(167,139,250,0.15); color: var(--purple); }
+.af-tag-step { background: rgba(52,211,153,0.15); color: var(--green); }
+.af-tag-done { background: rgba(52,211,153,0.2); color: var(--green); }
+.af-tag-error { background: rgba(248,113,113,0.2); color: var(--red); }
+.af-tag-self { background: rgba(251,191,36,0.15); color: var(--yellow); }
+.af-tag-ignored { background: rgba(139,143,163,0.15); color: var(--text-dim); }
+.af-ts { margin-left: auto; font-size: 10px; flex-shrink: 0; }
+.af-unmatched { opacity: 0.55; }
+.af-detail { border-left: 2px solid var(--accent); margin: 0 8px 4px 16px; padding: 5px 8px; border-radius: 0 4px 4px 0; font-size: 11px; font-family: var(--font-mono); background: rgba(79,110,247,0.03); }
+.af-detail-line { display: flex; gap: 6px; padding: 1px 0; }
+.af-detail-label { color: var(--text-dim); width: 55px; flex-shrink: 0; }
+.af-detail-val { color: var(--text); }
+.af-detail-section { margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(79,110,247,0.1); }
+.af-section-head { font-size: 10px; margin-bottom: 2px; }
+.af-json { color: var(--text); background: var(--bg); padding: 3px 6px; border-radius: 3px; font-size: 10px; white-space: pre-wrap; word-break: break-all; }
+.af-duration { color: var(--yellow); }
+.af-error-box { background: rgba(248,113,113,0.08); border: 1px solid rgba(248,113,113,0.2); border-radius: 4px; padding: 4px 6px; margin-top: 3px; color: var(--red); font-size: 10px; white-space: pre-wrap; }
+.af-diff { font-size: 10px; color: var(--text); background: var(--bg); padding: 2px 6px; border-radius: 3px; margin-top: 2px; }
+.af-diff-before { color: var(--text-dim); }
+.af-diff-after { color: var(--green); }
+.af-event-type { color: var(--purple); }
 
-.timeline-entry {
-  display: flex;
-  gap: 12px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--border);
-  font-size: 13px;
-}
-
-.timeline-entry:last-child { border-bottom: none; }
-
-.timeline-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--border);
-  margin-top: 6px;
-  flex-shrink: 0;
-}
-
-.timeline-entry.active .timeline-dot {
-  background: var(--accent);
-  box-shadow: 0 0 6px rgba(79,110,247,0.5);
-}
-
-.timeline-state {
-  font-weight: 600;
-  color: var(--text-bright);
-}
-
-.timeline-event {
-  color: var(--purple);
-  font-family: var(--font-mono);
-  font-size: 12px;
-}
-
-.timeline-time {
-  color: var(--text-dim);
-  font-size: 12px;
-  font-family: var(--font-mono);
-}
+/* ── Duration (used by effects panel) ─────────── */
 
 .timeline-duration {
   color: var(--text-dim);
@@ -406,28 +397,6 @@ tr:last-child td { border-bottom: none; }
   font-family: var(--font-mono);
   color: var(--purple);
 }
-
-/* ── Event Log ──────────────────────────────────── */
-
-.event-log {
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-.event-log-entry {
-  display: flex;
-  gap: 12px;
-  padding: 6px 0;
-  font-size: 12px;
-  border-bottom: 1px solid var(--border);
-  font-family: var(--font-mono);
-}
-
-.event-log-entry:last-child { border-bottom: none; }
-
-.event-log-seq { color: var(--text-dim); min-width: 30px; }
-.event-log-topic { color: var(--purple); }
-.event-log-time { color: var(--text-dim); margin-left: auto; }
 
 /* ── Filters ────────────────────────────────────── */
 

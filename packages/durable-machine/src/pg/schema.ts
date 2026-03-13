@@ -61,8 +61,10 @@ CREATE TABLE IF NOT EXISTS transition_log (
   to_state        JSONB NOT NULL,
   event           TEXT,
   ts              BIGINT NOT NULL,
+  context_snapshot JSONB,
   PRIMARY KEY (instance_id, seq)
 );
+ALTER TABLE transition_log ADD COLUMN IF NOT EXISTS context_snapshot JSONB;
 
 CREATE TABLE IF NOT EXISTS effect_outbox (
   id              TEXT PRIMARY KEY DEFAULT gen_random_uuid(),

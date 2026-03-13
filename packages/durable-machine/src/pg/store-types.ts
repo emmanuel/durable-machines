@@ -77,6 +77,7 @@ export interface TransitionData {
   toState: StateValue;
   event: string | null;
   ts: number;
+  contextSnapshot?: Record<string, unknown> | null;
 }
 
 export interface RecordInvokeResultParams {
@@ -206,6 +207,7 @@ export interface PgStore {
     toState: StateValue,
     event: string | null,
     ts: number,
+    contextSnapshot?: Record<string, unknown> | null,
   ): Promise<void>;
   getTransitions(instanceId: string): Promise<TransitionRecord[]>;
 

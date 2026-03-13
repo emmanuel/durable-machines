@@ -362,7 +362,7 @@ export function createStore(options: PgStoreOptions): PgStore {
   }
 
   async function finalizeWithTransition(params: FinalizeParams & TransitionData): Promise<void> {
-    const { client, instanceId, stateValue, context, wakeAt, wakeEvent, firedDelays, status, eventCursor, fromState, toState, event, ts } = params;
+    const { client, instanceId, stateValue, context, wakeAt, wakeEvent, firedDelays, status, eventCursor, fromState, toState, event, ts, contextSnapshot } = params;
     const t = qStart();
     await client.query({
       ...Q_FINALIZE_WITH_TRANSITION,
@@ -380,6 +380,7 @@ export function createStore(options: PgStoreOptions): PgStore {
         JSON.stringify(toState),
         event,
         ts,
+        contextSnapshot != null ? JSON.stringify(contextSnapshot) : null,
       ],
     });
     qEnd(Q_FINALIZE_WITH_TRANSITION.name, t);
@@ -393,6 +394,7 @@ export function createStore(options: PgStoreOptions): PgStore {
     toState: StateValue,
     event: string | null,
     ts: number,
+    contextSnapshot?: Record<string, unknown> | null,
   ): Promise<void> {
     const t = qStart();
     await pool.query({
@@ -403,6 +405,7 @@ export function createStore(options: PgStoreOptions): PgStore {
         JSON.stringify(toState),
         event,
         ts,
+        contextSnapshot != null ? JSON.stringify(contextSnapshot) : null,
       ],
     });
     qEnd(Q_APPEND_TRANSITION.name, t);
@@ -418,7 +421,9 @@ export function createStore(options: PgStoreOptions): PgStore {
       (row: any): TransitionRecord => ({
         from: row.from_state as StateValue | null,
         to: row.to_state as StateValue,
+        event: row.event ?? null,
         ts: Number(row.ts),
+        contextSnapshot: row.context_snapshot ?? null,
       }),
     );
   }

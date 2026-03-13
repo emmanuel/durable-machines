@@ -156,7 +156,7 @@ describe("dashboard routes", () => {
       expect(res.status).toBe(200);
       const html = await res.text();
       expect(html).toContain("graph-container");
-      expect(html).toContain("timeline-entries");
+      expect(html).toContain("activity-feed");
       expect(html).toContain("context-tree");
       expect(html).toContain("event-form");
     });
@@ -174,9 +174,9 @@ describe("dashboard routes", () => {
 
     it("uses handle.getTransitions() when available", async () => {
       const transitions: TransitionRecord[] = [
-        { from: null, to: "idle", ts: 1000 },
-        { from: "idle", to: "active", ts: 2000 },
-        { from: "active", to: "done", ts: 3000 },
+        { from: null, to: "idle", event: null, ts: 1000 },
+        { from: "idle", to: "active", event: null, ts: 2000 },
+        { from: "active", to: "done", event: null, ts: 3000 },
       ];
       const handle = mockHandle({
         getTransitions: vi.fn().mockResolvedValue(transitions),

@@ -310,9 +310,9 @@ describe("serializeMachineDefinition()", () => {
 describe("computeStateDurations()", () => {
   it("computes durations for a linear sequence", () => {
     const transitions: TransitionRecord[] = [
-      { from: null, to: "pending", ts: 1000 },
-      { from: "pending", to: "processing", ts: 2000 },
-      { from: "processing", to: "done", ts: 5000 },
+      { from: null, to: "pending", event: null, ts: 1000 },
+      { from: "pending", to: "processing", event: null, ts: 2000 },
+      { from: "processing", to: "done", event: null, ts: 5000 },
     ];
     const durations = computeStateDurations(transitions);
     expect(durations).toHaveLength(3);
@@ -336,7 +336,7 @@ describe("computeStateDurations()", () => {
 
   it("handles currently-active state (exitedAt = null)", () => {
     const transitions: TransitionRecord[] = [
-      { from: null, to: "waiting", ts: 1000 },
+      { from: null, to: "waiting", event: null, ts: 1000 },
     ];
     const durations = computeStateDurations(transitions);
     expect(durations).toHaveLength(1);

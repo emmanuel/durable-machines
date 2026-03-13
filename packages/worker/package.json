@@ -1,6 +1,6 @@
 {
   "name": "@durable-xstate/worker",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "description": "Worker process lifecycle for durable XState machines",
   "type": "module",
   "main": "./dist/index.js",

@@ -1,5 +1,5 @@
 {
   "packages/durable-machine": "0.2.0",
   "packages/gateway": "0.2.0",
-  "packages/worker": "0.2.0"
+  "packages/worker": "1.0.0"
 }

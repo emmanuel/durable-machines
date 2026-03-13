@@ -1,6 +1,6 @@
 {
   "name": "@durable-xstate/durable-machine",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "description": "Durable XState v5 state machines with pluggable backends",
   "type": "module",
   "main": "./dist/index.js",

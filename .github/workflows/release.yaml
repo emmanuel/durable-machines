@@ -10,7 +10,11 @@ permissions:
   id-token: write
 
 jobs:
+  ci:
+    uses: ./.github/workflows/ci.yaml
+
   release-please:
+    needs: ci
     runs-on: ubuntu-latest
     outputs:
       durable-machine--release_created: ${{ steps.rp.outputs['packages/durable-machine--release_created'] }}

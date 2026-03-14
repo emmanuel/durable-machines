@@ -3,6 +3,7 @@ import type { StateValue } from "xstate";
 import type { StepInfo, TransitionRecord, InstanceStatus, EffectOutboxStatus } from "../types.js";
 import { SCHEMA_SQL } from "./schema.js";
 import { ROLES_SQL, RLS_SQL } from "./roles-sql.js";
+import { createTenantPool } from "./tenant-pool.js";
 import { createListenNotify } from "./listen-notify.js";
 import {
   Q_CREATE_INSTANCE, Q_GET_INSTANCE, Q_UPDATE_INSTANCE_STATUS,
@@ -613,6 +614,13 @@ export function createStore(options: PgStoreOptions): PgStore {
     getAggregateStateDurations,
     getTransitionCounts,
     getInstanceSummaries,
+    forTenant(tenantId: string): PgStore {
+      return createStore({
+        ...options,
+        pool: createTenantPool(pool, tenantId, "dm_tenant"),
+        useListenNotify: false,
+      });
+    },
     startListening: listener.startListening,
     stopListening: listener.stopListening,
     close: listener.stopListening,

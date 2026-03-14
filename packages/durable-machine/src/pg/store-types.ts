@@ -245,6 +245,10 @@ export interface PgStore {
   ): Promise<void>;
   stopListening(): Promise<void>;
 
+  // Tenant scoping
+  /** Returns a PgStore scoped to a specific tenant via RLS. */
+  forTenant(tenantId: string): PgStore;
+
   // Lifecycle
   close(): Promise<void>;
 }

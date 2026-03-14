@@ -7,6 +7,8 @@ export type {
   RecordInvokeResultParams, InsertEffectsParams,
   StateDurationRow, AggregateStateDuration, TransitionCountRow, InstanceSummaryRow,
 } from "./store.js";
+export type { TenantRow } from "./store-types.js";
+export { createTenantPool } from "./tenant-pool.js";
 export { createStoreInstruments } from "./store-metrics.js";
 export type { StoreInstruments } from "./store-metrics.js";
 export { sendMachineEvent, sendMachineEventBatch, getMachineState } from "./client.js";

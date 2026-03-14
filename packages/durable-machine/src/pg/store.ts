@@ -2,6 +2,7 @@ import type { PoolClient } from "pg";
 import type { StateValue } from "xstate";
 import type { StepInfo, TransitionRecord, InstanceStatus, EffectOutboxStatus } from "../types.js";
 import { SCHEMA_SQL } from "./schema.js";
+import { ROLES_SQL, RLS_SQL } from "./roles-sql.js";
 import { createListenNotify } from "./listen-notify.js";
 import {
   Q_CREATE_INSTANCE, Q_GET_INSTANCE, Q_UPDATE_INSTANCE_STATUS,
@@ -111,6 +112,11 @@ export function createStore(options: PgStoreOptions): PgStore {
 
   async function ensureSchema(): Promise<void> {
     await pool.query(SCHEMA_SQL);
+  }
+
+  async function ensureRoles(): Promise<void> {
+    await pool.query(ROLES_SQL);
+    await pool.query(RLS_SQL);
   }
 
   // ── Instance CRUD ───────────────────────────────────────────────────────
@@ -579,6 +585,7 @@ export function createStore(options: PgStoreOptions): PgStore {
   const store: PgStore = {
     withTransaction,
     ensureSchema,
+    ensureRoles,
     createInstance,
     getInstance,
     updateInstanceStatus,

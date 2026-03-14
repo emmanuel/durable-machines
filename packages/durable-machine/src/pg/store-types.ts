@@ -147,6 +147,8 @@ export interface PgStore {
 
   // Schema
   ensureSchema(): Promise<void>;
+  /** Create PG roles (dm_tenant, dm_admin) and enable RLS policies. */
+  ensureRoles(): Promise<void>;
 
   // Instance CRUD
   createInstance(params: CreateInstanceParams): Promise<void>;

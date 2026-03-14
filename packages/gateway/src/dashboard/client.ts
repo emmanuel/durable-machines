@@ -565,7 +565,7 @@ export const CLIENT_JS = /* js */ `
         + '</div>';
     }
 
-    var hasDetail = entry.event || entry.step || entry.eventPayload || entry.contextDiff;
+    var hasDetail = entry.event || entry.step || entry.eventPayload || entry.effects || entry.contextDiff;
     var dotClass = entry.kind === 'self-transition' ? 'af-dot-self' : 'af-dot-transition';
     var html = '';
 
@@ -591,6 +591,9 @@ export const CLIENT_JS = /* js */ `
     if (entry.event && entry.event.indexOf('xstate.') !== 0) {
       html += '<span class="af-tag af-tag-event">' + esc(entry.event) + '</span>';
     }
+    if (entry.guard) {
+      html += '<span class="af-tag af-tag-guard">' + esc(entry.guard) + '</span>';
+    }
     if (entry.step) {
       html += '<span class="af-tag af-tag-step">' + esc(entry.step.name) + '</span>';
       if (entry.step.error != null) {
@@ -598,6 +601,9 @@ export const CLIENT_JS = /* js */ `
       } else if (entry.step.durationMs != null) {
         html += '<span class="af-tag af-tag-done">' + formatDuration(entry.step.durationMs) + '</span>';
       }
+    }
+    if (entry.effects && entry.effects.length > 0) {
+      html += '<span class="af-tag af-tag-effect">' + entry.effects.length + ' effect' + (entry.effects.length > 1 ? 's' : '') + '</span>';
     }
 
     html += '<span class="af-ts">' + formatTime(entry.ts) + '</span>';
@@ -620,6 +626,19 @@ export const CLIENT_JS = /* js */ `
           html += '<div class="af-error-box">' + esc(errMsg) + '</div>';
         } else if (s.output != null) {
           html += '<div class="af-detail-line"><span class="af-detail-label">Output</span><span class="af-detail-val">' + esc(JSON.stringify(s.output)) + '</span></div>';
+        }
+        html += '</div>';
+      }
+      if (entry.effects && entry.effects.length > 0) {
+        html += '<div class="af-detail-section"><div class="af-section-head" style="color:var(--cyan,#5af)">Effects</div>';
+        for (var ei = 0; ei < entry.effects.length; ei++) {
+          var eff = entry.effects[ei];
+          html += '<div class="af-detail-line">';
+          html += '<span class="af-detail-label">' + esc(eff.effectType) + '</span>';
+          html += '<span class="badge badge-' + esc(eff.status) + '">' + esc(eff.status) + '</span>';
+          if (eff.attempts > 0) html += ' <span class="af-duration">' + eff.attempts + '/' + eff.maxAttempts + '</span>';
+          html += '</div>';
+          if (eff.lastError) html += '<div class="af-error-box">' + esc(eff.lastError) + '</div>';
         }
         html += '</div>';
       }
@@ -680,8 +699,13 @@ export const CLIENT_JS = /* js */ `
 
   function renderEventFieldsForType(container, eventType) {
     var schema = currentEventSchemas[eventType];
-    if (!schema || schema.length === 0) {
-      // No schema — show JSON textarea
+    if (schema && schema.length === 0) {
+      // Event declared with no payload fields — hide input
+      container.innerHTML = '';
+      return;
+    }
+    if (!schema) {
+      // No schema declared — show JSON textarea fallback
       container.innerHTML = '<textarea name="payload" placeholder=\\'"key": "value"} (optional)\\'></textarea>';
       return;
     }
@@ -1030,11 +1054,6 @@ export const CLIENT_JS = /* js */ `
           updateEffectsPanel(data.effects);
         }
 
-        // Update event log
-        if (data.eventLog) {
-          updateEventLog(data.eventLog);
-        }
-
         // Update analytics panel
         if (data.aggregateStateDurations || data.transitionCounts) {
           updateAnalyticsPanel(data.aggregateStateDurations, data.transitionCounts);
@@ -1138,24 +1157,6 @@ export const CLIENT_JS = /* js */ `
       html += '<span class="effect-type">' + esc(eff.effectType) + '</span>';
       html += '<span class="badge badge-' + esc(eff.status) + '">' + esc(eff.status) + '</span>';
       if (eff.attempts > 0) html += '<span class="timeline-duration">' + eff.attempts + '/' + eff.maxAttempts + ' attempts</span>';
-      html += '</div>';
-    }
-    el.innerHTML = html;
-  }
-
-  function updateEventLog(entries) {
-    const el = document.getElementById('event-log-entries');
-    if (!el) return;
-    if (entries.length === 0) {
-      el.innerHTML = '<div class="empty">No events</div>';
-      return;
-    }
-    let html = '';
-    for (const entry of entries) {
-      html += '<div class="event-log-entry">';
-      html += '<span class="event-log-seq">#' + entry.seq + '</span>';
-      html += '<span class="event-log-topic">' + esc(entry.topic) + '</span>';
-      html += '<span class="event-log-time">' + formatTime(entry.createdAt) + '</span>';
       html += '</div>';
     }
     el.innerHTML = html;

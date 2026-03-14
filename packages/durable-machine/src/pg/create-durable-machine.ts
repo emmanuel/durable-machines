@@ -170,6 +170,7 @@ export function createDurableMachine<T extends AnyStateMachine>(
         const rows = await store.listEffects(workflowId);
         return rows.map((r) => ({
           id: r.id,
+          stateValue: r.stateValue,
           effectType: r.effectType,
           effectPayload: r.effectPayload,
           status: r.status,

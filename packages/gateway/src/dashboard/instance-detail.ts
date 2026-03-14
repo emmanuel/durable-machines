@@ -186,37 +186,11 @@ export function instanceDetailPage(
           <option value="">-- select event --</option>
           ${eventOptions}
         </select>
-        <div id="event-fields">
-          <textarea name="payload" placeholder='{"key": "value"} (optional)'></textarea>
-        </div>
+        <div id="event-fields"></div>
         <button type="submit">Send</button>
         <div class="form-status"></div>
       </form>
     </div>`;
-
-  // Steps panel
-  const stepsPanel = steps.length > 0 ? `
-    <div class="card">
-      <h2>Steps</h2>
-      <table>
-        <thead><tr><th>Name</th><th>Status</th><th>Duration</th></tr></thead>
-        <tbody>
-          ${steps.map((s) => {
-            const status = s.completedAtEpochMs != null
-              ? (s.error != null ? "error" : "done")
-              : (s.startedAtEpochMs != null ? "running" : "pending");
-            const dur = s.startedAtEpochMs != null && s.completedAtEpochMs != null
-              ? formatDuration(s.completedAtEpochMs - s.startedAtEpochMs)
-              : s.startedAtEpochMs != null ? "in progress" : "-";
-            return `<tr>
-              <td class="mono">${esc(s.name)}</td>
-              <td>${statusBadge(status)}</td>
-              <td class="timeline-duration">${esc(dur)}</td>
-            </tr>`;
-          }).join("")}
-        </tbody>
-      </table>
-    </div>` : "";
 
   // Effects panel
   const effectsPanel = effects ? `
@@ -289,7 +263,6 @@ export function instanceDetailPage(
       ${contextPanel}
       ${eventPanel}
     </div>
-    ${stepsPanel}
     ${effectsPanel}
     ${analyticsPanel}`;
 

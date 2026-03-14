@@ -2,6 +2,8 @@ import type {
   TransitionRecord,
   EventLogEntry,
   StepInfo,
+  EffectStatus,
+  SerializedStateNode,
 } from "@durable-xstate/durable-machine";
 import type { StateValue } from "xstate";
 
@@ -24,7 +26,15 @@ export interface ActivityEntry {
     output?: unknown;
     error?: unknown;
   };
+  effects?: {
+    effectType: string;
+    status: string;
+    attempts: number;
+    maxAttempts: number;
+    lastError?: string;
+  }[];
   contextDiff?: { key: string; before: unknown; after: unknown }[];
+  guard?: string;
 
   // Unmatched-event fields
   eventType?: string;
@@ -65,10 +75,12 @@ export interface BuildActivityFeedInput {
   transitions: TransitionRecord[];
   eventLog: EventLogEntry[];
   steps: StepInfo[];
+  effects?: EffectStatus[];
+  machineStates?: Record<string, SerializedStateNode>;
 }
 
 export function buildActivityFeed(input: BuildActivityFeedInput): ActivityEntry[] {
-  const { transitions, eventLog, steps } = input;
+  const { transitions, eventLog, steps, effects, machineStates } = input;
   const entries: ActivityEntry[] = [];
 
   // Track which event_log entries get correlated
@@ -122,12 +134,40 @@ export function buildActivityFeed(input: BuildActivityFeedInput): ActivityEntry[
       }
     }
 
+    // Correlate effects: match effect.stateValue to transition's from state
+    if (effects && t.from != null) {
+      const matched = effects.filter(
+        (eff) => eff.stateValue != null && stateValuesEqual(eff.stateValue, t.from),
+      );
+      if (matched.length > 0) {
+        entry.effects = matched.map((eff) => ({
+          effectType: eff.effectType,
+          status: eff.status,
+          attempts: eff.attempts,
+          maxAttempts: eff.maxAttempts,
+          ...(eff.lastError != null && { lastError: eff.lastError }),
+        }));
+      }
+    }
+
     // Context diff from transition snapshots
     if (i > 0 && transitions[i - 1].contextSnapshot && t.contextSnapshot) {
       entry.contextDiff = diffContext(
         transitions[i - 1].contextSnapshot!,
         t.contextSnapshot!,
       );
+    }
+
+    // Guard label: look up from machine definition
+    if (machineStates && t.from != null && t.event) {
+      const fromPath = stateValueStr(t.from);
+      const toPath = stateValueStr(t.to);
+      const fromNode = machineStates[fromPath];
+      const rules = fromNode?.on?.[t.event];
+      const match = rules?.find((r) => r.target === toPath);
+      if (match?.guard) {
+        entry.guard = match.guard;
+      }
     }
 
     entries.push(entry);
@@ -213,6 +253,24 @@ function renderDetail(entry: ActivityEntry): string {
     sections.push(stepHtml);
   }
 
+  if (entry.effects && entry.effects.length > 0) {
+    let effHtml = `<div class="af-detail-section"><div class="af-section-head" style="color:var(--cyan,#5af)">Effects</div>`;
+    for (const eff of entry.effects) {
+      effHtml += `<div class="af-detail-line">`;
+      effHtml += `<span class="af-detail-label">${esc(eff.effectType)}</span>`;
+      effHtml += `<span class="badge badge-${esc(eff.status)}">${esc(eff.status)}</span>`;
+      if (eff.attempts > 0) {
+        effHtml += ` <span class="af-duration">${eff.attempts}/${eff.maxAttempts}</span>`;
+      }
+      effHtml += `</div>`;
+      if (eff.lastError) {
+        effHtml += `<div class="af-error-box">${esc(eff.lastError)}</div>`;
+      }
+    }
+    effHtml += `</div>`;
+    sections.push(effHtml);
+  }
+
   if (entry.contextDiff && entry.contextDiff.length > 0) {
     let diffHtml = `<div class="af-detail-section"><div class="af-section-head" style="color:var(--text-dim)">Context</div>`;
     for (const d of entry.contextDiff) {
@@ -244,7 +302,7 @@ export function renderActivityFeed(feed: ActivityEntry[]): string {
       continue;
     }
 
-    const hasDetail = entry.event || entry.step || entry.eventPayload || entry.contextDiff;
+    const hasDetail = entry.event || entry.step || entry.eventPayload || entry.effects || entry.contextDiff;
     const dotClass = entry.kind === "self-transition" ? "af-dot-self" : "af-dot-transition";
 
     if (hasDetail) {
@@ -270,6 +328,9 @@ export function renderActivityFeed(feed: ActivityEntry[]): string {
     if (entry.event && !entry.event.startsWith("xstate.")) {
       html += `<span class="af-tag af-tag-event">${esc(entry.event)}</span>`;
     }
+    if (entry.guard) {
+      html += `<span class="af-tag af-tag-guard">${esc(entry.guard)}</span>`;
+    }
     if (entry.step) {
       const s = entry.step;
       html += `<span class="af-tag af-tag-step">${esc(s.name)}</span>`;
@@ -278,6 +339,9 @@ export function renderActivityFeed(feed: ActivityEntry[]): string {
       } else if (s.durationMs != null) {
         html += `<span class="af-tag af-tag-done">${formatDuration(s.durationMs)}</span>`;
       }
+    }
+    if (entry.effects && entry.effects.length > 0) {
+      html += `<span class="af-tag af-tag-effect">${entry.effects.length} effect${entry.effects.length > 1 ? "s" : ""}</span>`;
     }
 
     html += `<span class="af-ts">${formatTime(entry.ts)}</span>`;

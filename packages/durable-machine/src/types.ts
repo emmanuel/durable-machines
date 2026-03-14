@@ -180,6 +180,8 @@ export interface EventLogEntry {
 /** Execution status of a single effect in the transactional outbox. */
 export interface EffectStatus {
   id: string;
+  /** The state value that triggered this effect. */
+  stateValue?: StateValue;
   effectType: string;
   effectPayload: Record<string, unknown>;
   status: EffectOutboxStatus;

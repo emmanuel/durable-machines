@@ -283,6 +283,8 @@ tr:last-child td { border-bottom: none; }
 .af-tag-done { background: rgba(52,211,153,0.2); color: var(--green); }
 .af-tag-error { background: rgba(248,113,113,0.2); color: var(--red); }
 .af-tag-self { background: rgba(251,191,36,0.15); color: var(--yellow); }
+.af-tag-guard { background: rgba(139,143,163,0.15); color: var(--text-dim); font-style: italic; }
+.af-tag-effect { background: rgba(90,170,255,0.15); color: var(--cyan,#5af); }
 .af-tag-ignored { background: rgba(139,143,163,0.15); color: var(--text-dim); }
 .af-ts { margin-left: auto; font-size: 10px; flex-shrink: 0; }
 .af-unmatched { opacity: 0.55; }

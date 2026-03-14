@@ -201,6 +201,8 @@ export function createDashboardRoutes(options: DashboardRouteOptions): Hono {
               transitions: sseTransitions,
               eventLog: eventLog ?? [],
               steps,
+              effects,
+              machineStates: sseDefinition.states,
             });
 
             // Fetch aggregate analytics if enabled
@@ -372,6 +374,8 @@ async function buildDetailData(
     transitions,
     eventLog: eventLog ?? [],
     steps,
+    effects,
+    machineStates: definition.states,
   });
 
   // Fetch aggregate analytics if enabled

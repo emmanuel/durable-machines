@@ -218,7 +218,7 @@ export const Q_GET_EVENT_LOG_AFTER_LIMIT = {
 export const Q_INSERT_EFFECTS = {
   name: "dm_insert_effects",
   text: `INSERT INTO effect_outbox (instance_id, state_value, effect_type, effect_payload, max_attempts, created_at)
-         SELECT * FROM UNNEST($1::text[], $2::jsonb[], $3::text[], $4::jsonb[], $5::int[], $6::bigint[])`,
+         SELECT * FROM UNNEST($1::uuid[], $2::jsonb[], $3::text[], $4::jsonb[], $5::int[], $6::bigint[])`,
 } as const;
 
 // ─── Analytics ───────────────────────────────────────────────────────────────
@@ -285,7 +285,7 @@ export const Q_SEND_MACHINE_EVENT = {
 export const Q_SEND_MACHINE_EVENT_BATCH = {
   name: "dm_send_machine_event_batch",
   text: `INSERT INTO event_log (instance_id, topic, payload, created_at)
-       SELECT * FROM UNNEST($1::text[], $2::text[], $3::jsonb[], $4::bigint[])`,
+       SELECT * FROM UNNEST($1::uuid[], $2::text[], $3::jsonb[], $4::bigint[])`,
 } as const;
 
 export const Q_GET_MACHINE_STATE = {

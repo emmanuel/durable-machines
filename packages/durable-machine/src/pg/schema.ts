@@ -10,7 +10,7 @@ AS $uuidv7$
 $uuidv7$;
 
 CREATE TABLE IF NOT EXISTS machine_instances (
-  id              TEXT PRIMARY KEY,
+  id              UUID PRIMARY KEY,
   machine_name    TEXT NOT NULL,
   state_value     JSONB NOT NULL,
   context         JSONB NOT NULL,
@@ -29,7 +29,7 @@ CREATE INDEX IF NOT EXISTS idx_mi_wake ON machine_instances (wake_at) WHERE wake
 CREATE INDEX IF NOT EXISTS idx_mi_name ON machine_instances (machine_name);
 
 CREATE TABLE IF NOT EXISTS invoke_results (
-  instance_id     TEXT NOT NULL REFERENCES machine_instances(id) ON DELETE CASCADE,
+  instance_id     UUID NOT NULL REFERENCES machine_instances(id) ON DELETE CASCADE,
   step_key        TEXT NOT NULL,
   output          JSONB,
   error           JSONB,
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS invoke_results (
 );
 
 CREATE TABLE IF NOT EXISTS event_log (
-  instance_id     TEXT NOT NULL REFERENCES machine_instances(id) ON DELETE CASCADE,
+  instance_id     UUID NOT NULL REFERENCES machine_instances(id) ON DELETE CASCADE,
   seq             BIGSERIAL,
   topic           TEXT NOT NULL DEFAULT 'event',
   payload         JSONB NOT NULL,
@@ -65,7 +65,7 @@ CREATE TRIGGER event_log_trigger
   AFTER INSERT ON event_log FOR EACH ROW EXECUTE FUNCTION event_log_notify();
 
 CREATE TABLE IF NOT EXISTS transition_log (
-  instance_id     TEXT NOT NULL REFERENCES machine_instances(id) ON DELETE CASCADE,
+  instance_id     UUID NOT NULL REFERENCES machine_instances(id) ON DELETE CASCADE,
   seq             SERIAL,
   from_state      JSONB,
   to_state        JSONB NOT NULL,
@@ -77,8 +77,8 @@ CREATE TABLE IF NOT EXISTS transition_log (
 ALTER TABLE transition_log ADD COLUMN IF NOT EXISTS context_snapshot JSONB;
 
 CREATE TABLE IF NOT EXISTS effect_outbox (
-  id              TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
-  instance_id     TEXT NOT NULL REFERENCES machine_instances(id) ON DELETE CASCADE,
+  id              UUID PRIMARY KEY DEFAULT uuidv7(),
+  instance_id     UUID NOT NULL REFERENCES machine_instances(id) ON DELETE CASCADE,
   state_value     JSONB NOT NULL,
   effect_type     TEXT NOT NULL,
   effect_payload  JSONB NOT NULL,

@@ -1,4 +1,14 @@
 export const SCHEMA_SQL = `
+CREATE OR REPLACE FUNCTION uuidv7() RETURNS uuid
+LANGUAGE sql VOLATILE
+AS $uuidv7$
+  SELECT (
+    lpad(to_hex((EXTRACT(EPOCH FROM clock_timestamp()) * 1000)::bigint), 12, '0')
+    || '7'
+    || substr(replace(gen_random_uuid()::text, '-', ''), 14)
+  )::uuid;
+$uuidv7$;
+
 CREATE TABLE IF NOT EXISTS machine_instances (
   id              TEXT PRIMARY KEY,
   machine_name    TEXT NOT NULL,

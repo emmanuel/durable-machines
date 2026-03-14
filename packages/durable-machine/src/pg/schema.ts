@@ -72,7 +72,7 @@ DECLARE
   m_name TEXT;
 BEGIN
   SELECT machine_name INTO m_name FROM machine_instances WHERE id = NEW.instance_id;
-  PERFORM pg_notify('machine_event', m_name || '::' || NEW.instance_id || '::' || NEW.topic);
+  PERFORM pg_notify('machine_event', m_name || '::' || NEW.instance_id::text || '::' || NEW.topic);
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -117,7 +117,7 @@ CREATE INDEX IF NOT EXISTS idx_eo_tenant ON effect_outbox (tenant_id);
 
 CREATE OR REPLACE FUNCTION effect_outbox_notify() RETURNS trigger AS $$
 BEGIN
-  PERFORM pg_notify('effect_pending', NEW.instance_id);
+  PERFORM pg_notify('effect_pending', NEW.instance_id::text);
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;

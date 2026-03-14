@@ -47,8 +47,8 @@ DO $$ BEGIN
   ) THEN
     CREATE POLICY tenant_isolation ON ${table}
       FOR ALL TO dm_tenant
-      USING (tenant_id = current_setting('app.tenant_id')::uuid)
-      WITH CHECK (tenant_id = current_setting('app.tenant_id')::uuid);
+      USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+      WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies WHERE tablename = '${table}' AND policyname = 'admin_bypass'

@@ -10,12 +10,22 @@ describe("PgStore", () => {
   let db: PGlite;
   let pool: ReturnType<typeof createPgLitePool>;
   let store: PgStore;
+  let testTenantId: string;
 
   beforeAll(async () => {
     db = new PGlite();
     pool = createPgLitePool(db);
     store = createStore({ pool, useListenNotify: false });
     await store.ensureSchema();
+
+    // Create a test tenant
+    testTenantId = uuidv7();
+    const now = Date.now();
+    await pool.query({
+      text: `INSERT INTO tenants (id, jwt_iss, jwt_aud, jwks_url, name, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      values: [testTenantId, "test-iss", "test-aud", "https://example.com/.well-known/jwks.json", "Test Tenant", now, now],
+    });
   });
 
   afterAll(async () => {
@@ -25,6 +35,11 @@ describe("PgStore", () => {
 
   beforeEach(async () => {
     await pool.query("TRUNCATE machine_instances CASCADE");
+    // Set tenant GUC so DEFAULT works on INSERT
+    await pool.query({
+      text: `SELECT set_config('app.tenant_id', $1, false)`,
+      values: [testTenantId],
+    });
   });
 
   // ── Instance CRUD ─────────────────────────────────────────────────────

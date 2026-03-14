@@ -9,8 +9,20 @@ AS $uuidv7$
   )::uuid;
 $uuidv7$;
 
+CREATE TABLE IF NOT EXISTS tenants (
+  id          UUID PRIMARY KEY DEFAULT uuidv7(),
+  jwt_iss     TEXT NOT NULL,
+  jwt_aud     TEXT NOT NULL,
+  jwks_url    TEXT NOT NULL,
+  name        TEXT NOT NULL,
+  created_at  BIGINT NOT NULL,
+  updated_at  BIGINT NOT NULL,
+  UNIQUE (jwt_iss, jwt_aud)
+);
+
 CREATE TABLE IF NOT EXISTS machine_instances (
   id              UUID PRIMARY KEY,
+  tenant_id       UUID NOT NULL DEFAULT current_setting('app.tenant_id', true)::uuid REFERENCES tenants(id),
   machine_name    TEXT NOT NULL,
   state_value     JSONB NOT NULL,
   context         JSONB NOT NULL,
@@ -27,9 +39,11 @@ ALTER TABLE machine_instances ADD COLUMN IF NOT EXISTS wake_event JSONB;
 CREATE INDEX IF NOT EXISTS idx_mi_status ON machine_instances (status);
 CREATE INDEX IF NOT EXISTS idx_mi_wake ON machine_instances (wake_at) WHERE wake_at IS NOT NULL AND status = 'running';
 CREATE INDEX IF NOT EXISTS idx_mi_name ON machine_instances (machine_name);
+CREATE INDEX IF NOT EXISTS idx_mi_tenant ON machine_instances (tenant_id);
 
 CREATE TABLE IF NOT EXISTS invoke_results (
   instance_id     UUID NOT NULL REFERENCES machine_instances(id) ON DELETE CASCADE,
+  tenant_id       UUID NOT NULL DEFAULT current_setting('app.tenant_id', true)::uuid,
   step_key        TEXT NOT NULL,
   output          JSONB,
   error           JSONB,
@@ -37,9 +51,11 @@ CREATE TABLE IF NOT EXISTS invoke_results (
   completed_at    BIGINT,
   PRIMARY KEY (instance_id, step_key)
 );
+CREATE INDEX IF NOT EXISTS idx_ir_tenant ON invoke_results (tenant_id);
 
 CREATE TABLE IF NOT EXISTS event_log (
   instance_id     UUID NOT NULL REFERENCES machine_instances(id) ON DELETE CASCADE,
+  tenant_id       UUID NOT NULL DEFAULT current_setting('app.tenant_id', true)::uuid,
   seq             BIGSERIAL,
   topic           TEXT NOT NULL DEFAULT 'event',
   payload         JSONB NOT NULL,
@@ -49,6 +65,7 @@ CREATE TABLE IF NOT EXISTS event_log (
 );
 CREATE INDEX IF NOT EXISTS idx_el_pending
   ON event_log (instance_id, seq);
+CREATE INDEX IF NOT EXISTS idx_el_tenant ON event_log (tenant_id);
 
 CREATE OR REPLACE FUNCTION event_log_notify() RETURNS trigger AS $$
 DECLARE
@@ -66,6 +83,7 @@ CREATE TRIGGER event_log_trigger
 
 CREATE TABLE IF NOT EXISTS transition_log (
   instance_id     UUID NOT NULL REFERENCES machine_instances(id) ON DELETE CASCADE,
+  tenant_id       UUID NOT NULL DEFAULT current_setting('app.tenant_id', true)::uuid,
   seq             SERIAL,
   from_state      JSONB,
   to_state        JSONB NOT NULL,
@@ -75,10 +93,12 @@ CREATE TABLE IF NOT EXISTS transition_log (
   PRIMARY KEY (instance_id, seq)
 );
 ALTER TABLE transition_log ADD COLUMN IF NOT EXISTS context_snapshot JSONB;
+CREATE INDEX IF NOT EXISTS idx_tl_tenant ON transition_log (tenant_id);
 
 CREATE TABLE IF NOT EXISTS effect_outbox (
   id              UUID PRIMARY KEY DEFAULT uuidv7(),
   instance_id     UUID NOT NULL REFERENCES machine_instances(id) ON DELETE CASCADE,
+  tenant_id       UUID NOT NULL DEFAULT current_setting('app.tenant_id', true)::uuid,
   state_value     JSONB NOT NULL,
   effect_type     TEXT NOT NULL,
   effect_payload  JSONB NOT NULL,
@@ -93,6 +113,7 @@ CREATE TABLE IF NOT EXISTS effect_outbox (
 CREATE INDEX IF NOT EXISTS idx_eo_pending
   ON effect_outbox (next_retry_at)
   WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS idx_eo_tenant ON effect_outbox (tenant_id);
 
 CREATE OR REPLACE FUNCTION effect_outbox_notify() RETURNS trigger AS $$
 BEGIN
@@ -110,7 +131,7 @@ DECLARE
   cnt INTEGER;
 BEGIN
   WITH to_expire AS (
-    SELECT id, wake_event FROM machine_instances
+    SELECT id, tenant_id, wake_event FROM machine_instances
     WHERE wake_at <= (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT
       AND status = 'running' AND wake_at IS NOT NULL
     FOR UPDATE
@@ -121,8 +142,8 @@ BEGIN
     FROM to_expire te
     WHERE mi.id = te.id
   )
-  INSERT INTO event_log (instance_id, topic, payload, source, created_at)
-  SELECT id, 'timeout', wake_event, 'system:timeout',
+  INSERT INTO event_log (instance_id, tenant_id, topic, payload, source, created_at)
+  SELECT id, tenant_id, 'timeout', wake_event, 'system:timeout',
          (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT
   FROM to_expire
   WHERE wake_event IS NOT NULL;

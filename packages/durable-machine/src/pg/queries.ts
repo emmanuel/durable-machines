@@ -274,6 +274,13 @@ export const Q_INSTANCE_SUMMARIES = {
          ORDER BY mi.created_at DESC`,
 } as const;
 
+// ─── Tenant Queries ─────────────────────────────────────────────────────────
+
+export const Q_LOOKUP_TENANT = {
+  name: "dm_lookup_tenant",
+  text: `SELECT id, jwks_url FROM tenants WHERE jwt_iss = $1 AND jwt_aud = $2`,
+} as const;
+
 // ─── Client Queries ──────────────────────────────────────────────────────────
 
 export const Q_SEND_MACHINE_EVENT = {

@@ -56,6 +56,7 @@ function sanitizeContext(obj: unknown): Record<string, unknown> {
 function rowToMachine(row: any): MachineRow {
   return {
     id: row.id,
+    tenantId: row.tenant_id,
     machineName: row.machine_name,
     stateValue: row.state_value as StateValue,
     context: sanitizeContext(row.context),

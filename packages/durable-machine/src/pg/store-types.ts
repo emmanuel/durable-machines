@@ -11,8 +11,19 @@ export interface PgStoreOptions {
   instruments?: StoreInstruments;
 }
 
+export interface TenantRow {
+  id: string;
+  jwtIss: string;
+  jwtAud: string;
+  jwksUrl: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface MachineRow {
   id: string;
+  tenantId: string;
   machineName: string;
   stateValue: StateValue;
   context: Record<string, unknown>;

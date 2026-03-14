@@ -1,9 +1,11 @@
 import pg from "pg";
 import { createStore } from "../../src/pg/store.js";
-import { TEST_DB_URL } from "../test-db.js";
 
 export async function setup() {
-  const pool = new pg.Pool({ connectionString: TEST_DB_URL });
+  const url = process.env.PG_TEST_DATABASE_URL;
+  if (!url) return; // Unit tests use in-memory PGlite; skip when no PG URL
+
+  const pool = new pg.Pool({ connectionString: url });
   await pool.query(`
     DROP TABLE IF EXISTS effect_outbox CASCADE;
     DROP TABLE IF EXISTS transition_log CASCADE;

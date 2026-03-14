@@ -1,17 +1,20 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
-import pg from "pg";
+import { PGlite } from "@electric-sql/pglite";
 import { createStore } from "../../src/pg/store.js";
 import type { PgStore } from "../../src/pg/store.js";
 import { sendMachineEvent, sendMachineEventBatch } from "../../src/pg/client.js";
-import { TEST_DB_URL } from "../test-db.js";
+import { createPgLitePool } from "../fixtures/pglite-pool.js";
 
 describe("PgStore", () => {
-  let pool: pg.Pool;
+  let db: PGlite;
+  let pool: ReturnType<typeof createPgLitePool>;
   let store: PgStore;
 
   beforeAll(async () => {
-    pool = new pg.Pool({ connectionString: TEST_DB_URL });
+    db = new PGlite();
+    pool = createPgLitePool(db);
     store = createStore({ pool, useListenNotify: false });
+    await store.ensureSchema();
   });
 
   afterAll(async () => {

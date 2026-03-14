@@ -77,6 +77,9 @@ importers:
         specifier: ^1.9.0
         version: 1.9.0
     devDependencies:
+      '@electric-sql/pglite':
+        specifier: ^0.3.16
+        version: 0.3.16
       '@opentelemetry/sdk-metrics':
         specifier: ^2.6.0
         version: 2.6.0(@opentelemetry/api@1.9.0)
@@ -210,6 +213,9 @@ packages:
     resolution: {integrity: sha512-yY+UqQFkTxEKx9PpDrH5kATLsaXaoxL/+rpLMQgJwgbwqht09PEdBs0fPHYqhWJQVET3Xu6aaCSlgD3gzzFMkQ==}
     engines: {node: '>=20'}
     hasBin: true
+
+  '@electric-sql/pglite@0.3.16':
+    resolution: {integrity: sha512-mZkZfOd9OqTMHsK+1cje8OSzfAQcpD7JmILXTl5ahdempjUDdmg4euf1biDex5/LfQIDJ3gvCu6qDgdnDxfJmA==}
 
   '@esbuild/aix-ppc64@0.27.3':
     resolution: {integrity: sha512-9fJMTNFTWZMh5qwrBItuziu834eOCUcEqymSH7pY+zoMVEZg3gcPuBNxH1EvfVYe9h0x/Ptw8KBzv7qxb7l8dg==}
@@ -1096,6 +1102,8 @@ snapshots:
       - bufferutil
       - pg-native
       - utf-8-validate
+
+  '@electric-sql/pglite@0.3.16': {}
 
   '@esbuild/aix-ppc64@0.27.3':
     optional: true

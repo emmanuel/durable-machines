@@ -70,6 +70,7 @@
   },
   "devDependencies": {
     "@dbos-inc/dbos-sdk": "^4.0.0",
+    "@electric-sql/pglite": "^0.3.16",
     "@opentelemetry/sdk-metrics": "^2.6.0",
     "@types/node": "^24",
     "@types/pg": "^8.18.0",

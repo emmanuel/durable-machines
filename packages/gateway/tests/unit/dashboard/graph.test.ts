@@ -94,17 +94,19 @@ describe("extractGraphData", () => {
       type: "event",
     });
 
-    const doneEdge = edges.find((e) => e.label.includes("xstate.done"));
+    const doneEdge = edges.find((e) => e.type === "done");
     expect(doneEdge).toMatchObject({
       source: "processing",
       target: "done",
+      label: "done",
       type: "done",
     });
 
-    const errorEdge = edges.find((e) => e.label.includes("xstate.error"));
+    const errorEdge = edges.find((e) => e.type === "error");
     expect(errorEdge).toMatchObject({
       source: "processing",
       target: "error",
+      label: "error",
       type: "error",
     });
   });

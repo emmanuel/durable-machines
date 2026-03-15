@@ -71,6 +71,7 @@ async function executeInvocationsInline(
   deps: EventProcessorOptions,
   instanceId: string,
   snapshot: AnyMachineSnapshot,
+  tenantId?: string,
 ): Promise<AnyMachineSnapshot> {
   const { store, machine } = deps;
   const actorImpls = extractActorImplementations(machine);
@@ -132,6 +133,7 @@ async function executeInvocationsInline(
         error,
         startedAt,
         completedAt: Date.now(),
+        tenantId,
       });
     }
 
@@ -160,6 +162,7 @@ export async function processStartup(
   deps: EventProcessorOptions,
   instanceId: string,
   input: Record<string, unknown>,
+  tenantId?: string,
 ): Promise<void> {
   const { store, machine, options, enableAnalytics } = deps;
   const channels = options.channels ?? [];
@@ -170,6 +173,7 @@ export async function processStartup(
     deps,
     instanceId,
     initialSnapshot,
+    tenantId,
   );
 
   // Compute wake_at + wake_event from after delays
@@ -181,6 +185,12 @@ export async function processStartup(
 
   // Wrap creation + effect insert in a single transaction
   await store.withTransaction(async (client) => {
+    if (tenantId) {
+      await client.query({
+        text: `SELECT set_config('app.tenant_id', $1, true)`,
+        values: [tenantId],
+      });
+    }
     await store.createInstance({
       id: instanceId,
       machineName: machine.id,
@@ -212,7 +222,7 @@ export async function processStartup(
 
   // Transition log
   if (enableAnalytics) {
-    await store.appendTransition(instanceId, null, snapshot.value, null, now, snapshot.context as Record<string, unknown>);
+    await store.appendTransition(instanceId, null, snapshot.value, null, now, snapshot.context as Record<string, unknown>, tenantId);
   }
 
   // Prompt lifecycle: send prompt if in durable state
@@ -316,8 +326,9 @@ async function executeAndFinalizeInvocation(
   event: AnyEventObject,
   eventSeq: number,
   firedDelays: Array<string | number>,
+  tenantId?: string,
 ): Promise<boolean> {
-  const postInvoke = await executeInvocationsInline(deps, instanceId, invocationSnapshot);
+  const postInvoke = await executeInvocationsInline(deps, instanceId, invocationSnapshot, tenantId);
 
   let processed = false;
   await deps.store.withTransaction(async (client) => {
@@ -326,6 +337,10 @@ async function executeAndFinalizeInvocation(
       processed = row?.status === "cancelled";
       return;
     }
+    await client.query({
+      text: `SELECT set_config('app.tenant_id', $1, true)`,
+      values: [row.tenantId],
+    });
     await finalize(
       deps, client, instanceId,
       prevSnapshot, prevStateValue,
@@ -359,6 +374,7 @@ export async function processBatchFromLog(
   let invocationSnapshot: AnyMachineSnapshot | null = null;
   let prevSnapshot: AnyMachineSnapshot;
   let prevStateValue: StateValue;
+  let tenantId: string | undefined;
   let lastEvent: AnyEventObject;
   let lastEventSeq = 0;
   let firedDelays: Array<string | number> = [];
@@ -377,6 +393,15 @@ export async function processBatchFromLog(
     }
 
     const { row, events } = result;
+
+    tenantId = row.tenantId;
+
+    // Set tenant GUC so all INSERTs in this transaction use the correct tenant_id DEFAULT
+    await client.query({
+      text: `SELECT set_config('app.tenant_id', $1, true)`,
+      values: [row.tenantId],
+    });
+
     prevSnapshot = machine.resolveState({
       value: row.stateValue,
       context: row.context,
@@ -460,6 +485,7 @@ export async function processBatchFromLog(
     deps, instanceId, invocationSnapshot,
     prevSnapshot!, prevStateValue!,
     lastEvent!, lastEventSeq, firedDelays,
+    tenantId,
   )) {
     processedCount++;
   }

@@ -98,6 +98,8 @@ export interface RecordInvokeResultParams {
   error?: unknown;
   startedAt?: number;
   completedAt?: number;
+  /** When provided, wraps the INSERT in a transaction that sets the tenant GUC. */
+  tenantId?: string;
 }
 
 export interface InsertEffectsParams {
@@ -221,6 +223,7 @@ export interface PgStore {
     event: string | null,
     ts: number,
     contextSnapshot?: Record<string, unknown> | null,
+    tenantId?: string,
   ): Promise<void>;
   getTransitions(instanceId: string): Promise<TransitionRecord[]>;
 

@@ -181,18 +181,13 @@ export function createStore(options: PgStoreOptions): PgStore {
     status?: string;
   }): Promise<MachineRow[]> {
     const t = qStart();
-    const hasMachine = !!filter?.machineName;
-    const hasStatus = !!filter?.status;
-    let result;
-    if (hasMachine && hasStatus) {
-      result = await pool.query({ ...Q_LIST_INSTANCES_BY_MACHINE_AND_STATUS, values: [filter!.machineName, filter!.status] });
-    } else if (hasMachine) {
-      result = await pool.query({ ...Q_LIST_INSTANCES_BY_MACHINE, values: [filter!.machineName] });
-    } else if (hasStatus) {
-      result = await pool.query({ ...Q_LIST_INSTANCES_BY_STATUS, values: [filter!.status] });
-    } else {
-      result = await pool.query({ ...Q_LIST_INSTANCES, values: [] as unknown[] });
-    }
+    const m = filter?.machineName;
+    const s = filter?.status;
+    const [q, v] = m && s ? [Q_LIST_INSTANCES_BY_MACHINE_AND_STATUS, [m, s] as unknown[]]
+      : m ? [Q_LIST_INSTANCES_BY_MACHINE, [m] as unknown[]]
+      : s ? [Q_LIST_INSTANCES_BY_STATUS, [s] as unknown[]]
+      : [Q_LIST_INSTANCES, [] as unknown[]];
+    const result = await pool.query({ ...q, values: v });
     qEnd("dm_list_instances", t);
     return result.rows.map(rowToMachine);
   }
@@ -279,18 +274,14 @@ export function createStore(options: PgStoreOptions): PgStore {
     opts?: { afterSeq?: number; limit?: number },
   ): Promise<EventLogEntry[]> {
     const t = qStart();
-    const hasAfter = opts?.afterSeq !== undefined;
-    const hasLimit = opts?.limit !== undefined;
-    let result;
-    if (hasAfter && hasLimit) {
-      result = await pool.query({ ...Q_GET_EVENT_LOG_AFTER_LIMIT, values: [instanceId, opts!.afterSeq, opts!.limit] });
-    } else if (hasAfter) {
-      result = await pool.query({ ...Q_GET_EVENT_LOG_AFTER, values: [instanceId, opts!.afterSeq] });
-    } else if (hasLimit) {
-      result = await pool.query({ ...Q_GET_EVENT_LOG_LIMIT, values: [instanceId, opts!.limit] });
-    } else {
-      result = await pool.query({ ...Q_GET_EVENT_LOG, values: [instanceId] });
-    }
+    const a = opts?.afterSeq;
+    const l = opts?.limit;
+    const [q, v] = a !== undefined && l !== undefined
+      ? [Q_GET_EVENT_LOG_AFTER_LIMIT, [instanceId, a, l] as unknown[]]
+      : a !== undefined ? [Q_GET_EVENT_LOG_AFTER, [instanceId, a] as unknown[]]
+      : l !== undefined ? [Q_GET_EVENT_LOG_LIMIT, [instanceId, l] as unknown[]]
+      : [Q_GET_EVENT_LOG, [instanceId] as unknown[]];
+    const result = await pool.query({ ...q, values: v });
     qEnd("dm_get_event_log", t);
     return result.rows.map((r: any) => ({
       seq: Number(r.seq),
@@ -315,18 +306,17 @@ export function createStore(options: PgStoreOptions): PgStore {
   }
 
   async function recordInvokeResult(params: RecordInvokeResultParams): Promise<void> {
-    const { instanceId, stepKey, output, error, startedAt, completedAt } = params;
+    const { instanceId, stepKey, output, error, startedAt, completedAt, tenantId } = params;
     const t = qStart();
-    await pool.query({
-      ...Q_RECORD_INVOKE_RESULT,
-      values: [
-        instanceId,
-        stepKey,
-        output != null ? JSON.stringify(output) : null,
-        error != null ? JSON.stringify(error) : null,
-        startedAt ?? null,
-        completedAt ?? null,
-      ],
+    await withTransaction(async (client) => {
+      if (tenantId) await client.query({ text: `SELECT set_config('app.tenant_id', $1, true)`, values: [tenantId] });
+      await client.query({
+        ...Q_RECORD_INVOKE_RESULT,
+        values: [instanceId, stepKey,
+          output != null ? JSON.stringify(output) : null,
+          error != null ? JSON.stringify(error) : null,
+          startedAt ?? null, completedAt ?? null],
+      });
     });
     qEnd(Q_RECORD_INVOKE_RESULT.name, t);
   }
@@ -403,18 +393,19 @@ export function createStore(options: PgStoreOptions): PgStore {
     event: string | null,
     ts: number,
     contextSnapshot?: Record<string, unknown> | null,
+    tenantId?: string,
   ): Promise<void> {
     const t = qStart();
-    await pool.query({
-      ...Q_APPEND_TRANSITION,
-      values: [
-        instanceId,
-        fromState != null ? JSON.stringify(fromState) : null,
-        JSON.stringify(toState),
-        event,
-        ts,
-        contextSnapshot != null ? JSON.stringify(contextSnapshot) : null,
-      ],
+    await withTransaction(async (client) => {
+      if (tenantId) await client.query({ text: `SELECT set_config('app.tenant_id', $1, true)`, values: [tenantId] });
+      await client.query({
+        ...Q_APPEND_TRANSITION,
+        values: [instanceId,
+          fromState != null ? JSON.stringify(fromState) : null,
+          JSON.stringify(toState),
+          event, ts,
+          contextSnapshot != null ? JSON.stringify(contextSnapshot) : null],
+      });
     });
     qEnd(Q_APPEND_TRANSITION.name, t);
   }

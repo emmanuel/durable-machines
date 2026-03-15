@@ -14,6 +14,7 @@ import { DurableMachineError } from "../types.js";
 import { validateMachineForDurability } from "../validate.js";
 import { createStore } from "./store.js";
 import type { PgStore, MachineRow } from "./store.js";
+import { createTenantPool } from "./tenant-pool.js";
 import { createStoreInstruments } from "./store-metrics.js";
 import { processStartup, processBatchFromLog } from "./event-processor.js";
 import type { EventProcessorOptions } from "./event-processor.js";
@@ -38,6 +39,8 @@ export interface PgDurableMachine<T extends AnyStateMachine = AnyStateMachine>
 {
   /** Process queued events for an instance (called by listener fan-out and wake poller). */
   consumeAndProcess(instanceId: string): Promise<void>;
+  /** Returns a tenant-scoped PgDurableMachine backed by RLS. */
+  forTenant(tenantId: string): PgDurableMachine<T>;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -68,8 +71,9 @@ export function createDurableMachine<T extends AnyStateMachine>(
   validateMachineForDurability(machine, { effectHandlers: options.effectHandlers });
 
   const instruments = createStoreInstruments(options.pool);
+  const adminPool = options.store ? options.pool : createTenantPool(options.pool, null, "dm_admin");
   const store = options.store ?? createStore({
-    pool: options.pool,
+    pool: adminPool,
     schema: options.schema,
     useListenNotify: options.useListenNotify,
     instruments,
@@ -241,6 +245,13 @@ export function createDurableMachine<T extends AnyStateMachine>(
 
     async consumeAndProcess(instanceId: string): Promise<void> {
       await consumeAndProcessMessages(instanceId);
+    },
+
+    forTenant(tenantId: string): PgDurableMachine<T> {
+      return createDurableMachine(machine, {
+        ...options,
+        store: store.forTenant(tenantId),
+      });
     },
   };
 }

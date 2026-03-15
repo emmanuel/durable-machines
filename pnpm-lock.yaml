@@ -129,6 +129,9 @@ importers:
       hono:
         specifier: ^4.7.0
         version: 4.12.5
+      jose:
+        specifier: ^6.2.1
+        version: 6.2.1
       zod:
         specifier: ^4.0.0
         version: 4.3.6
@@ -743,6 +746,9 @@ packages:
   is-what@4.1.16:
     resolution: {integrity: sha512-ZhMwEosbFJkA0YhFnNDgTM4ZxDRsS6HqTo7qsZM08fehyRYIYa0yHu5R6mgo1n/8MgaPBXiPimPD77baVFYg+A==}
     engines: {node: '>=12.13'}
+
+  jose@6.2.1:
+    resolution: {integrity: sha512-jUaKr1yrbfaImV7R2TN/b3IcZzsw38/chqMpo2XJ7i2F8AfM/lA4G1goC3JVEwg0H7UldTmSt3P68nt31W7/mw==}
 
   json5@2.2.3:
     resolution: {integrity: sha512-XmOWe7eyHYH14cLdVPoyg+GOH3rYX++KpzrylJwSW98t3Nk+U8XOl8FWKOgwtzdb8lXGf6zYwDUzeHMWfxasyg==}
@@ -1520,6 +1526,8 @@ snapshots:
   is-path-inside@4.0.0: {}
 
   is-what@4.1.16: {}
+
+  jose@6.2.1: {}
 
   json5@2.2.3: {}
 

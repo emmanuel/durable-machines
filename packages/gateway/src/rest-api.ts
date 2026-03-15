@@ -1,5 +1,7 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import { DurableMachineError } from "@durable-xstate/durable-machine";
+import type { DurableMachine } from "@durable-xstate/durable-machine";
 import type { RestApiOptions } from "./rest-types.js";
 import { toStateResponse } from "./hateoas.js";
 
@@ -17,6 +19,9 @@ import { toStateResponse } from "./hateoas.js";
  * - `GET    /:instanceId/effects` — list effect execution status
  * - `DELETE /:instanceId`   — cancel the instance
  *
+ * When `tenantMiddleware` is provided, JWT auth is required and machines are
+ * resolved via `getMachineForTenant(tenantId, machineId)`.
+ *
  * @example
  * ```ts
  * const app = createRestApi({
@@ -29,7 +34,7 @@ import { toStateResponse } from "./hateoas.js";
 const ID_PATTERN = /^[\w.:-]{1,256}$/;
 
 export function createRestApi(options: RestApiOptions): Hono {
-  const { machines, basePath = "" } = options;
+  const { machines, basePath = "", tenantMiddleware, getMachineForTenant } = options;
   const app = new Hono();
 
   // ── Global error handler ────────────────────────────────────────────────
@@ -50,14 +55,28 @@ export function createRestApi(options: RestApiOptions): Hono {
     return c.json({ error: "Internal server error" }, 500);
   });
 
+  // ── Tenant-aware machine resolution ─────────────────────────────────────
+
+  function resolveMachine(c: Context, machineId: string): DurableMachine | null {
+    const tenantId = c.get("tenantId") as string | undefined;
+    if (tenantId && getMachineForTenant) {
+      return getMachineForTenant(tenantId, machineId) ?? null;
+    }
+    return machines.get(machineId) ?? null;
+  }
+
   // ── Machine routes ──────────────────────────────────────────────────────
 
   const r = new Hono();
 
+  if (tenantMiddleware) {
+    r.use("/*", tenantMiddleware);
+  }
+
   // POST /machines/:machineId/instances — start a new instance
   r.post("/", async (c) => {
     const machineId = c.req.param("machineId")!;
-    const durable = machines.get(machineId);
+    const durable = resolveMachine(c, machineId);
     if (!durable) return c.json({ error: "Machine not found" }, 404);
 
     const { instanceId, input } = await c.req.json<{ instanceId: string; input?: Record<string, unknown> }>();
@@ -77,7 +96,7 @@ export function createRestApi(options: RestApiOptions): Hono {
   // GET /machines/:machineId/instances — list instances
   r.get("/", async (c) => {
     const machineId = c.req.param("machineId")!;
-    const durable = machines.get(machineId);
+    const durable = resolveMachine(c, machineId);
     if (!durable) return c.json({ error: "Machine not found" }, 404);
 
     const status = c.req.query("status");
@@ -92,7 +111,7 @@ export function createRestApi(options: RestApiOptions): Hono {
   r.get("/:instanceId", async (c) => {
     const machineId = c.req.param("machineId")!;
     const instanceId = c.req.param("instanceId")!;
-    const durable = machines.get(machineId);
+    const durable = resolveMachine(c, machineId);
     if (!durable) return c.json({ error: "Machine not found" }, 404);
 
     const snapshot = await durable.get(instanceId).getState();
@@ -105,7 +124,7 @@ export function createRestApi(options: RestApiOptions): Hono {
   r.post("/:instanceId/events", async (c) => {
     const machineId = c.req.param("machineId")!;
     const instanceId = c.req.param("instanceId")!;
-    const durable = machines.get(machineId);
+    const durable = resolveMachine(c, machineId);
     if (!durable) return c.json({ error: "Machine not found" }, 404);
 
     const event = await c.req.json();
@@ -125,7 +144,7 @@ export function createRestApi(options: RestApiOptions): Hono {
   r.get("/:instanceId/result", async (c) => {
     const machineId = c.req.param("machineId")!;
     const instanceId = c.req.param("instanceId")!;
-    const durable = machines.get(machineId);
+    const durable = resolveMachine(c, machineId);
     if (!durable) return c.json({ error: "Machine not found" }, 404);
 
     const snapshot = await durable.get(instanceId).getState();
@@ -145,7 +164,7 @@ export function createRestApi(options: RestApiOptions): Hono {
   r.get("/:instanceId/steps", async (c) => {
     const machineId = c.req.param("machineId")!;
     const instanceId = c.req.param("instanceId")!;
-    const durable = machines.get(machineId);
+    const durable = resolveMachine(c, machineId);
     if (!durable) return c.json({ error: "Machine not found" }, 404);
 
     const steps = await durable.get(instanceId).getSteps();
@@ -156,7 +175,7 @@ export function createRestApi(options: RestApiOptions): Hono {
   r.get("/:instanceId/effects", async (c) => {
     const machineId = c.req.param("machineId")!;
     const instanceId = c.req.param("instanceId")!;
-    const durable = machines.get(machineId);
+    const durable = resolveMachine(c, machineId);
     if (!durable) return c.json({ error: "Machine not found" }, 404);
 
     const handle = durable.get(instanceId);
@@ -168,7 +187,7 @@ export function createRestApi(options: RestApiOptions): Hono {
   r.get("/:instanceId/events/log", async (c) => {
     const machineId = c.req.param("machineId")!;
     const instanceId = c.req.param("instanceId")!;
-    const durable = machines.get(machineId);
+    const durable = resolveMachine(c, machineId);
     if (!durable) return c.json({ error: "Machine not found" }, 404);
 
     const handle = durable.get(instanceId);
@@ -200,7 +219,7 @@ export function createRestApi(options: RestApiOptions): Hono {
   // GET /machines/:machineId/instances/analytics/state-durations — aggregate state durations
   r.get("/analytics/state-durations", async (c) => {
     const machineId = c.req.param("machineId")!;
-    const durable = machines.get(machineId);
+    const durable = resolveMachine(c, machineId);
     if (!durable) return c.json({ error: "Machine not found" }, 404);
 
     const analytics = durable.getAnalytics?.();
@@ -213,7 +232,7 @@ export function createRestApi(options: RestApiOptions): Hono {
   // GET /machines/:machineId/instances/analytics/transitions — transition count heatmap
   r.get("/analytics/transitions", async (c) => {
     const machineId = c.req.param("machineId")!;
-    const durable = machines.get(machineId);
+    const durable = resolveMachine(c, machineId);
     if (!durable) return c.json({ error: "Machine not found" }, 404);
 
     const analytics = durable.getAnalytics?.();
@@ -226,7 +245,7 @@ export function createRestApi(options: RestApiOptions): Hono {
   // GET /machines/:machineId/instances/analytics/summary — per-instance lifecycle summaries
   r.get("/analytics/summary", async (c) => {
     const machineId = c.req.param("machineId")!;
-    const durable = machines.get(machineId);
+    const durable = resolveMachine(c, machineId);
     if (!durable) return c.json({ error: "Machine not found" }, 404);
 
     const analytics = durable.getAnalytics?.();
@@ -240,7 +259,7 @@ export function createRestApi(options: RestApiOptions): Hono {
   r.get("/:instanceId/analytics/durations", async (c) => {
     const machineId = c.req.param("machineId")!;
     const instanceId = c.req.param("instanceId")!;
-    const durable = machines.get(machineId);
+    const durable = resolveMachine(c, machineId);
     if (!durable) return c.json({ error: "Machine not found" }, 404);
 
     const analytics = durable.getAnalytics?.();
@@ -254,7 +273,7 @@ export function createRestApi(options: RestApiOptions): Hono {
   r.delete("/:instanceId", async (c) => {
     const machineId = c.req.param("machineId")!;
     const instanceId = c.req.param("instanceId")!;
-    const durable = machines.get(machineId);
+    const durable = resolveMachine(c, machineId);
     if (!durable) return c.json({ error: "Machine not found" }, 404);
 
     await durable.get(instanceId).cancel();

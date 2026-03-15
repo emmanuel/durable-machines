@@ -52,6 +52,10 @@ export { computeHmac, verifyHmac } from "./hmac.js";
 // Middleware
 export { rawBody } from "./middleware.js";
 
+// Tenant middleware
+export { createTenantMiddleware } from "./tenant-middleware.js";
+export type { TenantLookupResult, TenantMiddlewareOptions } from "./tenant-middleware.js";
+
 // Sources
 export { genericSource } from "./sources/generic.js";
 export type { GenericSourceOptions } from "./sources/generic.js";

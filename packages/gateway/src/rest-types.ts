@@ -1,4 +1,5 @@
 import type { DurableMachine, InstanceStatus } from "@durable-xstate/durable-machine";
+import type { MiddlewareHandler } from "hono";
 
 /** Map of machine name → DurableMachine instance. */
 export type MachineRegistry = Map<string, DurableMachine>;
@@ -9,6 +10,10 @@ export interface RestApiOptions {
   machines: MachineRegistry;
   /** Base path prefix for all routes. @defaultValue `""` */
   basePath?: string;
+  /** Optional tenant middleware for multi-tenant JWT auth. */
+  tenantMiddleware?: MiddlewareHandler;
+  /** Resolve a tenant-scoped DurableMachine by tenantId. */
+  getMachineForTenant?: (tenantId: string, machineName: string) => DurableMachine | undefined;
 }
 
 /** HATEOAS links included in every state response. */

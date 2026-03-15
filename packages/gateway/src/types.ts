@@ -60,6 +60,8 @@ export interface WebhookBinding<TPayload = unknown, TItem = TPayload> {
   transform: ItemTransform<TItem>;
   /** Optional hook to send an inline response (e.g. Slack slash command ack). */
   onResponse?: (payload: TPayload, c: Context) => Response | Promise<Response> | null;
+  /** Tenant ID that scopes this binding. When set, events are dispatched via a tenant-scoped client. */
+  tenantId?: string;
 }
 
 /** Minimal subset of DBOSClient used by the gateway. */
@@ -84,6 +86,8 @@ export interface GatewayOptions {
   metrics?: GatewayMetrics;
   /** Maximum allowed request body size in bytes (default 1 MB). */
   maxBodyBytes?: number;
+  /** Returns a tenant-scoped GatewayClient for bindings with `tenantId`. */
+  forTenantClient?: (tenantId: string) => GatewayClient;
 }
 
 /** Pluggable auth middleware for gateway routes. */

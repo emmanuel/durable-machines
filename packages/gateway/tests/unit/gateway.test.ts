@@ -264,6 +264,70 @@ describe("createWebhookGateway", () => {
   });
 });
 
+describe("createWebhookGateway with tenant bindings", () => {
+  it("uses tenant-scoped client when binding has tenantId", async () => {
+    const defaultClient = createMockClient();
+    const tenantClient = createMockClient();
+
+    const app = createWebhookGateway({
+      client: defaultClient,
+      forTenantClient: (tenantId) => {
+        expect(tenantId).toBe("tenant-abc");
+        return tenantClient;
+      },
+      bindings: [
+        {
+          path: "/webhooks/tenant-stripe",
+          tenantId: "tenant-abc",
+          source: genericSource(),
+          router: fieldRouter((p: any) => p.workflowId),
+          transform: directTransform((p: any) => ({ type: "STRIPE", ...p })),
+        },
+      ],
+    });
+
+    const body = JSON.stringify({ workflowId: "wf-1" });
+    const res = await app.request("/webhooks/tenant-stripe", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body,
+    });
+
+    expect(res.status).toBe(200);
+    expect(tenantClient.sends).toHaveLength(1);
+    expect(tenantClient.sends[0].workflowId).toBe("wf-1");
+    expect(defaultClient.sends).toHaveLength(0);
+  });
+
+  it("uses default client when binding has no tenantId", async () => {
+    const defaultClient = createMockClient();
+    const forTenantClient = () => createMockClient();
+
+    const app = createWebhookGateway({
+      client: defaultClient,
+      forTenantClient,
+      bindings: [
+        {
+          path: "/webhooks/global",
+          source: genericSource(),
+          router: fieldRouter((p: any) => p.workflowId),
+          transform: directTransform((p: any) => ({ type: "HOOK", ...p })),
+        },
+      ],
+    });
+
+    const body = JSON.stringify({ workflowId: "wf-1" });
+    const res = await app.request("/webhooks/global", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body,
+    });
+
+    expect(res.status).toBe(200);
+    expect(defaultClient.sends).toHaveLength(1);
+  });
+});
+
 describe("createWebhookGateway with metrics", () => {
   function createTestMetrics(): GatewayMetrics {
     const exporter = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);

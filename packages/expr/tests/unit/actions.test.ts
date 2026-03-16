@@ -224,4 +224,29 @@ describe("evaluateActions — enqueueActions", () => {
     expect((results[0] as any).event.type).toBe("INNER");
     expect((results[1] as any).event.type).toBe("OUTER");
   });
+
+  it("sequential assigns chain context (second sees first's changes)", () => {
+    const action: import("../../src/types.js").EnqueueActionsDef = {
+      type: "enqueueActions",
+      actions: [
+        {
+          type: "assign",
+          transforms: [{ path: ["a"], set: 1 }],
+        },
+        {
+          type: "assign",
+          transforms: [{ path: ["b"], set: 2 }],
+        },
+      ],
+    };
+
+    const scope = createScope({ context: { a: 0, b: 0 } });
+    const results = evaluateActions(action, scope, defaultBuiltins);
+    expect(results).toHaveLength(2);
+
+    // Second assign should include first assign's changes
+    const ctx1 = (results[1] as { type: "assign"; context: Record<string, unknown> }).context;
+    expect(ctx1.a).toBe(1); // from first assign
+    expect(ctx1.b).toBe(2); // from second assign
+  });
 });

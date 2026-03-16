@@ -73,7 +73,14 @@ function evaluateEnqueue(action: EnqueueActionsDef, scope: Scope, builtins: Buil
 
   const results: ActionResult[] = [];
   for (const entry of action.actions) {
-    results.push(...evaluateActions(entry, evalScope, builtins));
+    const entryResults = evaluateActions(entry, evalScope, builtins);
+    for (const result of entryResults) {
+      results.push(result);
+      // Chain context: subsequent actions see updated context
+      if (result.type === "assign") {
+        evalScope = { ...evalScope, context: result.context };
+      }
+    }
   }
   return results;
 }

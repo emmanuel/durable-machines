@@ -15,6 +15,17 @@ export interface MachineDefinition {
   states: Record<string, StateDefinition>;
   /** Optional binding to a specific {@link ImplementationRegistry.id}. */
   registryId?: string;
+  /**
+   * Named guard expressions. Each key is a guard name referenced by transitions.
+   * At machine creation time, each expr is compiled into a closure.
+   */
+  guards?: Record<string, unknown>;
+  /**
+   * Named action expressions. Each key is an action name referenced by transitions.
+   * Values are ActionDef objects from @durable-xstate/expr.
+   * At machine creation time, each expr is compiled into a closure.
+   */
+  actions?: Record<string, unknown>;
 }
 
 // ─── State Definition ───────────────────────────────────────────────────────

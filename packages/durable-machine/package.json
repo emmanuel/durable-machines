@@ -81,6 +81,7 @@
     "xstate": "^5.19.0"
   },
   "dependencies": {
+    "@durable-xstate/expr": "workspace:*",
     "@opentelemetry/api": "^1.9.0"
   }
 }

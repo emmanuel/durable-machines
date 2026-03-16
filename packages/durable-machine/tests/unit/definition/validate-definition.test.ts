@@ -344,3 +344,106 @@ describe("validateDefinition", () => {
     );
   });
 });
+
+describe("expr guard/action definitions", () => {
+  const emptyRegistry = createImplementationRegistry({ id: "test" });
+
+  it("accepts guard name in definition.guards", () => {
+    const def: MachineDefinition = {
+      id: "test",
+      initial: "a",
+      guards: { myGuard: { eq: [1, 1] } },
+      states: {
+        a: { durable: true, on: { GO: { target: "b", guard: "myGuard" } } },
+        b: { type: "final" },
+      },
+    };
+    const result = validateDefinition(def, emptyRegistry);
+    expect(result.valid).toBe(true);
+  });
+
+  it("accepts action name in definition.actions", () => {
+    const def: MachineDefinition = {
+      id: "test",
+      initial: "a",
+      actions: { myAction: { type: "assign", transforms: [{ path: ["x"], set: 1 }] } },
+      states: {
+        a: { durable: true, on: { GO: { target: "b", actions: "myAction" } } },
+        b: { type: "final" },
+      },
+    };
+    const result = validateDefinition(def, emptyRegistry);
+    expect(result.valid).toBe(true);
+  });
+
+  it("accepts guard name in registry (existing behavior)", () => {
+    const def: MachineDefinition = {
+      id: "test",
+      initial: "a",
+      states: {
+        a: { durable: true, on: { GO: { target: "b", guard: "isHighValue" } } },
+        b: { type: "final" },
+      },
+    };
+    const result = validateDefinition(def, registry);
+    expect(result.valid).toBe(true);
+  });
+
+  it("rejects guard name in both registry and definition (ambiguous)", () => {
+    const def: MachineDefinition = {
+      id: "test",
+      initial: "a",
+      guards: { isHighValue: { eq: [1, 1] } },
+      states: {
+        a: { durable: true, on: { GO: { target: "b", guard: "isHighValue" } } },
+        b: { type: "final" },
+      },
+    };
+    const result = validateDefinition(def, registry);
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]).toContain("ambiguous");
+  });
+
+  it("rejects action name in both registry and definition (ambiguous)", () => {
+    const def: MachineDefinition = {
+      id: "test",
+      initial: "a",
+      actions: { notifyUser: { type: "assign", transforms: [] } },
+      states: {
+        a: { durable: true, on: { GO: { target: "b", actions: "notifyUser" } } },
+        b: { type: "final" },
+      },
+    };
+    const result = validateDefinition(def, registry);
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]).toContain("ambiguous");
+  });
+
+  it("rejects guard name in neither registry nor definition", () => {
+    const def: MachineDefinition = {
+      id: "test",
+      initial: "a",
+      states: {
+        a: { durable: true, on: { GO: { target: "b", guard: "missing" } } },
+        b: { type: "final" },
+      },
+    };
+    const result = validateDefinition(def, emptyRegistry);
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]).toContain("missing");
+  });
+
+  it("rejects action name in neither registry nor definition", () => {
+    const def: MachineDefinition = {
+      id: "test",
+      initial: "a",
+      states: {
+        a: { durable: true, on: { GO: { target: "b", actions: "missing" } } },
+        b: { type: "final" },
+      },
+    };
+    const result = validateDefinition(def, emptyRegistry);
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]).toContain("missing");
+  });
+});

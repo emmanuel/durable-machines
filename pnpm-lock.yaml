@@ -73,6 +73,9 @@ importers:
 
   packages/durable-machine:
     dependencies:
+      '@durable-xstate/expr':
+        specifier: workspace:*
+        version: link:../expr
       '@opentelemetry/api':
         specifier: ^1.9.0
         version: 1.9.0

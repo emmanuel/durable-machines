@@ -47,7 +47,7 @@ export function validateDefinition(
   }
 
   // Walk all states
-  walkStates(definition.states, "", definition.states, registry, errors, warnings);
+  walkStates(definition.states, "", definition.states, registry, definition, errors, warnings);
 
   return {
     valid: errors.length === 0,
@@ -61,16 +61,17 @@ function walkStates(
   parentPath: string,
   rootStates: Record<string, StateDefinition>,
   registry: ImplementationRegistry,
+  definition: MachineDefinition,
   errors: string[],
   warnings: string[],
 ): void {
   for (const [key, state] of Object.entries(states)) {
     const path = parentPath ? `${parentPath}.${key}` : key;
-    validateStateNode(path, state, states, rootStates, registry, errors, warnings);
+    validateStateNode(path, state, states, rootStates, registry, definition, errors, warnings);
 
     // Recurse into children
     if (state.states) {
-      walkStates(state.states, path, rootStates, registry, errors, warnings);
+      walkStates(state.states, path, rootStates, registry, definition, errors, warnings);
     }
   }
 }
@@ -81,6 +82,7 @@ function validateStateNode(
   siblingStates: Record<string, StateDefinition>,
   rootStates: Record<string, StateDefinition>,
   registry: ImplementationRegistry,
+  definition: MachineDefinition,
   errors: string[],
   warnings: string[],
 ): void {
@@ -101,7 +103,7 @@ function validateStateNode(
   // Skip structural and terminal checks for non-leaf states
   if (type === "final" || type === "history" || type === "compound" || type === "parallel") {
     // Still validate transitions on these states
-    validateTransitions(path, state, siblingStates, rootStates, registry, errors);
+    validateTransitions(path, state, siblingStates, rootStates, registry, definition, errors);
     return;
   }
 
@@ -165,7 +167,7 @@ function validateStateNode(
   }
 
   // Validate transitions, invokes, etc.
-  validateTransitions(path, state, siblingStates, rootStates, registry, errors);
+  validateTransitions(path, state, siblingStates, rootStates, registry, definition, errors);
 }
 
 function validateTransitions(
@@ -174,13 +176,14 @@ function validateTransitions(
   siblingStates: Record<string, StateDefinition>,
   rootStates: Record<string, StateDefinition>,
   registry: ImplementationRegistry,
+  definition: MachineDefinition,
   errors: string[],
 ): void {
   // Validate `on` transitions
   if (state.on) {
     for (const [eventType, trans] of Object.entries(state.on)) {
       for (const t of normalizeArray(trans)) {
-        validateTransition(path, `on.${eventType}`, t, siblingStates, rootStates, registry, errors);
+        validateTransition(path, `on.${eventType}`, t, siblingStates, rootStates, registry, definition, errors);
       }
     }
   }
@@ -188,7 +191,7 @@ function validateTransitions(
   // Validate `always` transitions
   if (state.always) {
     for (const t of normalizeArray(state.always)) {
-      validateTransition(path, "always", t, siblingStates, rootStates, registry, errors);
+      validateTransition(path, "always", t, siblingStates, rootStates, registry, definition, errors);
     }
   }
 
@@ -202,7 +205,7 @@ function validateTransitions(
         );
       }
       for (const t of normalizeArray(trans)) {
-        validateTransition(path, `after.${delay}`, t, siblingStates, rootStates, registry, errors);
+        validateTransition(path, `after.${delay}`, t, siblingStates, rootStates, registry, definition, errors);
       }
     }
   }
@@ -218,11 +221,11 @@ function validateTransitions(
 
     if (inv.onDone) {
       const t = typeof inv.onDone === "string" ? { target: inv.onDone } : inv.onDone;
-      validateTransition(path, `invoke.onDone`, t, siblingStates, rootStates, registry, errors);
+      validateTransition(path, `invoke.onDone`, t, siblingStates, rootStates, registry, definition, errors);
     }
     if (inv.onError) {
       const t = typeof inv.onError === "string" ? { target: inv.onError } : inv.onError;
-      validateTransition(path, `invoke.onError`, t, siblingStates, rootStates, registry, errors);
+      validateTransition(path, `invoke.onError`, t, siblingStates, rootStates, registry, definition, errors);
     }
 
     // Validate input expressions
@@ -239,6 +242,7 @@ function validateTransition(
   siblingStates: Record<string, StateDefinition>,
   rootStates: Record<string, StateDefinition>,
   registry: ImplementationRegistry,
+  definition: MachineDefinition,
   errors: string[],
 ): void {
   // Validate target exists
@@ -258,9 +262,15 @@ function validateTransition(
   // Validate guard
   if (trans.guard) {
     const guardType = typeof trans.guard === "string" ? trans.guard : trans.guard.type;
-    if (!(guardType in registry.guards)) {
+    const inRegistry = guardType in registry.guards;
+    const inDefinition = definition.guards != null && guardType in definition.guards;
+    if (inRegistry && inDefinition) {
       errors.push(
-        `State "${statePath}" ${transDesc} references guard "${guardType}" not found in registry.`,
+        `State "${statePath}" ${transDesc} guard "${guardType}" is ambiguous — defined in both registry and definition.guards.`,
+      );
+    } else if (!inRegistry && !inDefinition) {
+      errors.push(
+        `State "${statePath}" ${transDesc} references guard "${guardType}" not found in registry or definition.guards.`,
       );
     }
   }
@@ -275,9 +285,15 @@ function validateTransition(
 
     for (const action of actionList) {
       const actionType = typeof action === "string" ? action : action.type;
-      if (!(actionType in registry.actions)) {
+      const inRegistry = actionType in registry.actions;
+      const inDefinition = definition.actions != null && actionType in definition.actions;
+      if (inRegistry && inDefinition) {
         errors.push(
-          `State "${statePath}" ${transDesc} references action "${actionType}" not found in registry.`,
+          `State "${statePath}" ${transDesc} action "${actionType}" is ambiguous — defined in both registry and definition.actions.`,
+        );
+      } else if (!inRegistry && !inDefinition) {
+        errors.push(
+          `State "${statePath}" ${transDesc} references action "${actionType}" not found in registry or definition.actions.`,
         );
       }
     }

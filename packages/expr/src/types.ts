@@ -120,3 +120,8 @@ export type BuiltinFn = (...args: unknown[]) => unknown;
 
 /** Registry of builtin functions keyed by name. */
 export type BuiltinRegistry = Record<string, BuiltinFn>;
+
+// ─── Compiled expressions ───────────────────────────────────────────────────
+
+/** A pre-compiled expression — call with a scope to evaluate. */
+export type CompiledExpr = (scope: Scope) => unknown;

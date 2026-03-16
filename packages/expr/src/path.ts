@@ -43,7 +43,7 @@ export function selectPath(path: Path, scope: Scope): unknown {
 /**
  * Resolve a PathNavigator step to a concrete key string.
  */
-function resolveStep(step: PathNavigator, scope: Scope): string | undefined {
+export function resolveStep(step: PathNavigator, scope: Scope): string | undefined {
   if (typeof step === "string") {
     return step;
   }

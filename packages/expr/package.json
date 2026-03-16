@@ -1,0 +1,38 @@
+{
+  "name": "@durable-xstate/expr",
+  "version": "0.1.0",
+  "description": "JSON expression evaluator for serializable XState v5 machine logic",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:watch": "vitest"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/emmanuel/durable-xstate.git",
+    "directory": "packages/expr"
+  },
+  "author": "Emmanuel Gomez",
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "vite": "^7.3.1",
+    "vitest": "^4.0.18"
+  }
+}

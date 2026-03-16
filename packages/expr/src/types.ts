@@ -34,7 +34,15 @@ export type Expr = unknown;
 
 // ─── Path Navigators ────────────────────────────────────────────────────────
 
-/** A step in a path traversal. */
+/**
+ * A step in a path traversal.
+ *
+ * In addition to the named navigator shapes below, any expression object
+ * (e.g. `{select: ["event", "sessionId"]}`) is accepted as a path step.
+ * It is evaluated at runtime and its result is coerced to a string key.
+ * This allows dynamic keys computed from arbitrary expressions without
+ * needing a `let` binding.
+ */
 export type PathNavigator =
   | string                                        // static key
   | { param: string }                             // dynamic key from params
@@ -42,7 +50,8 @@ export type PathNavigator =
   | { where: Record<string, unknown> }            // filter collection entries
   | { all: true }                                 // all elements
   | { first: true }                               // first element
-  | { last: true };                               // last element
+  | { last: true }                                // last element
+  | Record<string, unknown>;                      // arbitrary expr → dynamic key
 
 /** A path is an array of navigators. */
 export type Path = PathNavigator[];

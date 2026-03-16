@@ -47,20 +47,7 @@ export function selectPath(path: Path, scope: Scope, builtins?: BuiltinRegistry)
       continue;
     }
 
-    // For steps that are expression objects (e.g. {select: [...]}, {fn: ...}),
-    // evaluate them and use the result as a dynamic key.
-    let key: string | undefined;
-    if (
-      typeof step === "object" &&
-      step !== null &&
-      !("param" in step) &&
-      !("ref" in step)
-    ) {
-      const evaluated = evaluate(step as Expr, scope, builtins);
-      key = evaluated !== undefined && evaluated !== null ? String(evaluated) : undefined;
-    } else {
-      key = resolveStep(step, scope);
-    }
+    const key = resolveStep(step, scope, builtins);
     if (key === undefined) return undefined;
 
     current = (current as Record<string, unknown>)[String(key)];
@@ -71,20 +58,36 @@ export function selectPath(path: Path, scope: Scope, builtins?: BuiltinRegistry)
 
 /**
  * Resolve a PathNavigator step to a concrete key string.
+ *
+ * Handles static keys, `{param}`, `{ref}`, and arbitrary expression objects
+ * (e.g. `{select: ["event", "sessionId"]}`) which are evaluated and coerced
+ * to a string key.
  */
-export function resolveStep(step: PathNavigator, scope: Scope): string | undefined {
+export function resolveStep(
+  step: PathNavigator,
+  scope: Scope,
+  builtins?: BuiltinRegistry,
+): string | undefined {
   if (typeof step === "string") {
     return step;
   }
-  if ("param" in step) {
-    const paramVal = scope.params[step.param];
+  if ("param" in step && typeof (step as { param: string }).param === "string") {
+    const paramVal = scope.params[(step as { param: string }).param];
     return paramVal !== undefined ? String(paramVal) : undefined;
   }
-  if ("ref" in step) {
-    const refVal = scope.bindings[step.ref];
+  if ("ref" in step && typeof (step as { ref: string }).ref === "string") {
+    const refVal = scope.bindings[(step as { ref: string }).ref];
     return refVal !== undefined ? String(refVal) : undefined;
   }
-  // Other navigators (where, all, first, last) are not resolvable to a key
+  // `where`, `all`, `first`, `last` are collection navigators — not resolvable to a single key
+  if (typeof step === "object" && step !== null) {
+    if ("where" in step || "all" in step || "first" in step || "last" in step) {
+      return undefined;
+    }
+    // Arbitrary expression object — evaluate and coerce to string key
+    const evaluated = evaluate(step as Expr, scope, builtins);
+    return evaluated !== undefined && evaluated !== null ? String(evaluated) : undefined;
+  }
   return undefined;
 }
 

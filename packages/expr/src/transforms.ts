@@ -60,7 +60,7 @@ function applyOneTransform(
       return;
     }
 
-    const key = resolveStep(step, scope);
+    const key = resolveStep(step, scope, builtins);
     if (key === undefined) return;
 
     const next = parent[key];
@@ -83,7 +83,7 @@ function applyOneTransform(
   if (isWhereStep(leafStep)) return;
 
   // Resolve the leaf key
-  const leafKey = resolveStep(leafStep, scope);
+  const leafKey = resolveStep(leafStep, scope, builtins);
   if (leafKey === undefined) return;
 
   // Apply the operation

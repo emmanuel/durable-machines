@@ -47,7 +47,20 @@ export function selectPath(path: Path, scope: Scope, builtins?: BuiltinRegistry)
       continue;
     }
 
-    const key = resolveStep(step, scope);
+    // For steps that are expression objects (e.g. {select: [...]}, {fn: ...}),
+    // evaluate them and use the result as a dynamic key.
+    let key: string | undefined;
+    if (
+      typeof step === "object" &&
+      step !== null &&
+      !("param" in step) &&
+      !("ref" in step)
+    ) {
+      const evaluated = evaluate(step as Expr, scope, builtins);
+      key = evaluated !== undefined && evaluated !== null ? String(evaluated) : undefined;
+    } else {
+      key = resolveStep(step, scope);
+    }
     if (key === undefined) return undefined;
 
     current = (current as Record<string, unknown>)[String(key)];

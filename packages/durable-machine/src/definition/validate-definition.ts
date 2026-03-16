@@ -281,7 +281,7 @@ function validateTransition(
       ? [trans.actions]
       : Array.isArray(trans.actions)
         ? trans.actions
-        : [];
+        : [trans.actions];
 
     for (const action of actionList) {
       const actionType = typeof action === "string" ? action : action.type;

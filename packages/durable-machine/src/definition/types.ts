@@ -63,7 +63,7 @@ export interface TransitionDefinition {
   /** Guard name or guard with params. XState resolves named guards natively. */
   guard?: string | { type: string; params?: Record<string, unknown> };
   /** Action name(s) or action objects. XState resolves named actions natively. */
-  actions?: string | string[] | ActionDefinition[];
+  actions?: string | ActionDefinition | (string | ActionDefinition)[];
 }
 
 /** A named action with optional static params. */

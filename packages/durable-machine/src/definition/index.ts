@@ -24,3 +24,4 @@ export { transformDefinition } from "./transform.js";
 
 // Machine creation
 export { createMachineFromDefinition } from "./create-machine.js";
+export type { ExprOptions } from "./create-machine.js";

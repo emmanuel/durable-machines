@@ -1,0 +1,52 @@
+import { describe, it, expect } from "vitest";
+import { evaluate } from "../../src/evaluate.js";
+import { createScope } from "../../src/types.js";
+import { defaultBuiltins, createBuiltinRegistry } from "../../src/builtins.js";
+
+describe("evaluate — fn (builtins)", () => {
+  it("uuid returns a UUID string", () => {
+    const scope = createScope({ context: {} });
+    const result = evaluate({ fn: "uuid" }, scope, defaultBuiltins);
+    expect(typeof result).toBe("string");
+    expect(result).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it("now returns a timestamp number", () => {
+    const scope = createScope({ context: {} });
+    const result = evaluate({ fn: "now" }, scope, defaultBuiltins);
+    expect(typeof result).toBe("number");
+    expect(result).toBeGreaterThan(0);
+  });
+
+  it("fn with args: passes evaluated args", () => {
+    const scope = createScope({ context: {} });
+    const builtins = createBuiltinRegistry({
+      add3: (a: unknown, b: unknown, c: unknown) => (a as number) + (b as number) + (c as number),
+    });
+    expect(evaluate({ fn: "add3", args: [1, 2, 3] }, scope, builtins)).toBe(6);
+  });
+
+  it("fn with args: args are evaluated as expressions", () => {
+    const scope = createScope({ context: { x: 10 } });
+    const builtins = createBuiltinRegistry({
+      double: (n: unknown) => (n as number) * 2,
+    });
+    expect(evaluate(
+      { fn: "double", args: [{ select: ["context", "x"] }] },
+      scope,
+      builtins,
+    )).toBe(20);
+  });
+
+  it("unknown builtin returns undefined", () => {
+    const scope = createScope({ context: {} });
+    expect(evaluate({ fn: "unknown" }, scope, defaultBuiltins)).toBeUndefined();
+  });
+
+  it("createBuiltinRegistry merges with defaults", () => {
+    const builtins = createBuiltinRegistry({ custom: () => "hi" });
+    expect(builtins.uuid).toBeDefined();
+    expect(builtins.now).toBeDefined();
+    expect(builtins.custom).toBeDefined();
+  });
+});

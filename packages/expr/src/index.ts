@@ -1,5 +1,6 @@
 export { evaluate } from "./evaluate.js";
-export { defaultBuiltins } from "./builtins.js";
+export { selectPath } from "./path.js";
+export { defaultBuiltins, createBuiltinRegistry } from "./builtins.js";
 export { createScope } from "./types.js";
 export type {
   Scope, Expr, Path, PathNavigator, Transform,

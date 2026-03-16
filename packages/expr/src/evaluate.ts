@@ -143,6 +143,17 @@ export function evaluate(
       }
       return result;
     }
+
+    // fn — call a registered builtin
+    if ("fn" in op && typeof op.fn === "string") {
+      const fn = builtins?.[op.fn];
+      if (!fn) return undefined;
+      if ("args" in op && Array.isArray(op.args)) {
+        const args = (op.args as Expr[]).map((a) => evaluate(a, scope, builtins));
+        return fn(...args);
+      }
+      return fn();
+    }
   }
 
   return expr;

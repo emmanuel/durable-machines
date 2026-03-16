@@ -1,4 +1,5 @@
 export { evaluate } from "./evaluate.js";
+export { evaluateActions } from "./actions.js";
 export { selectPath } from "./path.js";
 export { applyTransforms } from "./transforms.js";
 export { defaultBuiltins, createBuiltinRegistry } from "./builtins.js";

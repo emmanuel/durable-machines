@@ -50,14 +50,15 @@ export interface PgGatewayHandle {
 
 export function createPgGatewayClient(pool: Pool): GatewayClient {
   return {
-    send: (workflowId, message) =>
-      sendMachineEvent(pool, workflowId, message as AnyEventObject),
+    send: (workflowId, message, idempotencyKey) =>
+      sendMachineEvent(pool, workflowId, message as AnyEventObject, idempotencyKey),
     sendBatch: (messages) =>
       sendMachineEventBatch(
         pool,
         messages.map((m) => ({
           workflowId: m.workflowId,
           event: m.message as AnyEventObject,
+          idempotencyKey: m.idempotencyKey,
         })),
       ),
     getState: (workflowId) => getMachineState(pool, workflowId),

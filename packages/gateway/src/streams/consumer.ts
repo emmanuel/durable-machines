@@ -99,7 +99,7 @@ async function run<TRaw, TItem>(
         continue;
       }
 
-      const batch: Array<{ workflowId: string; message: { type: string; [key: string]: unknown } }> = [];
+      const batch: Array<{ workflowId: string; message: { type: string; [key: string]: unknown }; idempotencyKey?: string }> = [];
 
       for (const item of items) {
         const routeResult = await router.route(item);
@@ -107,8 +107,9 @@ async function run<TRaw, TItem>(
         if (ids.length === 0) continue;
 
         const event = transform.transform(item);
+        const key = binding.idempotencyKey?.(item, msg.cursor);
         for (const workflowId of ids) {
-          batch.push({ workflowId, message: event });
+          batch.push({ workflowId, message: event, idempotencyKey: key });
         }
       }
 
@@ -125,9 +126,9 @@ async function run<TRaw, TItem>(
             "Failed to dispatch batch, falling back to individual sends",
           );
           // Sequential fallback with per-item error handling
-          for (const { workflowId, message } of batch) {
+          for (const { workflowId, message, idempotencyKey } of batch) {
             try {
-              await client.send(workflowId, message);
+              await client.send(workflowId, message, idempotencyKey);
               metrics?.streamItemsDispatched?.add(1, { streamId });
             } catch (sendErr: unknown) {
               logger.error(

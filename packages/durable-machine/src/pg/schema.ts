@@ -60,12 +60,16 @@ CREATE TABLE IF NOT EXISTS event_log (
   topic           TEXT NOT NULL DEFAULT 'event',
   payload         JSONB NOT NULL,
   source          TEXT,
+  idempotency_key TEXT,
   created_at      BIGINT NOT NULL,
   PRIMARY KEY (instance_id, seq)
 );
 CREATE INDEX IF NOT EXISTS idx_el_pending
   ON event_log (instance_id, seq);
 CREATE INDEX IF NOT EXISTS idx_el_tenant ON event_log (tenant_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_el_idempotency
+  ON event_log (instance_id, idempotency_key)
+  WHERE idempotency_key IS NOT NULL;
 
 CREATE OR REPLACE FUNCTION event_log_notify() RETURNS trigger AS $$
 DECLARE

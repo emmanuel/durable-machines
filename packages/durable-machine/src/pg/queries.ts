@@ -32,8 +32,9 @@ export const Q_LOCK_AND_GET_INSTANCE = {
 
 export const Q_APPEND_EVENT = {
   name: "dm_append_event",
-  text: `INSERT INTO event_log (instance_id, topic, payload, source, created_at)
-       VALUES ($1, $2, $3, $4, $5)
+  text: `INSERT INTO event_log (instance_id, topic, payload, source, idempotency_key, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (instance_id, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
        RETURNING seq`,
 } as const;
 
@@ -285,14 +286,16 @@ export const Q_LOOKUP_TENANT = {
 
 export const Q_SEND_MACHINE_EVENT = {
   name: "dm_send_machine_event",
-  text: `INSERT INTO event_log (instance_id, topic, payload, created_at)
-       VALUES ($1, 'event', $2, $3)`,
+  text: `INSERT INTO event_log (instance_id, topic, payload, idempotency_key, created_at)
+       VALUES ($1, 'event', $2, $3, $4)
+       ON CONFLICT (instance_id, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING`,
 } as const;
 
 export const Q_SEND_MACHINE_EVENT_BATCH = {
   name: "dm_send_machine_event_batch",
-  text: `INSERT INTO event_log (instance_id, topic, payload, created_at)
-       SELECT * FROM UNNEST($1::uuid[], $2::text[], $3::jsonb[], $4::bigint[])`,
+  text: `INSERT INTO event_log (instance_id, topic, payload, idempotency_key, created_at)
+       SELECT * FROM UNNEST($1::uuid[], $2::text[], $3::jsonb[], $4::text[], $5::bigint[])
+       ON CONFLICT (instance_id, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING`,
 } as const;
 
 export const Q_GET_MACHINE_STATE = {

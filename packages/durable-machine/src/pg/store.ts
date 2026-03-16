@@ -222,7 +222,7 @@ export function createStore(options: PgStoreOptions): PgStore {
     const t = qStart();
     const { rows } = await pool.query({
       ...Q_APPEND_EVENT,
-      values: [instanceId, topic, json, source ?? null, Date.now()],
+      values: [instanceId, topic, json, source ?? null, null, Date.now()],
     });
     qEnd(Q_APPEND_EVENT.name, t);
     return { seq: Number(rows[0].seq) };

@@ -18,8 +18,9 @@ export async function sendMachineEvent(
   client: DBOSClient,
   workflowId: string,
   event: AnyEventObject,
+  idempotencyKey?: string,
 ): Promise<void> {
-  await client.send(workflowId, event, "xstate.event");
+  await client.send(workflowId, event, "xstate.event", idempotencyKey);
 }
 
 /**
@@ -29,11 +30,11 @@ export async function sendMachineEvent(
  */
 export async function sendMachineEventBatch(
   client: DBOSClient,
-  events: Array<{ workflowId: string; event: AnyEventObject }>,
+  events: Array<{ workflowId: string; event: AnyEventObject; idempotencyKey?: string }>,
 ): Promise<void> {
   await Promise.all(
-    events.map(({ workflowId, event }) =>
-      client.send(workflowId, event, "xstate.event"),
+    events.map(({ workflowId, event, idempotencyKey }) =>
+      client.send(workflowId, event, "xstate.event", idempotencyKey),
     ),
   );
 }

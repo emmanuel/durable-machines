@@ -328,6 +328,91 @@ describe("createWebhookGateway with tenant bindings", () => {
   });
 });
 
+describe("createWebhookGateway with idempotencyKey", () => {
+  it("threads idempotencyKey extractor to client.sendBatch", async () => {
+    const client = createMockClient();
+    const app = createWebhookGateway({
+      client,
+      bindings: [
+        {
+          path: "/webhooks/stripe",
+          source: genericSource(),
+          router: fieldRouter((p: any) => p.workflowId),
+          transform: directTransform((p: any) => ({ type: "stripe.event", ...p })),
+          idempotencyKey: (item: any) => item.eventId,
+        },
+      ],
+    });
+
+    const body = JSON.stringify({ workflowId: "wf-1", eventId: "evt_123" });
+    const res = await app.request("/webhooks/stripe", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body,
+    });
+
+    expect(res.status).toBe(200);
+    expect(client.sends).toHaveLength(1);
+    expect(client.sends[0].idempotencyKey).toBe("evt_123");
+  });
+
+  it("passes undefined key when no idempotencyKey extractor", async () => {
+    const client = createMockClient();
+    const app = createWebhookGateway({
+      client,
+      bindings: [
+        {
+          path: "/webhooks/generic",
+          source: genericSource(),
+          router: fieldRouter((p: any) => p.workflowId),
+          transform: directTransform((p: any) => ({ type: "GENERIC", ...p })),
+        },
+      ],
+    });
+
+    const body = JSON.stringify({ workflowId: "wf-1" });
+    const res = await app.request("/webhooks/generic", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body,
+    });
+
+    expect(res.status).toBe(200);
+    expect(client.sends).toHaveLength(1);
+    expect(client.sends[0].idempotencyKey).toBeUndefined();
+  });
+
+  it("passes rawReq to idempotencyKey extractor", async () => {
+    const client = createMockClient();
+    const app = createWebhookGateway({
+      client,
+      bindings: [
+        {
+          path: "/webhooks/action",
+          source: genericSource(),
+          router: fieldRouter((p: any) => p.workflowId),
+          transform: directTransform(() => ({ type: "ACTION" })),
+          idempotencyKey: (_item: any, req: RawRequest) => req.headers["x-delivery-id"],
+        },
+      ],
+    });
+
+    const body = JSON.stringify({ workflowId: "wf-1" });
+    const res = await app.request("/webhooks/action", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-delivery-id": "delivery-abc",
+      },
+      body,
+    });
+
+    expect(res.status).toBe(200);
+    expect(client.sends).toHaveLength(1);
+    expect(client.sends[0].idempotencyKey).toBe("delivery-abc");
+  });
+});
+
 describe("createWebhookGateway with metrics", () => {
   function createTestMetrics(): GatewayMetrics {
     const exporter = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);

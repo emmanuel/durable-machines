@@ -62,14 +62,16 @@ export interface WebhookBinding<TPayload = unknown, TItem = TPayload> {
   onResponse?: (payload: TPayload, c: Context) => Response | Promise<Response> | null;
   /** Tenant ID that scopes this binding. When set, events are dispatched via a tenant-scoped client. */
   tenantId?: string;
+  /** Extract a dedup key from a raw request + item. Return undefined to skip dedup. */
+  idempotencyKey?: (item: TItem, req: RawRequest) => string | undefined;
 }
 
 /** Minimal subset of DBOSClient used by the gateway. */
 export interface GatewayClient {
   /** Sends an event to a running workflow. */
-  send<T>(workflowId: string, message: T): Promise<void>;
+  send<T>(workflowId: string, message: T, idempotencyKey?: string): Promise<void>;
   /** Sends a batch of events in a single operation. */
-  sendBatch<T>(messages: Array<{ workflowId: string; message: T }>): Promise<void>;
+  sendBatch<T>(messages: Array<{ workflowId: string; message: T; idempotencyKey?: string }>): Promise<void>;
   /** Retrieves the current durable state snapshot for a workflow. */
   getState(workflowId: string): Promise<import("@durable-xstate/durable-machine").DurableStateSnapshot | null>;
 }

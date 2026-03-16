@@ -48,15 +48,15 @@ function createStringTransport(
 }
 
 function createMockClient() {
-  const sends: Array<{ workflowId: string; message: unknown }> = [];
+  const sends: Array<{ workflowId: string; message: unknown; idempotencyKey?: string }> = [];
   return {
     sends,
-    async send(workflowId: string, message: unknown) {
-      sends.push({ workflowId, message });
+    async send(workflowId: string, message: unknown, idempotencyKey?: string) {
+      sends.push({ workflowId, message, idempotencyKey });
     },
-    async sendBatch(messages: Array<{ workflowId: string; message: unknown }>) {
-      for (const { workflowId, message } of messages) {
-        sends.push({ workflowId, message });
+    async sendBatch(messages: Array<{ workflowId: string; message: unknown; idempotencyKey?: string }>) {
+      for (const { workflowId, message, idempotencyKey } of messages) {
+        sends.push({ workflowId, message, idempotencyKey });
       }
     },
     async getState() { return null; },
@@ -430,6 +430,32 @@ describe("startStreamConsumer", () => {
     await handle.stopped;
 
     expect(transport.closed).toBe(true);
+  });
+
+  it("threads idempotencyKey from binding extractor to client.sendBatch", async () => {
+    const transport = createStringTransport([
+      { raw: '{"id":"stmt-1","verb":"completed"}', cursor: { lastEventId: "e1" } },
+      { raw: '{"verb":"attempted"}', cursor: { lastEventId: "e2" } },
+    ]);
+    const client = createMockClient();
+    const logger = createLogger();
+    const checkpoints = memoryCheckpointStore();
+
+    const binding: StreamBinding<string, { id?: string; verb: string }> = {
+      streamId: "idem-stream",
+      transport,
+      parse: (raw) => [JSON.parse(raw)],
+      router: { route: () => "wf-1" },
+      transform: { transform: (item) => ({ type: "stream.event", verb: item.verb }) },
+      idempotencyKey: (item) => item.id,
+    };
+
+    const handle = startStreamConsumer(binding, { client, checkpoints, logger });
+    await handle.stopped;
+
+    expect(client.sends).toHaveLength(2);
+    expect(client.sends[0].idempotencyKey).toBe("stmt-1");
+    expect(client.sends[1].idempotencyKey).toBeUndefined();
   });
 
   it("logs via provided logger", async () => {

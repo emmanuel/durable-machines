@@ -43,4 +43,6 @@ export interface StreamBinding<TRaw, TItem> {
   parse(msg: TRaw): TItem[];
   router: ItemRouter<TItem>;
   transform: ItemTransform<TItem>;
+  /** Extract a dedup key from a stream item + cursor. Return undefined to skip dedup. */
+  idempotencyKey?: (item: TItem, cursor: StreamCursor) => string | undefined;
 }

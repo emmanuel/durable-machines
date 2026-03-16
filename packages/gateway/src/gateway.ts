@@ -80,8 +80,9 @@ async function dispatchItems<TItem>(
   router: ItemRouter<TItem>,
   transform: ItemTransform<TItem>,
   client: GatewayClient,
+  extractKey?: (item: TItem) => string | undefined,
 ): Promise<number> {
-  const batch: Array<{ workflowId: string; message: XStateEvent }> = [];
+  const batch: Array<{ workflowId: string; message: XStateEvent; idempotencyKey?: string }> = [];
 
   for (const item of items) {
     const routeResult = await router.route(item);
@@ -89,8 +90,9 @@ async function dispatchItems<TItem>(
     if (ids.length === 0) continue;
 
     const event = transform.transform(item);
+    const key = extractKey?.(item);
     for (const id of ids) {
-      batch.push({ workflowId: id, message: event });
+      batch.push({ workflowId: id, message: event, idempotencyKey: key });
     }
   }
 
@@ -130,12 +132,17 @@ function registerBinding(
     // Split payload into items (default: wrap payload as single item)
     const items = binding.parse ? binding.parse(payload) : [payload];
 
+    // Build key extractor closure that captures rawReq for this request
+    const extractKey = binding.idempotencyKey
+      ? (item: any) => binding.idempotencyKey!(item, rawReq)
+      : undefined;
+
     // Check for inline response handler (e.g., slash command ack, xAPI statement IDs)
     if (binding.onResponse) {
       const response = await binding.onResponse(payload, c);
       if (response) {
         // Item-level dispatch, fire-and-forget
-        dispatchItems(items, binding.router, binding.transform, client).catch((err) => {
+        dispatchItems(items, binding.router, binding.transform, client, extractKey).catch((err) => {
           metrics?.webhooksReceived?.add(1, { path: binding.path, status: "dispatch_error" });
           console.error("[gateway] background dispatch failed:", binding.path, err);
         });
@@ -144,7 +151,7 @@ function registerBinding(
     }
 
     // Item-level dispatch
-    const dispatched = await dispatchItems(items, binding.router, binding.transform, client);
+    const dispatched = await dispatchItems(items, binding.router, binding.transform, client, extractKey);
 
     if (dispatched === 0) {
       throw new WebhookRoutingError("No target workflow found");

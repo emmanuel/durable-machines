@@ -82,9 +82,10 @@ export async function createDBOSGatewayContext(
 ): Promise<DBOSGatewayContext> {
   const dbosClient = await DBOSClient.create({ systemDatabaseUrl: config.dbUrl });
   const client: GatewayClient = {
-    send: (workflowId, message) => dbosClient.send(workflowId, message, "xstate.event"),
+    send: (workflowId, message, idempotencyKey) =>
+      dbosClient.send(workflowId, message, "xstate.event", idempotencyKey),
     sendBatch: (messages) => Promise.all(
-      messages.map((m) => dbosClient.send(m.workflowId, m.message, "xstate.event")),
+      messages.map((m) => dbosClient.send(m.workflowId, m.message, "xstate.event", m.idempotencyKey)),
     ).then(() => {}),
     getState: (workflowId) => dbosClient.getEvent(workflowId, "xstate.state", 0.1),
   };

@@ -108,6 +108,18 @@ export { memoryCheckpointStore, pgCheckpointStore } from "./streams/checkpoint-s
 export { xapiStreamBinding } from "./sources/xapi-stream.js";
 export type { XapiStreamBindingConfig } from "./sources/xapi-stream.js";
 
+// Idempotency key extractors
+export {
+  stripeIdempotencyKey,
+  githubIdempotencyKey,
+  twilioIdempotencyKey,
+  calcomIdempotencyKey,
+  xapiIdempotencyKey,
+  linearIdempotencyKey,
+  actionLinkIdempotencyKey,
+  xapiStreamIdempotencyKey,
+} from "./extractors/idempotency-keys.js";
+
 // Routers
 export { fieldRouter } from "./routers/field.js";
 export { lookupRouter } from "./routers/lookup.js";

@@ -16,10 +16,11 @@ export async function sendMachineEvent(
   pool: Pool,
   workflowId: string,
   event: AnyEventObject,
+  idempotencyKey?: string,
 ): Promise<void> {
   await pool.query({
     ...Q_SEND_MACHINE_EVENT,
-    values: [workflowId, JSON.stringify(event), Date.now()],
+    values: [workflowId, JSON.stringify(event), idempotencyKey ?? null, Date.now()],
   });
 }
 
@@ -29,7 +30,7 @@ export async function sendMachineEvent(
  */
 export async function sendMachineEventBatch(
   pool: Pool,
-  events: Array<{ workflowId: string; event: AnyEventObject }>,
+  events: Array<{ workflowId: string; event: AnyEventObject; idempotencyKey?: string }>,
 ): Promise<void> {
   if (events.length === 0) return;
 
@@ -37,18 +38,20 @@ export async function sendMachineEventBatch(
   const instanceIds: string[] = [];
   const topics: string[] = [];
   const payloads: string[] = [];
+  const idempotencyKeys: (string | null)[] = [];
   const timestamps: number[] = [];
 
-  for (const { workflowId, event } of events) {
+  for (const { workflowId, event, idempotencyKey } of events) {
     instanceIds.push(workflowId);
     topics.push("event");
     payloads.push(JSON.stringify(event));
+    idempotencyKeys.push(idempotencyKey ?? null);
     timestamps.push(now);
   }
 
   await pool.query({
     ...Q_SEND_MACHINE_EVENT_BATCH,
-    values: [instanceIds, topics, payloads, timestamps],
+    values: [instanceIds, topics, payloads, idempotencyKeys, timestamps],
   });
 }
 

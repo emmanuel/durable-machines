@@ -192,6 +192,7 @@ const handleSessionLaunch = {
             auId: { select: ["event", "auId"] },
             launchMode: { select: ["event", "launchMode"] },
             launchedAt: { select: ["event", "timestamp"] },
+            fetchToken: { select: ["event", "fetchToken"] },
           }},
         },
       ],
@@ -202,9 +203,10 @@ const handleSessionLaunch = {
         type: "SESSION_LAUNCHED",
         registrationId: { select: ["context", "registrationId"] },
         actor: { select: ["context", "actor"] },
-        sessionId: { select: ["event", "sessionId"] },
+        sessionId: { ref: "sessionId" },
         auId: { select: ["event", "auId"] },
         launchMode: { select: ["event", "launchMode"] },
+        fetchToken: { select: ["event", "fetchToken"] },
         launchedAt: { select: ["event", "timestamp"] },
       },
     },
@@ -556,6 +558,7 @@ describe("action: handleSessionLaunch", () => {
         auId: "au-1",
         launchMode: "Normal",
         timestamp: 300,
+        fetchToken: "tok-abc",
       },
       params: {},
     });
@@ -585,6 +588,7 @@ describe("action: handleSessionLaunch", () => {
       auId: "au-1",
       launchMode: "Normal",
       launchedAt: 300,
+      fetchToken: "tok-abc",
     });
 
     // Result 2: SESSION_LAUNCHED emit
@@ -594,6 +598,7 @@ describe("action: handleSessionLaunch", () => {
     expect(emit2.sessionId).toBe("s-4");
     expect(emit2.auId).toBe("au-1");
     expect(emit2.launchMode).toBe("Normal");
+    expect(emit2.fetchToken).toBe("tok-abc");
     expect(emit2.launchedAt).toBe(300);
   });
 });

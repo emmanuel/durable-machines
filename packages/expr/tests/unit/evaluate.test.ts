@@ -116,3 +116,111 @@ describe("evaluate — membership", () => {
     }, scope)).toBe(true);
   });
 });
+
+describe("evaluate — ref and param", () => {
+  it("ref: looks up binding", () => {
+    const scope = createScope({ context: {} });
+    scope.bindings = { myVal: 42 };
+    expect(evaluate({ ref: "myVal" }, scope)).toBe(42);
+  });
+
+  it("ref: returns undefined for missing binding", () => {
+    const scope = createScope({ context: {} });
+    expect(evaluate({ ref: "missing" }, scope)).toBeUndefined();
+  });
+
+  it("param: looks up params", () => {
+    const scope = createScope({ context: {}, params: { auId: "au-1" } });
+    expect(evaluate({ param: "auId" }, scope)).toBe("au-1");
+  });
+});
+
+describe("evaluate — let bindings", () => {
+  it("binds values and evaluates body", () => {
+    const scope = createScope({ context: { x: 10 } });
+    expect(evaluate({
+      let: { doubled: { add: [{ select: ["context", "x"] }, { select: ["context", "x"] }] } },
+      body: { ref: "doubled" },
+    }, scope)).toBe(20);
+  });
+
+  it("later bindings can reference earlier ones", () => {
+    const scope = createScope({ context: { x: 5 } });
+    expect(evaluate({
+      let: {
+        a: { select: ["context", "x"] },
+        b: { add: [{ ref: "a" }, 1] },
+      },
+      body: { ref: "b" },
+    }, scope)).toBe(6);
+  });
+
+  it("does not leak bindings to outer scope", () => {
+    const scope = createScope({ context: {} });
+    evaluate({ let: { temp: 99 }, body: { ref: "temp" } }, scope);
+    expect(scope.bindings).toEqual({});
+  });
+});
+
+describe("evaluate — nullability", () => {
+  it("coalesce: returns first non-null value", () => {
+    const scope = createScope({ context: {} });
+    expect(evaluate({ coalesce: [null, undefined, 42] }, scope)).toBe(42);
+  });
+
+  it("coalesce: returns first if non-null", () => {
+    const scope = createScope({ context: {} });
+    expect(evaluate({ coalesce: ["first", "second"] }, scope)).toBe("first");
+  });
+
+  it("coalesce: evaluates sub-expressions", () => {
+    const scope = createScope({ context: { x: null, y: "found" } });
+    expect(evaluate({
+      coalesce: [{ select: ["context", "x"] }, { select: ["context", "y"] }],
+    }, scope)).toBe("found");
+  });
+
+  it("isNull: true for null", () => {
+    const scope = createScope({ context: {} });
+    expect(evaluate({ isNull: null }, scope)).toBe(true);
+  });
+
+  it("isNull: true for undefined (missing path)", () => {
+    const scope = createScope({ context: {} });
+    expect(evaluate({ isNull: { select: ["context", "missing"] } }, scope)).toBe(true);
+  });
+
+  it("isNull: false for value", () => {
+    const scope = createScope({ context: {} });
+    expect(evaluate({ isNull: 42 }, scope)).toBe(false);
+  });
+});
+
+describe("evaluate — arithmetic", () => {
+  const scope = createScope({ context: { x: 10, y: 3 } });
+
+  it("add", () => {
+    expect(evaluate({ add: [{ select: ["context", "x"] }, 5] }, scope)).toBe(15);
+  });
+  it("sub", () => {
+    expect(evaluate({ sub: [{ select: ["context", "x"] }, 3] }, scope)).toBe(7);
+  });
+  it("mul", () => {
+    expect(evaluate({ mul: [{ select: ["context", "x"] }, { select: ["context", "y"] }] }, scope)).toBe(30);
+  });
+  it("div", () => {
+    expect(evaluate({ div: [{ select: ["context", "x"] }, 2] }, scope)).toBe(5);
+  });
+});
+
+describe("evaluate — object construction", () => {
+  it("constructs object with evaluated values", () => {
+    const scope = createScope({ context: { score: 85 } });
+    expect(evaluate({ object: { scaled: { select: ["context", "score"] } } }, scope)).toEqual({ scaled: 85 });
+  });
+
+  it("constructs nested object with literals", () => {
+    const scope = createScope({ context: {} });
+    expect(evaluate({ object: { a: 1, b: "two" } }, scope)).toEqual({ a: 1, b: "two" });
+  });
+});

@@ -82,6 +82,67 @@ export function evaluate(
       if (!Array.isArray(evaluatedArray)) return false;
       return evaluatedArray.includes(evaluatedValue);
     }
+
+    // Bindings — ref and param
+    if ("ref" in op) {
+      return scope.bindings[op.ref as string];
+    }
+    if ("param" in op) {
+      return scope.params[op.param as string];
+    }
+
+    // let — evaluate bindings in order, then evaluate body in extended scope
+    if ("let" in op) {
+      const letBindings = op.let as Record<string, Expr>;
+      const body = op.body as Expr;
+      const extendedBindings = { ...scope.bindings };
+      const innerScope: Scope = { ...scope, bindings: extendedBindings };
+      for (const [key, bindingExpr] of Object.entries(letBindings)) {
+        extendedBindings[key] = evaluate(bindingExpr, innerScope, builtins);
+      }
+      return evaluate(body, innerScope, builtins);
+    }
+
+    // Nullability
+    if ("coalesce" in op) {
+      const exprs = op.coalesce as Expr[];
+      for (const e of exprs) {
+        const val = evaluate(e, scope, builtins);
+        if (val != null) return val;
+      }
+      return undefined;
+    }
+    if ("isNull" in op) {
+      return evaluate(op.isNull as Expr, scope, builtins) == null;
+    }
+
+    // Arithmetic
+    if ("add" in op) {
+      const [a, b] = op.add as [Expr, Expr];
+      return (evaluate(a, scope, builtins) as number) + (evaluate(b, scope, builtins) as number);
+    }
+    if ("sub" in op) {
+      const [a, b] = op.sub as [Expr, Expr];
+      return (evaluate(a, scope, builtins) as number) - (evaluate(b, scope, builtins) as number);
+    }
+    if ("mul" in op) {
+      const [a, b] = op.mul as [Expr, Expr];
+      return (evaluate(a, scope, builtins) as number) * (evaluate(b, scope, builtins) as number);
+    }
+    if ("div" in op) {
+      const [a, b] = op.div as [Expr, Expr];
+      return (evaluate(a, scope, builtins) as number) / (evaluate(b, scope, builtins) as number);
+    }
+
+    // Object construction
+    if ("object" in op) {
+      const fields = op.object as Record<string, Expr>;
+      const result: Record<string, unknown> = {};
+      for (const [key, valExpr] of Object.entries(fields)) {
+        result[key] = evaluate(valExpr, scope, builtins);
+      }
+      return result;
+    }
   }
 
   return expr;

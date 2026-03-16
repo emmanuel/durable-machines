@@ -1,5 +1,81 @@
-import type { Expr, Scope, BuiltinRegistry, Path } from "./types.js";
-import { selectPath } from "./path.js";
+import type { Expr, Scope, BuiltinRegistry, Path, PathNavigator } from "./types.js";
+import { matchesWhere } from "./where.js";
+
+// ─── Path navigation ─────────────────────────────────────────────────────────
+
+/**
+ * Navigate a path against the scope and return the value at the path.
+ * Returns `undefined` for missing or non-navigable paths.
+ */
+export function selectPath(path: Path, scope: Scope, builtins?: BuiltinRegistry): unknown {
+  if (path.length === 0) return undefined;
+
+  const [root, ...rest] = path;
+
+  // Root must be a string
+  if (typeof root !== "string") return undefined;
+
+  // Resolve the root value
+  let current: unknown;
+  if (root === "context") {
+    current = scope.context;
+  } else if (root === "event") {
+    current = scope.event;
+  } else if (root === "params") {
+    current = scope.params;
+  } else if (root in scope.bindings) {
+    current = scope.bindings[root];
+  } else {
+    return undefined;
+  }
+
+  // Navigate the remaining steps
+  for (const step of rest) {
+    if (current === null || current === undefined) return undefined;
+    if (typeof current !== "object") return undefined;
+
+    // Handle `where` navigator — filter collection entries
+    if (typeof step === "object" && "where" in step) {
+      const predicate = step.where as Record<string, unknown>;
+      const filtered: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(current as Record<string, unknown>)) {
+        if (matchesWhere(value, predicate, scope, evaluate, builtins)) {
+          filtered[key] = value;
+        }
+      }
+      current = filtered;
+      continue;
+    }
+
+    const key = resolveStep(step, scope);
+    if (key === undefined) return undefined;
+
+    current = (current as Record<string, unknown>)[String(key)];
+  }
+
+  return current;
+}
+
+/**
+ * Resolve a PathNavigator step to a concrete key string.
+ */
+export function resolveStep(step: PathNavigator, scope: Scope): string | undefined {
+  if (typeof step === "string") {
+    return step;
+  }
+  if ("param" in step) {
+    const paramVal = scope.params[step.param];
+    return paramVal !== undefined ? String(paramVal) : undefined;
+  }
+  if ("ref" in step) {
+    const refVal = scope.bindings[step.ref];
+    return refVal !== undefined ? String(refVal) : undefined;
+  }
+  // Other navigators (where, all, first, last) are not resolvable to a key
+  return undefined;
+}
+
+// ─── Evaluator ───────────────────────────────────────────────────────────────
 
 export function evaluate(
   expr: Expr,
@@ -19,7 +95,7 @@ export function evaluate(
 
     // select — path navigation
     if ("select" in op) {
-      return selectPath(op.select as Path, scope);
+      return selectPath(op.select as Path, scope, builtins);
     }
 
     // Comparisons — [left, right]

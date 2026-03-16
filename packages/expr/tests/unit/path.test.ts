@@ -148,3 +148,72 @@ describe("applyTransforms", () => {
     expect(result.items).toEqual({ x: 99 });
   });
 });
+
+describe("selectPath — collection navigators", () => {
+  it("where: filters object entries", () => {
+    const sessions = {
+      "s-1": { state: "launched", auId: "au-1" },
+      "s-2": { state: "terminated", auId: "au-1" },
+      "s-3": { state: "active", auId: "au-2" },
+    };
+    const scope = createScope({ context: { sessions } });
+    const result = selectPath(
+      ["context", "sessions", { where: { in: ["state", ["launched", "active"]] } }],
+      scope,
+    );
+    expect(result).toEqual({
+      "s-1": { state: "launched", auId: "au-1" },
+      "s-3": { state: "active", auId: "au-2" },
+    });
+  });
+
+  it("where: returns empty object when no matches", () => {
+    const scope = createScope({ context: { items: { a: { x: 1 }, b: { x: 2 } } } });
+    const result = selectPath(
+      ["context", "items", { where: { eq: ["x", 99] } }],
+      scope,
+    );
+    expect(result).toEqual({});
+  });
+
+  it("where: with eq predicate", () => {
+    const scope = createScope({ context: { users: { u1: { role: "admin" }, u2: { role: "user" }, u3: { role: "admin" } } } });
+    const result = selectPath(
+      ["context", "users", { where: { eq: ["role", "admin"] } }],
+      scope,
+    );
+    expect(result).toEqual({ u1: { role: "admin" }, u3: { role: "admin" } });
+  });
+});
+
+describe("applyTransforms — where navigator", () => {
+  it("where: sets value on all matching entries", () => {
+    const ctx = {
+      sessions: {
+        "s-1": { state: "launched" },
+        "s-2": { state: "terminated" },
+        "s-3": { state: "active" },
+      },
+    };
+    const scope = createScope({ context: ctx });
+    const result = applyTransforms(ctx, [
+      { path: ["sessions", { where: { in: ["state", ["launched", "active"]] } }, "state"], set: "abandoned" },
+    ], scope);
+    expect(result.sessions["s-1"].state).toBe("abandoned");
+    expect(result.sessions["s-2"].state).toBe("terminated"); // unchanged
+    expect(result.sessions["s-3"].state).toBe("abandoned");
+  });
+
+  it("where: does not mutate original", () => {
+    const ctx = {
+      items: { a: { val: 1 }, b: { val: 2 } },
+    };
+    const scope = createScope({ context: ctx });
+    const result = applyTransforms(ctx, [
+      { path: ["items", { where: { eq: ["val", 1] } }, "val"], set: 99 },
+    ], scope);
+    expect(result.items.a.val).toBe(99);
+    expect(result.items.b.val).toBe(2);
+    expect(ctx.items.a.val).toBe(1); // original unchanged
+  });
+});

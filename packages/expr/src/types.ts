@@ -125,3 +125,9 @@ export type BuiltinRegistry = Record<string, BuiltinFn>;
 
 /** A pre-compiled expression — call with a scope to evaluate. */
 export type CompiledExpr = (scope: Scope) => unknown;
+
+/** A pre-compiled guard — returns boolean. */
+export type CompiledGuard = (scope: Scope) => boolean;
+
+/** A pre-compiled action — returns action results. */
+export type CompiledAction = (scope: Scope) => ActionResult[];

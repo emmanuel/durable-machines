@@ -5,9 +5,10 @@ export { applyTransforms } from "./transforms.js";
 export { defaultBuiltins, createBuiltinRegistry } from "./builtins.js";
 export { createScope } from "./types.js";
 export { compile } from "./compile.js";
+export { compileGuard, compileAction } from "./compile-actions.js";
 export type {
   Scope, Expr, Path, PathNavigator, Transform,
   ActionDef, AssignActionDef, EmitActionDef, RaiseActionDef,
   EnqueueActionsDef, GuardedBlock, ActionResult,
-  BuiltinFn, BuiltinRegistry, CompiledExpr,
+  BuiltinFn, BuiltinRegistry, CompiledExpr, CompiledGuard, CompiledAction,
 } from "./types.js";

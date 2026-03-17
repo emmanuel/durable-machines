@@ -1,5 +1,6 @@
 import type { Pool } from "pg";
 import type { MachineDefinition } from "../definition/types.js";
+import type { ImplementationRegistry } from "../definition/registry.js";
 import type { DurableMachineOptions } from "../types.js";
 import type { PgStore } from "../pg/store.js";
 
@@ -22,4 +23,6 @@ export interface PgNativeDurableMachineOptions extends DurableMachineOptions {
   /** If provided, registered in machine_definitions on first use. */
   definition?: MachineDefinition;
   store?: PgStore;
+  /** Implementation registry for actors, guards, actions, delays. Required when definition references actors. */
+  registry?: ImplementationRegistry;
 }

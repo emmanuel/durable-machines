@@ -24,6 +24,7 @@ import {
   Q_NATIVE_CREATE_INSTANCE,
   Q_NATIVE_PROCESS_EVENTS,
 } from "./queries.js";
+import { validateDefinition } from "../definition/validate-definition.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -77,27 +78,61 @@ function parseCreateResult(row: any): NativeCreateResult {
   };
 }
 
+// ─── Actor Execution Helper ─────────────────────────────────────────────────
+
+function resolveActorCreator(
+  impl: unknown,
+): (params: { input: unknown }) => Promise<unknown> {
+  if (typeof (impl as any)?.config === "function") return (impl as any).config;
+  if (typeof impl === "function") return impl as any;
+  throw new DurableMachineError(
+    `Cannot resolve actor creator. Must be fromPromise() or async function. Got: ${typeof impl}`,
+    "INTERNAL",
+  );
+}
+
 // ─── Invocation Handler ─────────────────────────────────────────────────────
 
 async function handleInvocation(
   store: PgStore,
   instanceId: string,
   invocation: { id: string; src: string; input: unknown },
-  _options: PgNativeDurableMachineOptions,
+  options: PgNativeDurableMachineOptions,
 ): Promise<void> {
   // 1. Check invoke_results for cached result (crash recovery)
   const cached = await store.getInvokeResult(instanceId, invocation.id);
   if (cached) return; // Already processed; result event already in event_log
 
-  // 2. Look up actor handler
+  // 2. Look up actor handler from registry
   const startedAt = Date.now();
   let output: unknown = null;
   let error: unknown = null;
 
   try {
-    // Execute actor — this is where external I/O happens
-    // For now, throw "no handler" if actors not available
-    throw new Error(`No actor handler for "${invocation.src}"`);
+    const impl = options.registry?.actors[invocation.src];
+    if (!impl) {
+      throw new DurableMachineError(
+        `No actor implementation for "${invocation.src}". ` +
+          `Provide it in the registry passed to createNativeDurableMachine().`,
+        "INTERNAL",
+      );
+    }
+    const actorFn = resolveActorCreator(impl);
+    const timeoutMs = options.invokeTimeoutMs ?? 30_000;
+    output = await Promise.race([
+      actorFn({ input: invocation.input }),
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () =>
+            reject(
+              new Error(
+                `Actor "${invocation.src}" timed out after ${timeoutMs}ms`,
+              ),
+            ),
+          timeoutMs,
+        ),
+      ),
+    ]);
   } catch (err) {
     error = err instanceof Error ? { message: err.message } : err;
   }
@@ -137,6 +172,15 @@ export function createNativeDurableMachine(
   async function registerDefinition(
     definition: MachineDefinition,
   ): Promise<void> {
+    if (options.registry) {
+      const result = validateDefinition(definition, options.registry);
+      if (!result.valid) {
+        throw new DurableMachineError(
+          `Definition validation failed:\n${result.errors.join("\n")}`,
+          "INTERNAL",
+        );
+      }
+    }
     await pool.query({
       ...Q_REGISTER_DEFINITION,
       values: [options.machineName, JSON.stringify(definition)],

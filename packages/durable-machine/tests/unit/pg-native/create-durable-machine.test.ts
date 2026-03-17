@@ -5,6 +5,8 @@ import type { PgStore } from "../../../src/pg/store-types.js";
 import type { MachineRow } from "../../../src/pg/store-types.js";
 import type { MachineDefinition } from "../../../src/definition/types.js";
 import { DurableMachineError } from "../../../src/types.js";
+import { createImplementationRegistry } from "../../../src/definition/registry.js";
+import type { ImplementationRegistry } from "../../../src/definition/registry.js";
 
 // ─── Fixtures ───────────────────────────────────────────────────────────────
 
@@ -94,12 +96,14 @@ function createOptions(
   pool: ReturnType<typeof createMockPool>,
   store: PgStore,
   definition?: MachineDefinition,
+  extra?: Partial<PgNativeDurableMachineOptions>,
 ): PgNativeDurableMachineOptions {
   return {
     pool,
     store,
     machineName: TEST_MACHINE_NAME,
     definition,
+    ...extra,
   };
 }
 
@@ -437,7 +441,7 @@ describe("createNativeDurableMachine", () => {
         }),
       );
 
-      // handleInvocation injected an error event (since no actor handler exists)
+      // handleInvocation injected an error event (since no actor implementation exists)
       expect(store.appendEvent).toHaveBeenCalledWith(
         TEST_WORKFLOW_ID,
         expect.objectContaining({
@@ -587,7 +591,298 @@ describe("createNativeDurableMachine", () => {
     });
   });
 
-  // ── 11. forTenant() ───────────────────────────────────────────────────
+  // ── 11. Actor Registry ──────────────────────────────────────────────
+
+  describe("handleInvocation with registry", () => {
+    function makeInvocationPool(invocation: { id: string; src: string; input: unknown }) {
+      const pool = createMockPool();
+      pool.query.mockImplementation(async (config: any) => {
+        if (config.name === "dm_reg_definition") return { rows: [] };
+        if (config.name === "dm_native_create_instance") {
+          return {
+            rows: [{ dm_create_instance: { status: "running", invocation } }],
+          };
+        }
+        if (config.name === "dm_native_process_events") {
+          return {
+            rows: [{ dm_process_events: { processed: 0, status: "running", invocation: null } }],
+          };
+        }
+        return { rows: [] };
+      });
+      return pool;
+    }
+
+    it("actor found and succeeds — records output, injects xstate.done.actor.*", async () => {
+      const inv = { id: "actor-ok", src: "fetchData", input: { url: "/api" } };
+      const mockPool = makeInvocationPool(inv);
+      const mockStore = createMockStore();
+
+      const registry = createImplementationRegistry({
+        id: "test",
+        actors: {
+          fetchData: (async ({ input }: { input: unknown }) => ({ result: input })) as any,
+        },
+      });
+
+      const dm = createNativeDurableMachine(
+        createOptions(mockPool, mockStore, undefined, { registry }),
+      );
+      await dm.start(TEST_WORKFLOW_ID, {});
+
+      expect(mockStore.recordInvokeResult).toHaveBeenCalledWith(
+        expect.objectContaining({
+          instanceId: TEST_WORKFLOW_ID,
+          stepKey: "actor-ok",
+          output: { result: { url: "/api" } },
+          error: null,
+        }),
+      );
+
+      expect(mockStore.appendEvent).toHaveBeenCalledWith(
+        TEST_WORKFLOW_ID,
+        expect.objectContaining({
+          type: "xstate.done.actor.actor-ok",
+          output: { result: { url: "/api" } },
+        }),
+        "event",
+        "system:invocation",
+      );
+    });
+
+    it("actor found and throws — records error, injects xstate.error.actor.*", async () => {
+      const inv = { id: "actor-err", src: "failActor", input: {} };
+      const mockPool = makeInvocationPool(inv);
+      const mockStore = createMockStore();
+
+      const registry = createImplementationRegistry({
+        id: "test",
+        actors: {
+          failActor: (async () => { throw new Error("boom"); }) as any,
+        },
+      });
+
+      const dm = createNativeDurableMachine(
+        createOptions(mockPool, mockStore, undefined, { registry }),
+      );
+      await dm.start(TEST_WORKFLOW_ID, {});
+
+      expect(mockStore.recordInvokeResult).toHaveBeenCalledWith(
+        expect.objectContaining({
+          instanceId: TEST_WORKFLOW_ID,
+          stepKey: "actor-err",
+          output: null,
+          error: { message: "boom" },
+        }),
+      );
+
+      expect(mockStore.appendEvent).toHaveBeenCalledWith(
+        TEST_WORKFLOW_ID,
+        expect.objectContaining({
+          type: "xstate.error.actor.actor-err",
+          data: { message: "boom" },
+        }),
+        "event",
+        "system:invocation",
+      );
+    });
+
+    it("actor not in registry — error with 'No actor implementation' message", async () => {
+      const inv = { id: "actor-missing", src: "unknownActor", input: {} };
+      const mockPool = makeInvocationPool(inv);
+      const mockStore = createMockStore();
+
+      const registry = createImplementationRegistry({ id: "test" });
+
+      const dm = createNativeDurableMachine(
+        createOptions(mockPool, mockStore, undefined, { registry }),
+      );
+      await dm.start(TEST_WORKFLOW_ID, {});
+
+      expect(mockStore.recordInvokeResult).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: { message: expect.stringContaining('No actor implementation for "unknownActor"') },
+        }),
+      );
+    });
+
+    it("no registry at all — error with 'No actor implementation' message", async () => {
+      const inv = { id: "actor-noreg", src: "anyActor", input: {} };
+      const mockPool = makeInvocationPool(inv);
+      const mockStore = createMockStore();
+
+      const dm = createNativeDurableMachine(
+        createOptions(mockPool, mockStore, MOCK_DEFINITION),
+      );
+      await dm.start(TEST_WORKFLOW_ID, {});
+
+      expect(mockStore.recordInvokeResult).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: { message: expect.stringContaining('No actor implementation for "anyActor"') },
+        }),
+      );
+    });
+
+    it("actor timeout — times out with invokeTimeoutMs", async () => {
+      const inv = { id: "actor-timeout", src: "slowActor", input: {} };
+      const mockPool = makeInvocationPool(inv);
+      const mockStore = createMockStore();
+
+      const registry = createImplementationRegistry({
+        id: "test",
+        actors: {
+          slowActor: (async () => new Promise((resolve) => setTimeout(resolve, 10_000))) as any,
+        },
+      });
+
+      const dm = createNativeDurableMachine(
+        createOptions(mockPool, mockStore, undefined, { registry, invokeTimeoutMs: 50 }),
+      );
+      await dm.start(TEST_WORKFLOW_ID, {});
+
+      expect(mockStore.recordInvokeResult).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: { message: expect.stringContaining("timed out after 50ms") },
+        }),
+      );
+    });
+
+    it("fromPromise() style actor — { config: async fn } resolves correctly", async () => {
+      const inv = { id: "actor-fp", src: "promiseActor", input: { x: 1 } };
+      const mockPool = makeInvocationPool(inv);
+      const mockStore = createMockStore();
+
+      const fromPromiseActor = {
+        config: async ({ input }: { input: unknown }) => ({ doubled: input }),
+      };
+
+      const registry = createImplementationRegistry({
+        id: "test",
+        actors: { promiseActor: fromPromiseActor as any },
+      });
+
+      const dm = createNativeDurableMachine(
+        createOptions(mockPool, mockStore, undefined, { registry }),
+      );
+      await dm.start(TEST_WORKFLOW_ID, {});
+
+      expect(mockStore.recordInvokeResult).toHaveBeenCalledWith(
+        expect.objectContaining({
+          output: { doubled: { x: 1 } },
+          error: null,
+        }),
+      );
+    });
+
+    it("crash recovery — getInvokeResult returns cached → skips execution", async () => {
+      const inv = { id: "actor-cached", src: "someActor", input: {} };
+      const mockPool = makeInvocationPool(inv);
+      const mockStore = createMockStore();
+
+      // Simulate cached result
+      (mockStore.getInvokeResult as ReturnType<typeof vi.fn>).mockResolvedValue({
+        output: "cached",
+        error: null,
+      });
+
+      const registry = createImplementationRegistry({
+        id: "test",
+        actors: {
+          someActor: (async () => { throw new Error("should not be called"); }) as any,
+        },
+      });
+
+      const dm = createNativeDurableMachine(
+        createOptions(mockPool, mockStore, undefined, { registry }),
+      );
+      await dm.start(TEST_WORKFLOW_ID, {});
+
+      // Should NOT record a new result (skipped execution)
+      expect(mockStore.recordInvokeResult).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── 12. Definition Validation ───────────────────────────────────────
+
+  describe("definition validation with registry", () => {
+    it("throws validation error when definition references unknown actor", async () => {
+      const defWithActor: MachineDefinition = {
+        id: "with-actor",
+        initial: "invoking",
+        states: {
+          invoking: {
+            invoke: { id: "step1", src: "missingActor", onDone: "done" },
+          },
+          done: { type: "final" },
+        },
+      } as MachineDefinition;
+
+      const registry = createImplementationRegistry({ id: "test" });
+
+      const dm = createNativeDurableMachine(
+        createOptions(pool, store, undefined, { registry }),
+      );
+
+      await expect(
+        dm.registerDefinition(defWithActor),
+      ).rejects.toThrow(/Definition validation failed/);
+    });
+
+    it("skips validation when no registry is provided", async () => {
+      const defWithActor: MachineDefinition = {
+        id: "with-actor",
+        initial: "invoking",
+        states: {
+          invoking: {
+            invoke: { id: "step1", src: "missingActor", onDone: "done" },
+          },
+          done: { type: "final" },
+        },
+      } as MachineDefinition;
+
+      const dm = createNativeDurableMachine(
+        createOptions(pool, store),
+      );
+
+      // Should not throw — no registry means no validation
+      await dm.registerDefinition(defWithActor);
+
+      const calls = queryCallsByName(pool, "dm_reg_definition");
+      expect(calls).toHaveLength(1);
+    });
+
+    it("passes validation when definition actors match registry", async () => {
+      const defWithActor: MachineDefinition = {
+        id: "with-actor",
+        initial: "invoking",
+        states: {
+          invoking: {
+            invoke: { id: "step1", src: "knownActor", onDone: "done" },
+          },
+          done: { type: "final" },
+        },
+      } as MachineDefinition;
+
+      const registry = createImplementationRegistry({
+        id: "test",
+        actors: {
+          knownActor: (async () => ({})) as any,
+        },
+      });
+
+      const dm = createNativeDurableMachine(
+        createOptions(pool, store, undefined, { registry }),
+      );
+
+      // Should not throw
+      await dm.registerDefinition(defWithActor);
+
+      const calls = queryCallsByName(pool, "dm_reg_definition");
+      expect(calls).toHaveLength(1);
+    });
+  });
+
+  // ── 13. forTenant() ───────────────────────────────────────────────────
 
   describe("forTenant()", () => {
     it("creates a tenant-scoped instance via store.forTenant", () => {

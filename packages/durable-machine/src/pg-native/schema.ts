@@ -205,9 +205,12 @@ BEGIN
   END IF;
 
   -- Step 3: Load config from definition_override or machine_definitions
-  SELECT COALESCE(v_mi.definition_override, md.definition) INTO v_config
-  FROM machine_definitions md
-  WHERE md.machine_name = v_mi.machine_name;
+  -- Use subquery (not JOIN) so definition_override works even when no
+  -- machine_definitions row exists for this machine_name
+  v_config := COALESCE(
+    v_mi.definition_override,
+    (SELECT definition FROM machine_definitions WHERE machine_name = v_mi.machine_name)
+  );
 
   IF v_config IS NULL THEN
     RAISE EXCEPTION 'No definition found for machine "%"', v_mi.machine_name;
@@ -248,17 +251,17 @@ BEGIN
     -- Call statecraft extension to compute next state
     v_result := sc_send(v_config, v_snapshot, v_evt.payload->>'type', v_evt.payload);
 
+    -- Update snapshot from result (must happen before invocation check
+    -- so the state change from the invoking event is persisted)
+    v_snapshot := v_result->'snapshot';
+    v_processed := v_processed + 1;
+
     -- If invocation is needed, save info and exit loop
     IF v_result->'invocation' IS NOT NULL AND v_result->>'invocation' != 'null' THEN
       v_invocation := v_result->'invocation';
       v_cursor := v_evt.seq;
-      v_processed := v_processed + 1;
       EXIT;
     END IF;
-
-    -- Update snapshot from result
-    v_snapshot := v_result->'snapshot';
-    v_processed := v_processed + 1;
 
     -- Collect effects from result
     v_effects := v_result->'effects';

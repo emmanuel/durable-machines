@@ -328,7 +328,7 @@ export function createNativeDurableMachine(
     },
 
     forTenant(tenantId: string): PgNativeDurableMachine {
-      const tenantPool = createTenantPool(options.pool, tenantId, "dm_tenant") as unknown as Pool;
+      const tenantPool = createTenantPool(options.pool, tenantId, "dm_tenant");
       return createNativeDurableMachine({
         ...options,
         pool: tenantPool,

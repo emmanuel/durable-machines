@@ -13,6 +13,7 @@ import { DurableMachineError } from "../types.js";
 import type { MachineDefinition } from "../definition/types.js";
 import { createStore } from "../pg/store.js";
 import type { PgStore, MachineRow } from "../pg/store.js";
+import { createTenantPool } from "../pg/tenant-pool.js";
 import type {
   PgNativeDurableMachineOptions,
   NativeProcessResult,
@@ -82,7 +83,7 @@ async function handleInvocation(
   store: PgStore,
   instanceId: string,
   invocation: { id: string; src: string; input: unknown },
-  options: PgNativeDurableMachineOptions,
+  _options: PgNativeDurableMachineOptions,
 ): Promise<void> {
   // 1. Check invoke_results for cached result (crash recovery)
   const cached = await store.getInvokeResult(instanceId, invocation.id);
@@ -294,6 +295,7 @@ export function createNativeDurableMachine(
             result.invocation,
             options,
           );
+          await consumeAndProcess(workflowId);
         }
       } catch (err: any) {
         if (err?.code === "23505") {
@@ -326,8 +328,10 @@ export function createNativeDurableMachine(
     },
 
     forTenant(tenantId: string): PgNativeDurableMachine {
+      const tenantPool = createTenantPool(options.pool, tenantId, "dm_tenant") as unknown as Pool;
       return createNativeDurableMachine({
         ...options,
+        pool: tenantPool,
         store: store.forTenant(tenantId),
       });
     },

@@ -73,6 +73,10 @@
     "./pg": {
       "types": "./dist/pg/index.d.ts",
       "import": "./dist/pg/index.js"
+    },
+    "./cmi5": {
+      "types": "./dist/cmi5/index.d.ts",
+      "import": "./dist/cmi5/index.js"
     }
   },
   "files": [
@@ -123,6 +127,7 @@
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/exporter-prometheus": "^0.213.0",
     "@opentelemetry/sdk-metrics": "^2.6.0",
+    "fast-xml-parser": "^5.5.6",
     "hono": "^4.7.0",
     "jose": "^6.2.1",
     "zod": "^4.0.0"

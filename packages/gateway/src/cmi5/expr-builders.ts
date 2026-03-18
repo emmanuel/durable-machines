@@ -52,15 +52,13 @@ function methodCond(): unknown {
 export function buildGuards(): Record<string, unknown> {
   return {
     verbSatisfiesAU: {
-      let: computeNextFlagsLet(),
-      body: { and: [
+      let: [computeNextFlagsLet(), { and: [
         { eq: [{ select: ["event", "auId"] }, { param: "auId" }] },
         isSatisfiedCond(),
-      ] },
+      ] }],
     },
     verbUpdatesAU: {
-      let: { ...computeNextFlagsLet(), isSatisfied: isSatisfiedCond() },
-      body: { and: [
+      let: [{ ...computeNextFlagsLet(), isSatisfied: isSatisfiedCond() }, { and: [
         { eq: [{ select: ["event", "auId"] }, { param: "auId" }] },
         { not: { ref: "isSatisfied" } },
         { or: [
@@ -68,7 +66,7 @@ export function buildGuards(): Record<string, unknown> {
           { neq: [{ ref: "nextHasPassed" }, { select: ["current", "hasPassed"] }] },
           { neq: [{ ref: "nextHasFailed" }, { select: ["current", "hasFailed"] }] },
         ] },
-      ] },
+      ] }],
     },
     waiveTargetsAU: {
       and: [
@@ -223,8 +221,8 @@ function buildRequestSignoffAction(): unknown {
     type: "enqueueActions",
     let: {
       ...computeNextFlagsLet(),
-      sessionId: { coalesce: [{ select: ["event", "sessionId"] }, { fn: "uuid" }] },
-      timestamp: { coalesce: [{ select: ["event", "timestamp"] }, { fn: "now" }] },
+      sessionId: { coalesce: [{ select: ["event", "sessionId"] }, { fn: ["uuid"] }] },
+      timestamp: { coalesce: [{ select: ["event", "timestamp"] }, { fn: ["now"] }] },
       auTitle: { coalesce: [{ select: ["context", "metadata", "auTitles", { param: "auId" }] }, { param: "auId" }] },
       method: methodCond(),
     },
@@ -255,8 +253,8 @@ function buildApproveAssessmentAction(): unknown {
   return {
     type: "enqueueActions",
     let: {
-      timestamp: { coalesce: [{ select: ["event", "timestamp"] }, { fn: "now" }] },
-      sessionId: { coalesce: [{ select: ["context", "lastSatisfyingSessionId"] }, { fn: "uuid" }] },
+      timestamp: { coalesce: [{ select: ["event", "timestamp"] }, { fn: ["now"] }] },
+      sessionId: { coalesce: [{ select: ["context", "lastSatisfyingSessionId"] }, { fn: ["uuid"] }] },
       auTitle: { coalesce: [{ select: ["context", "metadata", "auTitles", { param: "auId" }] }, { param: "auId" }] },
     },
     actions: [
@@ -273,7 +271,7 @@ function buildReturnAssessmentAction(): unknown {
   return {
     type: "enqueueActions",
     let: {
-      timestamp: { coalesce: [{ select: ["event", "timestamp"] }, { fn: "now" }] },
+      timestamp: { coalesce: [{ select: ["event", "timestamp"] }, { fn: ["now"] }] },
       auTitle: { coalesce: [{ select: ["context", "metadata", "auTitles", { param: "auId" }] }, { param: "auId" }] },
     },
     actions: [
@@ -500,7 +498,7 @@ function buildHandleSessionTimeoutAction(): unknown {
     let: {
       sessionId: { select: ["context", "activeSessionId"] },
       session: { select: ["context", "sessions", { select: ["context", "activeSessionId"] }] },
-      timestamp: { coalesce: [{ select: ["event", "timestamp"] }, { fn: "now" }] },
+      timestamp: { coalesce: [{ select: ["event", "timestamp"] }, { fn: ["now"] }] },
       auTitle: { coalesce: [
         { select: ["context", "metadata", "auTitles", { select: ["session", "auId"] }] },
         { select: ["session", "auId"] },
@@ -530,7 +528,7 @@ function buildHandleSessionTimeoutAction(): unknown {
           auTitle: { ref: "auTitle" },
           sessionId: { ref: "sessionId" },
           timestamp: { ref: "timestamp" },
-          duration: { fn: "iso8601Duration", args: [
+          duration: { fn: ["iso8601Duration",
             { select: ["session", "launchedAt"] },
             { ref: "timestamp" },
           ] },

@@ -188,7 +188,10 @@ export function createPgWorkerContext(
 
         const end = metrics ? startTimer(metrics.effectExecutionDuration, { effect_type: row.effectType }) : undefined;
         try {
-          await handler({ type: row.effectType, ...row.effectPayload } as ResolvedEffect);
+          await handler(
+            { type: row.effectType, ...row.effectPayload } as ResolvedEffect,
+            { tenantId: row.tenantId },
+          );
           await store.markEffectCompleted(row.id);
           metrics?.effectsExecutedTotal.add(1, { effect_type: row.effectType, status: "success" });
         } catch (err) {

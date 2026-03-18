@@ -45,5 +45,9 @@ export function createStoreInstruments(
     obs.observe(pool.waitingCount);
   });
 
-  return { queryDuration, poolCheckoutDuration, batchSize };
+  const effectsEmittedTotal = meter.createCounter("dm_effects_emitted_total", {
+    description: "Effects enqueued into the effect outbox",
+  });
+
+  return { queryDuration, poolCheckoutDuration, batchSize, effectsEmittedTotal };
 }

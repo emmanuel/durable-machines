@@ -21,9 +21,14 @@ export interface ResolvedEffect {
   [key: string]: unknown;
 }
 
+/** Context passed to effect handlers at execution time. */
+export interface EffectHandlerContext {
+  tenantId?: string;
+}
+
 /** An async function that executes a single resolved effect. */
 export interface EffectHandler {
-  (effect: ResolvedEffect): Promise<void>;
+  (effect: ResolvedEffect, ctx?: EffectHandlerContext): Promise<void>;
 }
 
 /** A frozen registry mapping effect type names to their handlers. */

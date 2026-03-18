@@ -73,6 +73,23 @@ function rowToMachine(row: any): MachineRow {
   };
 }
 
+function rowToEffect(row: any): EffectOutboxRow {
+  return {
+    id: row.id,
+    instanceId: row.instance_id,
+    tenantId: row.tenant_id,
+    stateValue: row.state_value as StateValue,
+    effectType: row.effect_type,
+    effectPayload: row.effect_payload as Record<string, unknown>,
+    status: row.status as EffectOutboxStatus,
+    attempts: Number(row.attempts),
+    maxAttempts: Number(row.max_attempts),
+    lastError: row.last_error ?? null,
+    createdAt: Number(row.created_at),
+    completedAt: row.completed_at != null ? Number(row.completed_at) : null,
+  };
+}
+
 // ─── Factory ────────────────────────────────────────────────────────────────
 
 export function createStore(options: PgStoreOptions): PgStore {
@@ -151,7 +168,6 @@ export function createStore(options: PgStoreOptions): PgStore {
     qEnd(Q_GET_INSTANCE.name, t);
     return rows.length > 0 ? rowToMachine(rows[0]) : null;
   }
-
 
   async function updateInstanceStatus(
     id: string,
@@ -429,51 +445,25 @@ export function createStore(options: PgStoreOptions): PgStore {
 
   // ── Effect Outbox ───────────────────────────────────────────────────
 
-  function rowToEffect(row: any): EffectOutboxRow {
-    return {
-      id: row.id,
-      instanceId: row.instance_id,
-      stateValue: row.state_value as StateValue,
-      effectType: row.effect_type,
-      effectPayload: row.effect_payload as Record<string, unknown>,
-      status: row.status as EffectOutboxStatus,
-      attempts: Number(row.attempts),
-      maxAttempts: Number(row.max_attempts),
-      lastError: row.last_error ?? null,
-      createdAt: Number(row.created_at),
-      completedAt: row.completed_at != null ? Number(row.completed_at) : null,
-    };
-  }
-
   async function insertEffects(params: InsertEffectsParams): Promise<void> {
     const { client, instanceId, stateValue, effects, maxAttempts = 3 } = params;
     if (effects.length === 0) return;
     const now = Date.now();
     const stateJson = JSON.stringify(stateValue);
 
-    const instanceIds: string[] = [];
-    const stateValues: string[] = [];
-    const types: string[] = [];
-    const payloads: string[] = [];
-    const maxAttemptsList: number[] = [];
-    const timestamps: number[] = [];
-
-    for (const effect of effects) {
-      const { type, ...payload } = effect;
-      instanceIds.push(instanceId);
-      stateValues.push(stateJson);
-      types.push(type);
-      payloads.push(JSON.stringify(payload));
-      maxAttemptsList.push(maxAttempts);
-      timestamps.push(now);
+    const instanceIds: string[] = [], stateValues: string[] = [], types: string[] = [];
+    const payloads: string[] = [], maxAttemptsList: number[] = [], timestamps: number[] = [];
+    for (const { type, ...payload } of effects) {
+      instanceIds.push(instanceId); stateValues.push(stateJson); types.push(type);
+      payloads.push(JSON.stringify(payload)); maxAttemptsList.push(maxAttempts); timestamps.push(now);
     }
-
     const t = qStart();
     await client.query({
       ...Q_INSERT_EFFECTS,
       values: [instanceIds, stateValues, types, payloads, maxAttemptsList, timestamps],
     });
     qEnd(Q_INSERT_EFFECTS.name, t);
+    if (instr) for (const e of effects) instr.effectsEmittedTotal.add(1, { effect_type: e.type });
   }
 
   async function claimPendingEffects(limit = 50): Promise<EffectOutboxRow[]> {
@@ -516,7 +506,6 @@ export function createStore(options: PgStoreOptions): PgStore {
   }
 
   // ── Analytics ───────────────────────────────────────────────────────
-
   async function getStateDurations(instanceId: string): Promise<StateDurationRow[]> {
     const t = qStart();
     const { rows } = await pool.query({ ...Q_STATE_DURATIONS, values: [instanceId] });

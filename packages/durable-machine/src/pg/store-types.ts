@@ -48,6 +48,7 @@ export interface EventLogEntry {
 export interface EffectOutboxRow {
   id: string;
   instanceId: string;
+  tenantId: string;
   stateValue: StateValue;
   effectType: string;
   effectPayload: Record<string, unknown>;

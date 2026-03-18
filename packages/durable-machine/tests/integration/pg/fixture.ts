@@ -96,7 +96,10 @@ export function createPgFixture(opts?: {
           continue;
         }
         try {
-          await handler({ type: row.effectType, ...row.effectPayload } as ResolvedEffect);
+          await handler(
+            { type: row.effectType, ...row.effectPayload } as ResolvedEffect,
+            { tenantId: row.tenantId },
+          );
           await store.markEffectCompleted(row.id);
         } catch (err) {
           const exhausted = row.attempts >= row.maxAttempts;

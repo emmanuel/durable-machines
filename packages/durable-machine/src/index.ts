@@ -9,7 +9,7 @@ export { prompt, getPromptConfig, getPromptEvents } from "./prompt.js";
 export { durableSetup, schemaToFormFields } from "./schema.js";
 export type { FieldSchema, ObjectFieldSchema, EventSchemaMap, ResolveEvents, ResolveFields } from "./schema.js";
 export { createEffectHandlerRegistry, createEffectHandlers, getEffectsConfig } from "./effects.js";
-export type { EffectConfig, ResolvedEffect, EffectHandler, EffectHandlerRegistry } from "./effects.js";
+export type { EffectConfig, ResolvedEffect, EffectHandler, EffectHandlerContext, EffectHandlerRegistry } from "./effects.js";
 
 // Effect collector
 export { collectAndResolveEffects } from "./effect-collector.js";

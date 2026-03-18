@@ -852,3 +852,70 @@ describe("evaluate — condPath", () => {
     )).toEqual(["small", "big", "small", "big"]);
   });
 });
+
+describe("evaluate — concat", () => {
+  it("concatenates two arrays", () => {
+    const scope = createScope({ context: { a: [1, 2], b: [3, 4] } });
+    expect(evaluate(
+      { concat: [{ select: ["context", "a"] }, { select: ["context", "b"] }] },
+      scope,
+    )).toEqual([1, 2, 3, 4]);
+  });
+  it("concatenates three+ arrays", () => {
+    const scope = createScope({ context: {} });
+    expect(evaluate(
+      { concat: [[1], [2, 3], [4, 5, 6]] },
+      scope,
+    )).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+  it("treats non-array values as single elements", () => {
+    const scope = createScope({ context: {} });
+    expect(evaluate(
+      { concat: [[1, 2], 3, [4]] },
+      scope,
+    )).toEqual([1, 2, 3, 4]);
+  });
+  it("single array returns shallow copy", () => {
+    const scope = createScope({ context: { items: [1, 2, 3] } });
+    const result = evaluate(
+      { concat: [{ select: ["context", "items"] }] },
+      scope,
+    );
+    expect(result).toEqual([1, 2, 3]);
+    expect(result).not.toBe(scope.context.items); // new array
+  });
+  it("no arguments returns empty array", () => {
+    const scope = createScope({ context: {} });
+    expect(evaluate({ concat: [] }, scope)).toEqual([]);
+  });
+  it("all non-array values", () => {
+    const scope = createScope({ context: {} });
+    expect(evaluate({ concat: [1, "two", true] }, scope)).toEqual([1, "two", true]);
+  });
+  it("handles null/undefined elements", () => {
+    const scope = createScope({ context: {} });
+    expect(evaluate({ concat: [[1], null, [2]] }, scope)).toEqual([1, null, 2]);
+  });
+  it("works with expressions", () => {
+    const scope = createScope({
+      context: {
+        existing: [{ id: 1 }, { id: 2 }],
+      },
+      event: { newItem: { id: 3 } },
+    });
+    expect(evaluate(
+      { concat: [{ select: ["context", "existing"] }, { select: ["event", "newItem"] }] },
+      scope,
+    )).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
+  });
+  it("works in pipe with transducer operators", () => {
+    const scope = createScope({ context: { a: [1, 2, 3], b: [4, 5, 6] } });
+    expect(evaluate(
+      { pipe: [
+        { concat: [{ select: ["context", "a"] }, { select: ["context", "b"] }] },
+        { filter: ["n", { gt: [{ ref: "n" }, 3] }] },
+      ]},
+      scope,
+    )).toEqual([4, 5, 6]);
+  });
+});

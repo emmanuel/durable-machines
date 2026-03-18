@@ -58,7 +58,7 @@ If no recognized operator key is found, the object is returned unchanged.
 
 Listed in evaluation priority order:
 
-`select`, `eq`, `neq`, `gt`, `lt`, `gte`, `lte`, `and`, `or`, `not`, `if`, `cond`, `in`, `ref`, `param`, `let`, `coalesce`, `isNull`, `add`, `sub`, `mul`, `div`, `object`, `len`, `at`, `merge`, `filter`, `map`, `every`, `some`, `reduce`, `mapVals`, `filterKeys`, `deepSelect`, `pipe`, `pick`, `prepend`, `multiSelect`, `condPath`, `fn`
+`select`, `eq`, `neq`, `gt`, `lt`, `gte`, `lte`, `and`, `or`, `not`, `if`, `cond`, `in`, `ref`, `param`, `let`, `coalesce`, `isNull`, `add`, `sub`, `mul`, `div`, `object`, `len`, `at`, `merge`, `concat`, `filter`, `map`, `every`, `some`, `reduce`, `mapVals`, `filterKeys`, `deepSelect`, `pipe`, `pick`, `prepend`, `multiSelect`, `condPath`, `fn`
 
 ### 3.4 Truthiness
 
@@ -223,22 +223,29 @@ Evaluate both operands. If the first is not an array, return `undefined`. Otherw
 **Syntax:** `{ "merge": [expr1, expr2, ...] }`
 Evaluate each operand. Start with an empty object. For each result that is a non-null, non-array object, shallow-merge its entries into the accumulator. Later entries overwrite earlier ones for the same key. Non-object results are skipped.
 
-### 4.12 Object Key Selection — `pick`
+### 4.12 Array Concatenation — `concat`
+
+**Syntax:** `{ "concat": [expr1, expr2, ...] }`
+Evaluate each operand. Build a result array by iterating over the evaluated values: if a value is an array, append all its elements to the result; if a value is not an array, append the value itself as a single element. This matches `Array.prototype.concat` semantics.
+
+An empty operand list returns `[]`.
+
+### 4.13 Object Key Selection — `pick`
 
 **Syntax:** `{ "pick": [objectExpr, keysExpr] }`
 Evaluate both operands. If the first is not a non-null, non-array object, or the second is not an array, return `{}`. Otherwise, return a new object containing only the keys from the keys array that exist in the source object.
 
-### 4.13 Array Prepend — `prepend`
+### 4.14 Array Prepend — `prepend`
 
 **Syntax:** `{ "prepend": [arrayExpr, valueExpr] }`
 Evaluate both operands. If the first is an array, return a new array with the value prepended. If the first is not an array, return `[value]`.
 
-### 4.14 Multi-Select — `multiSelect`
+### 4.15 Multi-Select — `multiSelect`
 
 **Syntax:** `{ "multiSelect": [expr1, expr2, ...] }`
 Evaluate each expression and return an array of the results.
 
-### 4.15 Builtins — `fn`
+### 4.16 Builtins — `fn`
 
 **Syntax:** `{ "fn": ["name", arg1, arg2, ...] }`
 Look up `name` in the builtin registry. If not found, return `undefined`. Otherwise, evaluate each argument expression, then call the builtin function with the evaluated arguments and return its result.
@@ -560,6 +567,7 @@ The compilation phase may capture builtin function references at compile time. I
 | `len` | `expr` | number |
 | `at` | `[array, index]` | any \| undefined |
 | `merge` | `[expr, ...]` | object |
+| `concat` | `[expr, ...]` | array |
 | `pick` | `[obj, keys]` | object |
 | `prepend` | `[array, value]` | array |
 | `multiSelect` | `[expr, ...]` | array |

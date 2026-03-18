@@ -202,6 +202,17 @@ export function evaluate(expr: Expr, scope: Scope, builtins?: BuiltinRegistry): 
     return result;
   }
 
+  // concat — array concatenation (n-ary, non-arrays become single elements)
+  if ("concat" in op) {
+    const result: unknown[] = [];
+    for (const e of op.concat as Expr[]) {
+      const val = ev(e);
+      if (Array.isArray(val)) result.push(...val);
+      else result.push(val);
+    }
+    return result;
+  }
+
   // Iteration operators (delegated to eval-collection-ops)
   if ("filter" in op) return evaluateIteration("filter", op.filter as unknown[], scope, evaluate, builtins);
   if ("map" in op) return evaluateIteration("map", op.map as unknown[], scope, evaluate, builtins);

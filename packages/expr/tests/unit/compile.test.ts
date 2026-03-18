@@ -445,6 +445,32 @@ describe("compile — condPath", () => {
   });
 });
 
+describe("compile — concat", () => {
+  it("concatenates two arrays", () => {
+    const scope = createScope({ context: { a: [1, 2], b: [3, 4] } });
+    expect(compile({ concat: [{ select: ["context", "a"] }, { select: ["context", "b"] }] })(scope)).toEqual([1, 2, 3, 4]);
+  });
+  it("three+ arrays", () => {
+    expect(compile({ concat: [[1], [2, 3], [4]] })(emptyScope)).toEqual([1, 2, 3, 4]);
+  });
+  it("non-array values as single elements", () => {
+    expect(compile({ concat: [[1, 2], 3, [4]] })(emptyScope)).toEqual([1, 2, 3, 4]);
+  });
+  it("no arguments returns []", () => {
+    expect(compile({ concat: [] })(emptyScope)).toEqual([]);
+  });
+  it("all non-array values", () => {
+    expect(compile({ concat: [1, "two", true] })(emptyScope)).toEqual([1, "two", true]);
+  });
+  it("works in pipe", () => {
+    const scope = createScope({ context: { a: [1, 2], b: [3, 4] } });
+    expect(compile({ pipe: [
+      { concat: [{ select: ["context", "a"] }, { select: ["context", "b"] }] },
+      { filter: ["n", { gt: [{ ref: "n" }, 2] }] },
+    ] })(scope)).toEqual([3, 4]);
+  });
+});
+
 describe("compile — equivalence with evaluate", () => {
   const testCases: [string, Expr, Scope][] = [
     ["nested select + eq", { eq: [{ select: ["context", "x"] }, 5] }, createScope({ context: { x: 5 } })],

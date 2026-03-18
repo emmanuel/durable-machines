@@ -130,6 +130,20 @@ export function compile(expr: Expr, builtins?: BuiltinRegistry): CompiledExpr {
     };
   }
 
+  // concat — array concatenation (n-ary, non-arrays become single elements)
+  if ("concat" in op) {
+    const fns = (op.concat as Expr[]).map(e => compile(e, builtins));
+    return (s) => {
+      const result: unknown[] = [];
+      for (const f of fns) {
+        const val = f(s);
+        if (Array.isArray(val)) result.push(...val);
+        else result.push(val);
+      }
+      return result;
+    };
+  }
+
   // Iteration operators (delegated to compile-collection-ops)
   if ("filter" in op) return compileIteration("filter", op.filter as unknown[], compile, builtins);
   if ("map" in op) return compileIteration("map", op.map as unknown[], compile, builtins);

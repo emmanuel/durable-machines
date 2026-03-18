@@ -106,6 +106,7 @@ The following operators are implemented in `@durable-xstate/expr` but not yet us
 
 | Operator | Description |
 |----------|-------------|
+| `concat` | Array concatenation (n-ary) |
 | `pipe` | Sequential composition with `$` threading |
 | `let` | Scoped variable bindings |
 | `cond` | Multi-branch conditional |

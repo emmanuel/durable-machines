@@ -172,6 +172,18 @@ describe("compile — object", () => {
   });
 });
 
+describe("compile — merge", () => {
+  it("combines objects", () => {
+    expect(compile({ merge: [{ object: { a: 1 } }, { object: { b: 2 } }] })(emptyScope)).toEqual({ a: 1, b: 2 });
+  });
+  it("later keys win", () => {
+    expect(compile({ merge: [{ object: { a: 1 } }, { object: { a: 2 } }] })(emptyScope)).toEqual({ a: 2 });
+  });
+  it("skips non-objects", () => {
+    expect(compile({ merge: [{ object: { a: 1 } }, 42, { object: { b: 2 } }] })(emptyScope)).toEqual({ a: 1, b: 2 });
+  });
+});
+
 describe("compile — len", () => {
   it("array length", () => {
     const scope = createScope({ context: { items: [1, 2, 3] } });

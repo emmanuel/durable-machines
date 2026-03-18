@@ -226,6 +226,29 @@ describe("evaluate — object construction", () => {
   });
 });
 
+describe("evaluate — merge", () => {
+  it("combines two objects", () => {
+    const scope = createScope({ context: {} });
+    expect(evaluate({ merge: [{ object: { a: 1 } }, { object: { b: 2 } }] }, scope)).toEqual({ a: 1, b: 2 });
+  });
+  it("later keys win", () => {
+    const scope = createScope({ context: {} });
+    expect(evaluate({ merge: [{ object: { a: 1, b: 2 } }, { object: { b: 3 } }] }, scope)).toEqual({ a: 1, b: 3 });
+  });
+  it("skips non-objects and arrays", () => {
+    const scope = createScope({ context: {} });
+    expect(evaluate({ merge: [{ object: { a: 1 } }, 42, null, { object: { b: 2 } }] }, scope)).toEqual({ a: 1, b: 2 });
+  });
+  it("three+ objects", () => {
+    const scope = createScope({ context: {} });
+    expect(evaluate({ merge: [{ object: { a: 1 } }, { object: { b: 2 } }, { object: { c: 3 } }] }, scope)).toEqual({ a: 1, b: 2, c: 3 });
+  });
+  it("merges from context", () => {
+    const scope = createScope({ context: { base: { x: 1 } } });
+    expect(evaluate({ merge: [{ select: ["context", "base"] }, { object: { y: 2 } }] }, scope)).toEqual({ x: 1, y: 2 });
+  });
+});
+
 describe("evaluate — len", () => {
   it("returns array length", () => {
     const scope = createScope({ context: { nums: [1, 2, 3, 4, 5] } });

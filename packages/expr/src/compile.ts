@@ -135,6 +135,32 @@ export function compile(expr: Expr, builtins?: BuiltinRegistry): CompiledExpr {
     };
   }
 
+  // at — array element access with negative index support
+  if ("at" in op) {
+    const [ca, ci] = compilePair(op.at as [Expr, Expr], builtins);
+    return (s) => {
+      const arr = ca(s);
+      const idx = ci(s) as number;
+      if (!Array.isArray(arr)) return undefined;
+      return (arr as unknown[]).at(idx);
+    };
+  }
+
+  // merge — shallow object merge, later keys win, non-objects skipped
+  if ("merge" in op) {
+    const fns = (op.merge as Expr[]).map(e => compile(e, builtins));
+    return (s) => {
+      const result: Record<string, unknown> = {};
+      for (const f of fns) {
+        const val = f(s);
+        if (val !== null && typeof val === "object" && !Array.isArray(val)) {
+          Object.assign(result, val);
+        }
+      }
+      return result;
+    };
+  }
+
   // fn — builtin call
   if ("fn" in op) {
     const fnArgs = op.fn as [string, ...Expr[]];

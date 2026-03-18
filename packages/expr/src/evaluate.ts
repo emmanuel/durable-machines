@@ -244,6 +244,15 @@ export function evaluate(
       return 0;
     }
 
+    // at — array element access with negative index support
+    if ("at" in op) {
+      const [arrExpr, idxExpr] = op.at as [Expr, Expr];
+      const arr = evaluate(arrExpr, scope, builtins);
+      const idx = evaluate(idxExpr, scope, builtins) as number;
+      if (!Array.isArray(arr)) return undefined;
+      return arr.at(idx);
+    }
+
     // merge — shallow object merge, later keys win, non-objects skipped
     if ("merge" in op) {
       const exprs = op.merge as Expr[];

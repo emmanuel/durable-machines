@@ -184,6 +184,18 @@ describe("extractGraphData", () => {
     const { initial } = extractGraphData(linearMachine());
     expect(initial).toBe("idle");
   });
+
+  it("marks edges from the initial state with isInitial", () => {
+    const { edges } = extractGraphData(linearMachine());
+
+    // The only edge from 'idle' (initial state) should have isInitial
+    const startEdge = edges.find((e) => e.label === "START");
+    expect(startEdge?.isInitial).toBe(true);
+
+    // Edges from non-initial states should not have isInitial
+    const doneEdge = edges.find((e) => e.type === "done");
+    expect(doneEdge?.isInitial).toBeUndefined();
+  });
 });
 
 describe("computeActiveSleep", () => {

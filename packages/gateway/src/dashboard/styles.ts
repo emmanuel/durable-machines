@@ -183,12 +183,20 @@ tr:last-child td { border-bottom: none; }
   fill: var(--bg);
   stroke: var(--border);
   stroke-width: 1.5;
-  rx: 6;
+  rx: 8;
 }
 
 .graph-node.durable rect {
   stroke-width: 2.5;
   stroke: var(--accent);
+  border-left: 3px solid var(--accent);
+}
+
+.graph-node.durable .durable-badge {
+  fill: var(--accent);
+  font-size: 9px;
+  font-family: var(--font-mono);
+  font-weight: 600;
 }
 
 .graph-node.active rect {
@@ -224,6 +232,15 @@ tr:last-child td { border-bottom: none; }
   font-size: 10px;
 }
 
+.graph-edge {
+  opacity: 0.25;
+  transition: opacity 0.2s;
+}
+
+.graph-edge.active {
+  opacity: 1;
+}
+
 .graph-edge path {
   fill: none;
   stroke: var(--border);
@@ -249,6 +266,12 @@ tr:last-child td { border-bottom: none; }
   font-family: var(--font-sans);
 }
 
+.graph-edge .edge-label-bg {
+  fill: var(--bg-card);
+  rx: 4;
+  ry: 4;
+}
+
 .graph-compound rect {
   fill: var(--bg-card);
   stroke: var(--border);
@@ -260,6 +283,47 @@ tr:last-child td { border-bottom: none; }
 @keyframes pulse {
   0%, 100% { filter: drop-shadow(0 0 4px rgba(79,110,247,0.3)); }
   50% { filter: drop-shadow(0 0 12px rgba(79,110,247,0.6)); }
+}
+
+/* Prompt-waiting indicator: orange pulse when active node expects user input */
+.graph-node.active.has-prompt rect {
+  stroke: var(--orange);
+  animation: prompt-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes prompt-pulse {
+  0%, 100% { filter: drop-shadow(0 0 4px rgba(251,146,60,0.3)); }
+  50% { filter: drop-shadow(0 0 14px rgba(251,146,60,0.7)); }
+}
+
+/* Step progress indicator */
+svg .step-indicator {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-dasharray: 12 4;
+  animation: spin 1.5s linear infinite;
+  transform-origin: center;
+}
+
+@keyframes spin {
+  100% { transform: rotate(360deg); }
+}
+
+/* Effect status badge */
+svg .effect-badge {
+  font-size: 9px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+svg .effect-badge.pending { fill: var(--yellow); }
+svg .effect-badge.completed { fill: var(--green); }
+svg .effect-badge.failed { fill: var(--red); }
+
+svg .effect-badge-bg {
+  rx: 4;
+  ry: 4;
 }
 
 /* ── Activity Feed ──────────────────────────────── */

@@ -46,6 +46,10 @@ export const CLIENT_JS = /* js */ `
       }
     }
 
+    // Read optional layout direction from page config (default: RIGHT)
+    var dirEl = document.getElementById('graph-direction');
+    var graphDirection = (dirEl && dirEl.textContent) || 'RIGHT';
+
     const nodeMap = new Map();
     for (const n of graphData.nodes) {
       nodeMap.set(n.id, {
@@ -55,8 +59,9 @@ export const CLIENT_JS = /* js */ `
         height: hasAnalytics ? 56 : 40,
         layoutOptions: n.children.length > 0 ? {
           'elk.algorithm': 'layered',
-          'elk.direction': 'DOWN',
-          'elk.padding': '[top=35,left=15,bottom=15,right=15]',
+          'elk.direction': graphDirection,
+          'elk.padding': '[top=60,left=30,bottom=30,right=30]',
+          'elk.spacing.labelLabel': '10',
         } : {},
         children: [],
         _meta: n,
@@ -82,11 +87,25 @@ export const CLIENT_JS = /* js */ `
       if (cnt != null) {
         labelText = labelText ? labelText + ' (' + cnt + '\u00d7)' : cnt + '\u00d7';
       }
+      var edgeLabels = [];
+      if (labelText) {
+        edgeLabels.push({
+          text: labelText,
+          layoutOptions: {
+            'edgeLabels.inline': 'true',
+            'edgeLabels.placement': 'CENTER',
+            'edgeLabels.centerLabelPlacementStrategy': 'TAIL_LAYER',
+          },
+        });
+      }
       return {
         id: 'e' + i,
         sources: [e.source],
         targets: [e.target],
-        labels: labelText ? [{ text: labelText }] : [],
+        labels: edgeLabels,
+        layoutOptions: {
+          'elk.layered.priority.direction': e.isInitial ? '1' : '0',
+        },
         _meta: e,
         _count: cnt || 0,
         _countRatio: cnt ? cnt / maxEdgeCount : 0,
@@ -96,11 +115,12 @@ export const CLIENT_JS = /* js */ `
     return {
       id: 'root',
       layoutOptions: {
+        'elk.hierarchyHandling': 'INCLUDE_CHILDREN',
         'elk.algorithm': 'layered',
-        'elk.direction': 'DOWN',
-        'elk.spacing.nodeNode': '30',
-        'elk.spacing.edgeNode': '20',
-        'elk.layered.spacing.nodeNodeBetweenLayers': '40',
+        'elk.layered.considerModelOrder': 'NODES_AND_EDGES',
+        'elk.layered.wrapping.strategy': 'MULTI_EDGE',
+        'elk.aspectRatio': '2',
+        'elk.direction': graphDirection,
       },
       children: roots,
       edges: edges,
@@ -155,6 +175,7 @@ export const CLIENT_JS = /* js */ `
         if (meta.type === 'final') cls += ' final';
         if (isActive) cls += ' active';
         else if (isVisited) cls += ' visited';
+        if (isActive && meta.hasPrompt) cls += ' has-prompt';
 
         // Analytics heat mapping
         if (node._analytics) {
@@ -168,6 +189,11 @@ export const CLIENT_JS = /* js */ `
 
         out += '<g class="' + cls + '">';
         out += '<rect x="' + x + '" y="' + y + '" width="' + (node.width || 120) + '" height="' + (node.height || 40) + '"/>';
+
+        // Durable accent: left-side colored bar
+        if (meta.durable) {
+          out += '<rect class="durable-accent" x="' + x + '" y="' + (y + 4) + '" width="3" height="' + ((node.height || 40) - 8) + '" rx="1.5" fill="var(--accent)"/>';
+        }
 
         // Label — shift up when analytics sublabel present
         let labelX = x + (node.width || 120) / 2;
@@ -183,7 +209,7 @@ export const CLIENT_JS = /* js */ `
         let iconX = x + (node.width || 120) - 14;
         const iconY = y + 12;
         if (meta.durable) {
-          out += '<text class="icon" x="' + iconX + '" y="' + iconY + '">&#x1f6e1;</text>';
+          out += '<text class="icon durable-badge" x="' + iconX + '" y="' + iconY + '">&#x1f6e1;</text>';
           iconX -= 14;
         }
         if (meta.hasPrompt) {
@@ -192,6 +218,39 @@ export const CLIENT_JS = /* js */ `
         }
         if (meta.hasInvoke) {
           out += '<text class="icon" x="' + iconX + '" y="' + iconY + '">&#x2699;</text>';
+        }
+
+        // Step progress indicator: spinning circle when node has active step
+        if (isActive && meta.hasInvoke && runtimeState && runtimeState.activeStep) {
+          out += '<circle class="step-indicator" cx="' + (x + 14) + '" cy="' + (y + (node.height || 40) / 2) + '" r="6"/>';
+        }
+
+        // Effect status badge
+        if (meta.hasEffects && runtimeState && runtimeState.effects) {
+          var nodeEffects = runtimeState.effects.filter(function(ef) {
+            return ef.stateId === meta.id;
+          });
+          if (nodeEffects.length > 0) {
+            var pending = 0, completed = 0, failed = 0;
+            for (var ei = 0; ei < nodeEffects.length; ei++) {
+              if (nodeEffects[ei].status === 'pending') pending++;
+              else if (nodeEffects[ei].status === 'completed') completed++;
+              else if (nodeEffects[ei].status === 'failed') failed++;
+            }
+            var badgeText = '';
+            var badgeClass = 'effect-badge';
+            if (failed > 0) { badgeText = '\\u2717 ' + failed; badgeClass += ' failed'; }
+            else if (pending > 0) { badgeText = '\\u23f3 ' + pending + '/' + nodeEffects.length; badgeClass += ' pending'; }
+            else { badgeText = '\\u2713'; badgeClass += ' completed'; }
+            var badgeX = x + (node.width || 120) / 2;
+            var badgeY = y + (node.height || 40) + 12;
+            out += '<text class="' + badgeClass + '" x="' + badgeX + '" y="' + badgeY + '" text-anchor="middle">' + badgeText + '</text>';
+          }
+        }
+
+        // Prompt-waiting indicator: speech bubble badge when waiting for input
+        if (isActive && meta.hasPrompt) {
+          out += '<text class="icon" x="' + (x + (node.width || 120) / 2) + '" y="' + (y - 4) + '" text-anchor="middle" font-size="14">&#x1f4ac;</text>';
         }
 
         out += '</g>';
@@ -269,9 +328,14 @@ export const CLIENT_JS = /* js */ `
     const activeSleep = runtimeState?.activeSleep || null;
     const leaves = graphData.nodes.filter(n => n.children.length === 0);
     const nodeW = 140;
-    const gapX = 30;
-    const gapY = 60;
+    const nodeGap = 60;  // gap between columns (L→R)
+    const laneGap = 30;  // gap between rows within a column
     const pad = 30;
+
+    // Read layout direction from page config
+    var dirEl = document.getElementById('graph-direction');
+    var fbDirection = (dirEl && dirEl.textContent) || 'RIGHT';
+    var isHorizontal = fbDirection === 'RIGHT';
 
     // Analytics lookup maps
     var fbDurationByState = {};
@@ -325,39 +389,58 @@ export const CLIENT_JS = /* js */ `
       if (!depth.has(n.id)) depth.set(n.id, 999);
     }
 
-    // Group by depth
-    const rows = new Map();
+    // Group by depth (columns in L→R, rows in T→B)
+    const columns = new Map();
     for (const n of leaves) {
       const d = depth.get(n.id);
-      if (!rows.has(d)) rows.set(d, []);
-      rows.get(d).push(n);
+      if (!columns.has(d)) columns.set(d, []);
+      columns.get(d).push(n);
     }
 
     const positions = new Map();
-    const sortedDepths = [...rows.keys()].sort((a, b) => a - b);
-    let maxRowWidth = 0;
+    const sortedDepths = [...columns.keys()].sort((a, b) => a - b);
+    let maxLaneCount = 0;
 
     for (const d of sortedDepths) {
-      const row = rows.get(d);
-      maxRowWidth = Math.max(maxRowWidth, row.length);
+      const col = columns.get(d);
+      maxLaneCount = Math.max(maxLaneCount, col.length);
     }
 
     for (let di = 0; di < sortedDepths.length; di++) {
       const d = sortedDepths[di];
-      const row = rows.get(d);
-      const totalWidth = row.length * nodeW + (row.length - 1) * gapX;
-      const startX = (maxRowWidth * (nodeW + gapX) - gapX - totalWidth) / 2;
+      const col = columns.get(d);
 
-      for (let i = 0; i < row.length; i++) {
-        positions.set(row[i].id, {
-          x: pad + startX + i * (nodeW + gapX),
-          y: pad + di * (nodeH + gapY),
-        });
+      if (isHorizontal) {
+        // L→R: depth → X, lane → Y
+        const totalHeight = col.length * nodeH + (col.length - 1) * laneGap;
+        const startY = (maxLaneCount * (nodeH + laneGap) - laneGap - totalHeight) / 2;
+        for (let i = 0; i < col.length; i++) {
+          positions.set(col[i].id, {
+            x: pad + di * (nodeW + nodeGap),
+            y: pad + startY + i * (nodeH + laneGap),
+          });
+        }
+      } else {
+        // T→B: depth → Y, lane → X
+        const totalWidth = col.length * nodeW + (col.length - 1) * laneGap;
+        const startX = (maxLaneCount * (nodeW + laneGap) - laneGap - totalWidth) / 2;
+        for (let i = 0; i < col.length; i++) {
+          positions.set(col[i].id, {
+            x: pad + startX + i * (nodeW + laneGap),
+            y: pad + di * (nodeH + nodeGap),
+          });
+        }
       }
     }
 
-    const w = maxRowWidth * (nodeW + gapX) - gapX + pad * 2;
-    const h = sortedDepths.length * (nodeH + gapY) - gapY + pad * 2;
+    var w, h;
+    if (isHorizontal) {
+      w = sortedDepths.length * (nodeW + nodeGap) - nodeGap + pad * 2;
+      h = maxLaneCount * (nodeH + laneGap) - laneGap + pad * 2;
+    } else {
+      w = maxLaneCount * (nodeW + laneGap) - laneGap + pad * 2;
+      h = sortedDepths.length * (nodeH + nodeGap) - nodeGap + pad * 2;
+    }
 
     let svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '">';
 
@@ -385,10 +468,22 @@ export const CLIENT_JS = /* js */ `
       }
 
       svg += '<g class="' + cls + '">';
-      svg += '<path d="M' + (from.x + nodeW / 2) + ',' + (from.y + nodeH) + ' L' + (to.x + nodeW / 2) + ',' + to.y + '"' + fbEdgeStroke + ' marker-end="url(#arrow)"/>';
+      if (isHorizontal) {
+        // L→R: exit from right edge of source, enter left edge of target
+        svg += '<path d="M' + (from.x + nodeW) + ',' + (from.y + nodeH / 2) + ' L' + to.x + ',' + (to.y + nodeH / 2) + '"' + fbEdgeStroke + ' marker-end="url(#arrow)"/>';
+      } else {
+        // T→B: exit from bottom edge of source, enter top edge of target
+        svg += '<path d="M' + (from.x + nodeW / 2) + ',' + (from.y + nodeH) + ' L' + (to.x + nodeW / 2) + ',' + to.y + '"' + fbEdgeStroke + ' marker-end="url(#arrow)"/>';
+      }
       if (fbLabelText) {
-        const mx = (from.x + to.x + nodeW) / 2;
-        const my = (from.y + nodeH + to.y) / 2 - 4;
+        var mx, my;
+        if (isHorizontal) {
+          mx = (from.x + nodeW + to.x) / 2;
+          my = (from.y + to.y + nodeH) / 2 - 4;
+        } else {
+          mx = (from.x + to.x + nodeW) / 2;
+          my = (from.y + nodeH + to.y) / 2 - 4;
+        }
         svg += '<text x="' + mx + '" y="' + my + '" text-anchor="middle">' + esc(fbLabelText) + '</text>';
         // Add countdown for active after-edges
         if (e.type === 'after' && activeSleep && activeSleep.stateId === e.source) {
@@ -450,9 +545,30 @@ export const CLIENT_JS = /* js */ `
 
     try {
       const elk = await loadElk();
-      const elkGraph = toElkGraph(graphData, runtimeState);
-      const layout = await elk.layout(elkGraph);
-      container.innerHTML = renderSvg(layout, graphData, runtimeState);
+      var elkGraph = toElkGraph(graphData, runtimeState);
+      var layout = null;
+      var attempts = 3;
+
+      for (var attempt = 0; attempt < attempts; attempt++) {
+        try {
+          layout = await elk.layout(elkGraph);
+          break;
+        } catch (layoutErr) {
+          if (attempt === attempts - 1) throw layoutErr;
+          // Simplify layout options on each retry
+          if (attempt === 0) {
+            // Remove compaction-related options, keep wrapping
+            delete elkGraph.layoutOptions['elk.layered.compaction.postCompaction.strategy'];
+          } else if (attempt === 1) {
+            // Remove wrapping too
+            delete elkGraph.layoutOptions['elk.layered.wrapping.strategy'];
+          }
+        }
+      }
+
+      if (layout) {
+        container.innerHTML = renderSvg(layout, graphData, runtimeState);
+      }
     } catch (e) {
       console.warn('ELK layout failed, using fallback:', e);
       container.innerHTML = fallbackLayout(graphData, runtimeState);
@@ -1043,6 +1159,8 @@ export const CLIENT_JS = /* js */ `
             activeSleep: data.activeSleep || null,
             aggregateStateDurations: data.aggregateStateDurations || null,
             transitionCounts: data.transitionCounts || null,
+            effects: data.effects || null,
+            activeStep: data.activeStep || null,
           });
         }
 

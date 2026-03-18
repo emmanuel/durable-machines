@@ -21,6 +21,8 @@ export interface GraphEdge {
   type: "event" | "always" | "after" | "done" | "error";
   /** For `after` edges: the numeric delay in milliseconds (if statically known). */
   delay?: number;
+  /** True if this edge originates from the machine's initial state. */
+  isInitial?: boolean;
 }
 
 /** Data structure embedded in HTML for client-side ELK rendering. */
@@ -69,6 +71,8 @@ export function extractGraphData(definition: SerializedMachine): GraphData {
       children: state.children ?? [],
     });
 
+    const isInitialState = path === definition.initial;
+
     // Event-driven transitions
     if (state.on) {
       for (const [eventType, transitions] of Object.entries(state.on)) {
@@ -82,7 +86,9 @@ export function extractGraphData(definition: SerializedMachine): GraphData {
               : eventType.startsWith("xstate.error.")
                 ? "error" as const
                 : "event" as const;
-            edges.push({ source: path, target: t.target, label, type: edgeType });
+            const edge: GraphEdge = { source: path, target: t.target, label, type: edgeType };
+            if (isInitialState) edge.isInitial = true;
+            edges.push(edge);
           }
         }
       }
@@ -93,7 +99,9 @@ export function extractGraphData(definition: SerializedMachine): GraphData {
       for (const t of state.always) {
         if (t.target) {
           const label = t.guard ? `[${t.guard}]` : "";
-          edges.push({ source: path, target: t.target, label, type: "always" });
+          const edge: GraphEdge = { source: path, target: t.target, label, type: "always" };
+          if (isInitialState) edge.isInitial = true;
+          edges.push(edge);
         }
       }
     }
@@ -108,6 +116,7 @@ export function extractGraphData(definition: SerializedMachine): GraphData {
           const label = t.guard ? `after ${delayLabel} [${t.guard}]` : `after ${delayLabel}`;
           const edge: GraphEdge = { source: path, target: t.target, label, type: "after" };
           if (typeof t.delay === "number") edge.delay = t.delay;
+          if (isInitialState) edge.isInitial = true;
           edges.push(edge);
         }
       }

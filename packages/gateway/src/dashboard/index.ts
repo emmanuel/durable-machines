@@ -20,6 +20,8 @@ export interface DashboardOptions {
   pollIntervalMs?: number;
   /** Maximum concurrent SSE connections. @defaultValue `100` */
   maxSseConnections?: number;
+  /** Graph layout direction. @defaultValue `"RIGHT"` */
+  graphDirection?: "RIGHT" | "DOWN";
 }
 
 /**
@@ -47,5 +49,6 @@ export function createDashboard(options: DashboardOptions): Hono {
     store,
     pollIntervalMs,
     maxSseConnections: options.maxSseConnections,
+    graphDirection: options.graphDirection,
   });
 }

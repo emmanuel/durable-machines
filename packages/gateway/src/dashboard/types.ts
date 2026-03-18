@@ -41,4 +41,6 @@ export interface InstanceDetailData {
   aggregateStateDurations?: AggregateStateDuration[];
   /** Transition counts for this machine. Present when analytics enabled. */
   transitionCounts?: TransitionCountRow[];
+  /** Graph layout direction. @defaultValue `"RIGHT"` */
+  graphDirection?: "RIGHT" | "DOWN";
 }

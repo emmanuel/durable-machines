@@ -36,6 +36,8 @@ export interface DashboardRouteOptions {
   pollIntervalMs: number;
   /** Maximum concurrent SSE connections. @defaultValue `100` */
   maxSseConnections?: number;
+  /** Graph layout direction. @defaultValue `"RIGHT"` */
+  graphDirection?: "RIGHT" | "DOWN";
 }
 
 /**
@@ -44,6 +46,7 @@ export interface DashboardRouteOptions {
 export function createDashboardRoutes(options: DashboardRouteOptions): Hono {
   const { machines, basePath, restBasePath, store, pollIntervalMs } = options;
   const maxSseConnections = options.maxSseConnections ?? 100;
+  const graphDirection = options.graphDirection ?? "RIGHT";
   let sseConnections = 0;
   const app = new Hono();
 
@@ -308,6 +311,7 @@ export function createDashboardRoutes(options: DashboardRouteOptions): Hono {
       snapshot,
       steps,
       handle,
+      graphDirection,
     );
 
     return c.html(instanceDetailPage(basePath, restBasePath, data));
@@ -351,6 +355,7 @@ async function buildDetailData(
   snapshot: DurableStateSnapshot,
   steps: import("@durable-xstate/durable-machine").StepInfo[],
   handle: import("@durable-xstate/durable-machine").DurableMachineHandle,
+  graphDirection: "RIGHT" | "DOWN",
 ): Promise<InstanceDetailData> {
   const definition = serializeMachineDefinition(durable.machine);
   const graphData = extractGraphData(definition);
@@ -402,6 +407,7 @@ async function buildDetailData(
     activeSleep,
     aggregateStateDurations,
     transitionCounts,
+    graphDirection,
   };
 }
 

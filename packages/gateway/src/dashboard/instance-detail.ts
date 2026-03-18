@@ -152,7 +152,8 @@ export function instanceDetailPage(
       <h2>State Graph</h2>
       <div id="graph-container"></div>
       <script type="application/json" id="graph-data">${JSON.stringify(graphData)}</script>
-      <script type="application/json" id="runtime-data">${JSON.stringify({ activeStates, visitedStates, activeSleep: activeSleep ?? null, eventSchemas: eventSchemas ?? {}, aggregateStateDurations: aggregateStateDurations ?? null, transitionCounts: transitionCounts ?? null })}</script>
+      <script type="application/json" id="runtime-data">${JSON.stringify({ activeStates, visitedStates, activeSleep: activeSleep ?? null, eventSchemas: eventSchemas ?? {}, aggregateStateDurations: aggregateStateDurations ?? null, transitionCounts: transitionCounts ?? null, effects: effects ?? null })}</script>
+      <script type="text/plain" id="graph-direction">${data.graphDirection ?? "RIGHT"}</script>
     </div>`;
 
   // Activity feed panel

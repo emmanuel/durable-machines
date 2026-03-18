@@ -214,6 +214,36 @@ describe("compile — at", () => {
   });
 });
 
+describe("compile — filter", () => {
+  it("keeps matching elements", () => {
+    const scope = createScope({ context: { nums: [1, 2, 3, 4, 5] } });
+    expect(compile({ filter: [{ select: ["context", "nums"] }, "n", { gt: [{ ref: "n" }, 3] }] })(scope)).toEqual([4, 5]);
+  });
+  it("transducer form reads $", () => {
+    const scope = createScope({ context: {} });
+    scope.bindings.$ = [1, 2, 3, 4, 5];
+    expect(compile({ filter: ["n", { gt: [{ ref: "n" }, 3] }] })(scope)).toEqual([4, 5]);
+  });
+  it("returns [] for non-array", () => {
+    expect(compile({ filter: [42, "n", { ref: "n" }] })(emptyScope)).toEqual([]);
+  });
+});
+
+describe("compile — map", () => {
+  it("transforms each element", () => {
+    const scope = createScope({ context: { nums: [1, 2, 3] } });
+    expect(compile({ map: [{ select: ["context", "nums"] }, "n", { mul: [{ ref: "n" }, 2] }] })(scope)).toEqual([2, 4, 6]);
+  });
+  it("transducer form reads $", () => {
+    const scope = createScope({ context: {} });
+    scope.bindings.$ = [10, 20];
+    expect(compile({ map: ["n", { add: [{ ref: "n" }, 1] }] })(scope)).toEqual([11, 21]);
+  });
+  it("returns [] for non-array", () => {
+    expect(compile({ map: ["not-array", "n", { ref: "n" }] })(emptyScope)).toEqual([]);
+  });
+});
+
 describe("compile — fn (builtins)", () => {
   it("calls builtin with no args", () => {
     const builtins = createBuiltinRegistry({ fixed: () => "ok" });

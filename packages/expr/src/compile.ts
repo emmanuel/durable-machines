@@ -161,6 +161,62 @@ export function compile(expr: Expr, builtins?: BuiltinRegistry): CompiledExpr {
     };
   }
 
+  // filter — dual arity
+  if ("filter" in op) {
+    const args = op.filter as unknown[];
+    if (args.length === 3 && typeof args[1] === "string") {
+      const cArr = compile(args[0] as Expr, builtins);
+      const bindName = args[1] as string;
+      const cBody = compile(args[2] as Expr, builtins);
+      return (s) => {
+        const arr = cArr(s);
+        if (!Array.isArray(arr)) return [];
+        return (arr as unknown[]).filter((item, i) => {
+          const inner: Scope = { ...s, bindings: { ...s.bindings, [bindName]: item, $index: i } };
+          return Boolean(cBody(inner));
+        });
+      };
+    }
+    const bindName = args[0] as string;
+    const cBody = compile(args[1] as Expr, builtins);
+    return (s) => {
+      const arr = s.bindings.$;
+      if (!Array.isArray(arr)) return [];
+      return (arr as unknown[]).filter((item, i) => {
+        const inner: Scope = { ...s, bindings: { ...s.bindings, [bindName]: item, $index: i } };
+        return Boolean(cBody(inner));
+      });
+    };
+  }
+
+  // map — dual arity
+  if ("map" in op) {
+    const args = op.map as unknown[];
+    if (args.length === 3 && typeof args[1] === "string") {
+      const cArr = compile(args[0] as Expr, builtins);
+      const bindName = args[1] as string;
+      const cBody = compile(args[2] as Expr, builtins);
+      return (s) => {
+        const arr = cArr(s);
+        if (!Array.isArray(arr)) return [];
+        return (arr as unknown[]).map((item, i) => {
+          const inner: Scope = { ...s, bindings: { ...s.bindings, [bindName]: item, $index: i } };
+          return cBody(inner);
+        });
+      };
+    }
+    const bindName = args[0] as string;
+    const cBody = compile(args[1] as Expr, builtins);
+    return (s) => {
+      const arr = s.bindings.$;
+      if (!Array.isArray(arr)) return [];
+      return (arr as unknown[]).map((item, i) => {
+        const inner: Scope = { ...s, bindings: { ...s.bindings, [bindName]: item, $index: i } };
+        return cBody(inner);
+      });
+    };
+  }
+
   // fn — builtin call
   if ("fn" in op) {
     const fnArgs = op.fn as [string, ...Expr[]];

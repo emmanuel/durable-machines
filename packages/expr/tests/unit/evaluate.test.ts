@@ -294,3 +294,85 @@ describe("evaluate — at", () => {
     expect(evaluate({ at: [{ select: ["context", "items"] }, { select: ["context", "idx"] }] }, scope)).toBe("z");
   });
 });
+
+describe("evaluate — filter", () => {
+  const iterScope = createScope({ context: { nums: [1, 2, 3, 4, 5] } });
+
+  it("keeps matching elements", () => {
+    expect(evaluate(
+      { filter: [{ select: ["context", "nums"] }, "n", { gt: [{ ref: "n" }, 3] }] },
+      iterScope,
+    )).toEqual([4, 5]);
+  });
+  it("returns [] for non-array", () => {
+    const scope = createScope({ context: { val: 42 } });
+    expect(evaluate(
+      { filter: [{ select: ["context", "val"] }, "n", { ref: "n" }] },
+      scope,
+    )).toEqual([]);
+  });
+  it("returns [] for empty array", () => {
+    const scope = createScope({ context: { items: [] } });
+    expect(evaluate(
+      { filter: [{ select: ["context", "items"] }, "n", true] },
+      scope,
+    )).toEqual([]);
+  });
+  it("$index binding available", () => {
+    expect(evaluate(
+      { filter: [{ select: ["context", "nums"] }, "n", { lt: [{ ref: "$index" }, 2] }] },
+      iterScope,
+    )).toEqual([1, 2]);
+  });
+});
+
+describe("evaluate — filter (transducer)", () => {
+  it("reads $ as collection", () => {
+    const scope = createScope({ context: {} });
+    scope.bindings.$ = [1, 2, 3, 4, 5];
+    expect(evaluate(
+      { filter: ["n", { gt: [{ ref: "n" }, 3] }] },
+      scope,
+    )).toEqual([4, 5]);
+  });
+  it("returns [] when $ is not an array", () => {
+    const scope = createScope({ context: {} });
+    scope.bindings.$ = 42;
+    expect(evaluate({ filter: ["n", { ref: "n" }] }, scope)).toEqual([]);
+  });
+});
+
+describe("evaluate — map", () => {
+  const iterScope = createScope({ context: { nums: [1, 2, 3, 4, 5] } });
+
+  it("transforms each element", () => {
+    expect(evaluate(
+      { map: [{ select: ["context", "nums"] }, "n", { mul: [{ ref: "n" }, 10] }] },
+      iterScope,
+    )).toEqual([10, 20, 30, 40, 50]);
+  });
+  it("$index binding available", () => {
+    expect(evaluate(
+      { map: [{ select: ["context", "nums"] }, "n", { ref: "$index" }] },
+      iterScope,
+    )).toEqual([0, 1, 2, 3, 4]);
+  });
+  it("returns [] for non-array", () => {
+    const scope = createScope({ context: { val: "hello" } });
+    expect(evaluate(
+      { map: [{ select: ["context", "val"] }, "n", { ref: "n" }] },
+      scope,
+    )).toEqual([]);
+  });
+});
+
+describe("evaluate — map (transducer)", () => {
+  it("reads $ as collection", () => {
+    const scope = createScope({ context: {} });
+    scope.bindings.$ = [1, 2, 3];
+    expect(evaluate(
+      { map: ["n", { mul: [{ ref: "n" }, 10] }] },
+      scope,
+    )).toEqual([10, 20, 30]);
+  });
+});

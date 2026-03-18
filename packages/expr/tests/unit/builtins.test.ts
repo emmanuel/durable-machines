@@ -41,7 +41,7 @@ describe("evaluate — fn (builtins)", () => {
   it("iso8601Duration computes duration between two ISO timestamps", () => {
     const scope = createScope({ context: {} });
     const result = evaluate(
-      { fn: "iso8601Duration", args: ["2025-01-01T00:00:00Z", "2025-01-01T01:01:01Z"] },
+      { fn: ["iso8601Duration", "2025-01-01T00:00:00Z", "2025-01-01T01:01:01Z"] },
       scope,
       defaultBuiltins,
     );
@@ -51,7 +51,7 @@ describe("evaluate — fn (builtins)", () => {
   it("iso8601Duration returns PT0S when end is before start", () => {
     const scope = createScope({ context: {} });
     const result = evaluate(
-      { fn: "iso8601Duration", args: ["2025-01-01T01:00:00Z", "2025-01-01T00:00:00Z"] },
+      { fn: ["iso8601Duration", "2025-01-01T01:00:00Z", "2025-01-01T00:00:00Z"] },
       scope,
       defaultBuiltins,
     );

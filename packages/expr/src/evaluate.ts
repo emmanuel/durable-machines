@@ -93,195 +93,126 @@ export function resolveStep(
 
 // ─── Evaluator ───────────────────────────────────────────────────────────────
 
-export function evaluate(
-  expr: Expr,
-  scope: Scope,
-  builtins?: BuiltinRegistry,
-): unknown {
+export function evaluate(expr: Expr, scope: Scope, builtins?: BuiltinRegistry): unknown {
   // Literals
   if (expr === null || expr === undefined) return expr;
   if (typeof expr === "string" || typeof expr === "number" || typeof expr === "boolean") return expr;
-
-  // Arrays are not operator expressions — return as-is (they may be literal arrays in `in` operands)
   if (Array.isArray(expr)) return expr;
 
   // Operator dispatch
-  if (typeof expr === "object") {
-    const op = expr as Record<string, unknown>;
+  if (typeof expr !== "object") return expr;
+  const op = expr as Record<string, unknown>;
 
-    // select — path navigation
-    if ("select" in op) {
-      return selectPath(op.select as Path, scope, builtins);
-    }
+  const ev = (e: Expr) => evaluate(e, scope, builtins);
+  const n = (e: Expr) => ev(e) as number;
 
-    // Comparisons — [left, right]
-    if ("eq" in op) {
-      const [a, b] = op.eq as [Expr, Expr];
-      return evaluate(a, scope, builtins) === evaluate(b, scope, builtins);
-    }
-    if ("neq" in op) {
-      const [a, b] = op.neq as [Expr, Expr];
-      return evaluate(a, scope, builtins) !== evaluate(b, scope, builtins);
-    }
-    if ("gt" in op) {
-      const [a, b] = op.gt as [Expr, Expr];
-      return (evaluate(a, scope, builtins) as number) > (evaluate(b, scope, builtins) as number);
-    }
-    if ("lt" in op) {
-      const [a, b] = op.lt as [Expr, Expr];
-      return (evaluate(a, scope, builtins) as number) < (evaluate(b, scope, builtins) as number);
-    }
-    if ("gte" in op) {
-      const [a, b] = op.gte as [Expr, Expr];
-      return (evaluate(a, scope, builtins) as number) >= (evaluate(b, scope, builtins) as number);
-    }
-    if ("lte" in op) {
-      const [a, b] = op.lte as [Expr, Expr];
-      return (evaluate(a, scope, builtins) as number) <= (evaluate(b, scope, builtins) as number);
-    }
+  // select
+  if ("select" in op) return selectPath(op.select as Path, scope, builtins);
 
-    // Logic
-    if ("and" in op) {
-      const exprs = op.and as Expr[];
-      return exprs.every((e) => Boolean(evaluate(e, scope, builtins)));
-    }
-    if ("or" in op) {
-      const exprs = op.or as Expr[];
-      return exprs.some((e) => Boolean(evaluate(e, scope, builtins)));
-    }
-    if ("not" in op) {
-      return !evaluate(op.not as Expr, scope, builtins);
-    }
-    if ("if" in op) {
-      const [cond, then, els] = op.if as [Expr, Expr, Expr];
-      return evaluate(cond, scope, builtins) ? evaluate(then, scope, builtins) : evaluate(els, scope, builtins);
-    }
-    if ("cond" in op) {
-      const branches = op.cond as [Expr, Expr][];
-      for (const [guard, value] of branches) {
-        if (evaluate(guard, scope, builtins)) {
-          return evaluate(value, scope, builtins);
-        }
-      }
-      return undefined;
-    }
+  // Comparisons
+  if ("eq" in op) { const [a, b] = op.eq as [Expr, Expr]; return ev(a) === ev(b); }
+  if ("neq" in op) { const [a, b] = op.neq as [Expr, Expr]; return ev(a) !== ev(b); }
+  if ("gt" in op) { const [a, b] = op.gt as [Expr, Expr]; return n(a) > n(b); }
+  if ("lt" in op) { const [a, b] = op.lt as [Expr, Expr]; return n(a) < n(b); }
+  if ("gte" in op) { const [a, b] = op.gte as [Expr, Expr]; return n(a) >= n(b); }
+  if ("lte" in op) { const [a, b] = op.lte as [Expr, Expr]; return n(a) <= n(b); }
 
-    // Membership
-    if ("in" in op) {
-      const [value, array] = op.in as [Expr, Expr];
-      const evaluatedValue = evaluate(value, scope, builtins);
-      const evaluatedArray = evaluate(array, scope, builtins);
-      if (!Array.isArray(evaluatedArray)) return false;
-      return evaluatedArray.includes(evaluatedValue);
+  // Logic
+  if ("and" in op) return (op.and as Expr[]).every((e) => Boolean(ev(e)));
+  if ("or" in op) return (op.or as Expr[]).some((e) => Boolean(ev(e)));
+  if ("not" in op) return !ev(op.not as Expr);
+  if ("if" in op) { const [cond, then, els] = op.if as [Expr, Expr, Expr]; return ev(cond) ? ev(then) : ev(els); }
+  if ("cond" in op) {
+    for (const [guard, value] of op.cond as [Expr, Expr][]) {
+      if (ev(guard)) return ev(value);
     }
+    return undefined;
+  }
 
-    // Bindings — ref and param
-    if ("ref" in op) {
-      return scope.bindings[op.ref as string];
-    }
-    if ("param" in op) {
-      return scope.params[op.param as string];
-    }
+  // Membership
+  if ("in" in op) {
+    const [value, array] = op.in as [Expr, Expr];
+    const arr = ev(array);
+    return Array.isArray(arr) ? arr.includes(ev(value)) : false;
+  }
 
-    // let — evaluate bindings in order, then evaluate body in extended scope
-    if ("let" in op) {
-      const [bindingsExpr, body] = op.let as [Record<string, Expr>, Expr];
-      const extendedBindings = { ...scope.bindings };
-      const innerScope: Scope = { ...scope, bindings: extendedBindings };
-      for (const [key, bindingExpr] of Object.entries(bindingsExpr)) {
-        extendedBindings[key] = evaluate(bindingExpr, innerScope, builtins);
-      }
-      return evaluate(body, innerScope, builtins);
-    }
+  // Bindings
+  if ("ref" in op) return scope.bindings[op.ref as string];
+  if ("param" in op) return scope.params[op.param as string];
 
-    // Nullability
-    if ("coalesce" in op) {
-      const exprs = op.coalesce as Expr[];
-      for (const e of exprs) {
-        const val = evaluate(e, scope, builtins);
-        if (val != null) return val;
-      }
-      return undefined;
+  // let
+  if ("let" in op) {
+    const [bindingsExpr, body] = op.let as [Record<string, Expr>, Expr];
+    const extendedBindings = { ...scope.bindings };
+    const innerScope: Scope = { ...scope, bindings: extendedBindings };
+    for (const [key, bindingExpr] of Object.entries(bindingsExpr)) {
+      extendedBindings[key] = evaluate(bindingExpr, innerScope, builtins);
     }
-    if ("isNull" in op) {
-      return evaluate(op.isNull as Expr, scope, builtins) == null;
-    }
+    return evaluate(body, innerScope, builtins);
+  }
 
-    // Arithmetic
-    if ("add" in op) {
-      const [a, b] = op.add as [Expr, Expr];
-      return (evaluate(a, scope, builtins) as number) + (evaluate(b, scope, builtins) as number);
-    }
-    if ("sub" in op) {
-      const [a, b] = op.sub as [Expr, Expr];
-      return (evaluate(a, scope, builtins) as number) - (evaluate(b, scope, builtins) as number);
-    }
-    if ("mul" in op) {
-      const [a, b] = op.mul as [Expr, Expr];
-      return (evaluate(a, scope, builtins) as number) * (evaluate(b, scope, builtins) as number);
-    }
-    if ("div" in op) {
-      const [a, b] = op.div as [Expr, Expr];
-      return (evaluate(a, scope, builtins) as number) / (evaluate(b, scope, builtins) as number);
-    }
+  // Nullability
+  if ("coalesce" in op) {
+    for (const e of op.coalesce as Expr[]) { const v = ev(e); if (v != null) return v; }
+    return undefined;
+  }
+  if ("isNull" in op) return ev(op.isNull as Expr) == null;
 
-    // Object construction
-    if ("object" in op) {
-      const fields = op.object as Record<string, Expr>;
-      const result: Record<string, unknown> = {};
-      for (const [key, valExpr] of Object.entries(fields)) {
-        result[key] = evaluate(valExpr, scope, builtins);
-      }
-      return result;
-    }
+  // Arithmetic
+  if ("add" in op) { const [a, b] = op.add as [Expr, Expr]; return n(a) + n(b); }
+  if ("sub" in op) { const [a, b] = op.sub as [Expr, Expr]; return n(a) - n(b); }
+  if ("mul" in op) { const [a, b] = op.mul as [Expr, Expr]; return n(a) * n(b); }
+  if ("div" in op) { const [a, b] = op.div as [Expr, Expr]; return n(a) / n(b); }
 
-    // len — length of array/string/object
-    if ("len" in op) {
-      const val = evaluate(op.len as Expr, scope, builtins);
-      if (Array.isArray(val)) return val.length;
-      if (typeof val === "string") return val.length;
-      if (val !== null && typeof val === "object") return Object.keys(val).length;
-      return 0;
+  // Object construction
+  if ("object" in op) {
+    const result: Record<string, unknown> = {};
+    for (const [key, valExpr] of Object.entries(op.object as Record<string, Expr>)) {
+      result[key] = ev(valExpr);
     }
+    return result;
+  }
 
-    // at — array element access with negative index support
-    if ("at" in op) {
-      const [arrExpr, idxExpr] = op.at as [Expr, Expr];
-      const arr = evaluate(arrExpr, scope, builtins);
-      const idx = evaluate(idxExpr, scope, builtins) as number;
-      if (!Array.isArray(arr)) return undefined;
-      return arr.at(idx);
+  // len
+  if ("len" in op) {
+    const val = ev(op.len as Expr);
+    if (Array.isArray(val) || typeof val === "string") return val.length;
+    if (val !== null && typeof val === "object") return Object.keys(val).length;
+    return 0;
+  }
+
+  // at
+  if ("at" in op) {
+    const [arrExpr, idxExpr] = op.at as [Expr, Expr];
+    const arr = ev(arrExpr);
+    return Array.isArray(arr) ? (arr as unknown[]).at(n(idxExpr)) : undefined;
+  }
+
+  // merge
+  if ("merge" in op) {
+    const result: Record<string, unknown> = {};
+    for (const e of op.merge as Expr[]) {
+      const val = ev(e);
+      if (val !== null && typeof val === "object" && !Array.isArray(val)) Object.assign(result, val);
     }
+    return result;
+  }
 
-    // merge — shallow object merge, later keys win, non-objects skipped
-    if ("merge" in op) {
-      const exprs = op.merge as Expr[];
-      const result: Record<string, unknown> = {};
-      for (const e of exprs) {
-        const val = evaluate(e, scope, builtins);
-        if (val !== null && typeof val === "object" && !Array.isArray(val)) {
-          Object.assign(result, val);
-        }
-      }
-      return result;
-    }
+  // Iteration operators
+  if ("filter" in op) return evaluateIteration("filter", op.filter as unknown[], scope, builtins);
+  if ("map" in op) return evaluateIteration("map", op.map as unknown[], scope, builtins);
+  if ("every" in op) return evaluateIteration("every", op.every as unknown[], scope, builtins);
+  if ("some" in op) return evaluateIteration("some", op.some as unknown[], scope, builtins);
+  if ("reduce" in op) return evaluateReduce(op.reduce as unknown[], scope, builtins);
 
-    // Iteration operators — filter, map, every, some, reduce
-    if ("filter" in op) return evaluateIteration("filter", op.filter as unknown[], scope, builtins);
-    if ("map" in op) return evaluateIteration("map", op.map as unknown[], scope, builtins);
-    if ("every" in op) return evaluateIteration("every", op.every as unknown[], scope, builtins);
-    if ("some" in op) return evaluateIteration("some", op.some as unknown[], scope, builtins);
-    if ("reduce" in op) return evaluateReduce(op.reduce as unknown[], scope, builtins);
+  // pipe — sequential composition with $ binding
+  if ("pipe" in op) return evaluatePipe(op.pipe as Expr[], scope, builtins);
 
-    // fn — call a registered builtin
-    if ("fn" in op) {
-      const fnArgs = op.fn as [string, ...Expr[]];
-      const [name, ...argExprs] = fnArgs;
-      const fn = builtins?.[name];
-      if (!fn) return undefined;
-      const args = argExprs.map((a) => evaluate(a, scope, builtins));
-      return fn(...args);
-    }
+  // fn — call a registered builtin
+  if ("fn" in op) {
+    const [name, ...argExprs] = op.fn as [string, ...Expr[]];
+    const fn = builtins?.[name];
+    return fn ? fn(...argExprs.map(ev)) : undefined;
   }
 
   return expr;
@@ -389,4 +320,14 @@ function evaluateReduce(args: unknown[], scope: Scope, builtins?: BuiltinRegistr
     acc = evaluate(body, inner, builtins);
   }
   return acc;
+}
+
+function evaluatePipe(steps: Expr[], scope: Scope, builtins?: BuiltinRegistry): unknown {
+  if (steps.length === 0) return undefined;
+  let current = evaluate(steps[0], scope, builtins);
+  for (let i = 1; i < steps.length; i++) {
+    const inner: Scope = { ...scope, bindings: { ...scope.bindings, $: current } };
+    current = evaluate(steps[i], inner, builtins);
+  }
+  return current;
 }

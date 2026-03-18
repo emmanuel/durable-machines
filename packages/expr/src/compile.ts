@@ -168,6 +168,20 @@ export function compile(expr: Expr, builtins?: BuiltinRegistry): CompiledExpr {
   if ("some" in op) return compileIteration("some", op.some as unknown[], builtins);
   if ("reduce" in op) return compileReduce(op.reduce as unknown[], builtins);
 
+  // pipe — sequential composition with $ binding
+  if ("pipe" in op) {
+    const steps = (op.pipe as Expr[]).map(e => compile(e, builtins));
+    if (steps.length === 0) return () => undefined;
+    return (s) => {
+      let current = steps[0](s);
+      for (let i = 1; i < steps.length; i++) {
+        const inner: Scope = { ...s, bindings: { ...s.bindings, $: current } };
+        current = steps[i](inner);
+      }
+      return current;
+    };
+  }
+
   // fn — builtin call
   if ("fn" in op) {
     const fnArgs = op.fn as [string, ...Expr[]];
@@ -190,7 +204,6 @@ function compileIteration(kind: IterOp, args: unknown[], builtins?: BuiltinRegis
   const cArr = isEager ? compile(args[0] as Expr, builtins) : undefined;
   const bindName = isEager ? (args[1] as string) : (args[0] as string);
   const cBody = compile((isEager ? args[2] : args[1]) as Expr, builtins);
-  const emptyVal = kind === "every" ? true : kind === "some" ? false : [];
   const nonArrayVal = kind === "every" ? false : kind === "some" ? false : [];
 
   return (s) => {

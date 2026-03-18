@@ -325,6 +325,30 @@ describe("compile — fn (builtins)", () => {
   });
 });
 
+describe("compile — pipe", () => {
+  it("threads value through steps", () => {
+    const scope = createScope({ context: { nums: [1, 2, 3, 4, 5] } });
+    expect(compile({ pipe: [
+      { select: ["context", "nums"] },
+      { filter: ["n", { gt: [{ ref: "n" }, 2] }] },
+      { map: ["n", { mul: [{ ref: "n" }, 10] }] },
+    ]})(scope)).toEqual([30, 40, 50]);
+  });
+  it("works with len via ref", () => {
+    const scope = createScope({ context: { items: [1, 2, 3] } });
+    expect(compile({ pipe: [
+      { select: ["context", "items"] },
+      { len: { ref: "$" } },
+    ]})(scope)).toBe(3);
+  });
+  it("single step", () => {
+    expect(compile({ pipe: [42] })(emptyScope)).toBe(42);
+  });
+  it("empty pipe", () => {
+    expect(compile({ pipe: [] })(emptyScope)).toBeUndefined();
+  });
+});
+
 describe("compile — equivalence with evaluate", () => {
   const testCases: [string, Expr, Scope][] = [
     ["nested select + eq", { eq: [{ select: ["context", "x"] }, 5] }, createScope({ context: { x: 5 } })],

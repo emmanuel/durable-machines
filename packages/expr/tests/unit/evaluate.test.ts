@@ -537,3 +537,69 @@ describe("evaluate — reduce (transducer)", () => {
     )).toBe(6);
   });
 });
+
+describe("evaluate — pipe", () => {
+  const iterScope = createScope({ context: { nums: [1, 2, 3, 4, 5] } });
+
+  it("threads value through steps", () => {
+    expect(evaluate(
+      { pipe: [
+        { select: ["context", "nums"] },
+        { filter: ["n", { gt: [{ ref: "n" }, 2] }] },
+        { map: ["n", { mul: [{ ref: "n" }, 10] }] },
+      ]},
+      iterScope,
+    )).toEqual([30, 40, 50]);
+  });
+
+  it("works with unary operators via ref", () => {
+    expect(evaluate(
+      { pipe: [
+        { select: ["context", "nums"] },
+        { filter: ["n", { gt: [{ ref: "n" }, 3] }] },
+        { len: { ref: "$" } },
+      ]},
+      iterScope,
+    )).toBe(2);
+  });
+
+  it("single step returns that step's result", () => {
+    expect(evaluate({ pipe: [42] }, iterScope)).toBe(42);
+  });
+
+  it("empty pipe returns undefined", () => {
+    expect(evaluate({ pipe: [] }, iterScope)).toBeUndefined();
+  });
+
+  it("reduce in pipe (transducer form)", () => {
+    expect(evaluate(
+      { pipe: [
+        { select: ["context", "nums"] },
+        { reduce: ["acc", "n", { add: [{ ref: "acc" }, { ref: "n" }] }, 0] },
+      ]},
+      iterScope,
+    )).toBe(15);
+  });
+
+  it("filter + map + reduce pipeline", () => {
+    const scope = createScope({
+      context: {
+        todos: [
+          { title: "A", completed: false },
+          { title: "BB", completed: true },
+          { title: "CCC", completed: false },
+        ],
+      },
+    });
+    // Get total title length of incomplete todos
+    expect(evaluate(
+      { pipe: [
+        { select: ["context", "todos"] },
+        { filter: ["t", { not: { select: ["t", "completed"] } }] },
+        { map: ["t", { len: { select: ["t", "title"] } }] },
+        { reduce: ["acc", "n", { add: [{ ref: "acc" }, { ref: "n" }] }, 0] },
+      ]},
+      scope,
+    )).toBe(4); // "A"(1) + "CCC"(3)
+  });
+});

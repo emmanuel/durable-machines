@@ -31,32 +31,34 @@ function makeRegistrationContext(overrides?: Record<string, unknown>) {
 // ─── Guard Fixtures ───────────────────────────────────────────────────────────
 
 const verbSatisfiesAU = {
-  let: {
-    current: { select: ["context", "aus", { param: "auId" }] },
-    score: { select: ["event", "score"] },
-    nextHasCompleted: { or: [
-      { select: ["current", "hasCompleted"] },
-      { eq: [{ param: "verbId" }, "http://adlnet.gov/expapi/verbs/completed"] },
-    ]},
-    nextHasPassed: { or: [
-      { select: ["current", "hasPassed"] },
-      { and: [
-        { eq: [{ param: "verbId" }, "http://adlnet.gov/expapi/verbs/passed"] },
-        { if: [{ isNull: { ref: "score" } }, true, { gte: [{ ref: "score" }, { param: "masteryScore" }] }] },
+  let: [
+    {
+      current: { select: ["context", "aus", { param: "auId" }] },
+      score: { select: ["event", "score"] },
+      nextHasCompleted: { or: [
+        { select: ["current", "hasCompleted"] },
+        { eq: [{ param: "verbId" }, "http://adlnet.gov/expapi/verbs/completed"] },
+      ]},
+      nextHasPassed: { or: [
+        { select: ["current", "hasPassed"] },
+        { and: [
+          { eq: [{ param: "verbId" }, "http://adlnet.gov/expapi/verbs/passed"] },
+          { if: [{ isNull: { ref: "score" } }, true, { gte: [{ ref: "score" }, { param: "masteryScore" }] }] },
+        ]},
+      ]},
+    },
+    { and: [
+      { eq: [{ select: ["event", "auId"] }, { param: "auId" }] },
+      { cond: [
+        [{ eq: [{ param: "moveOn" }, "Completed"] }, { ref: "nextHasCompleted" }],
+        [{ eq: [{ param: "moveOn" }, "Passed"] }, { ref: "nextHasPassed" }],
+        [{ eq: [{ param: "moveOn" }, "CompletedAndPassed"] }, { and: [{ ref: "nextHasCompleted" }, { ref: "nextHasPassed" }] }],
+        [{ eq: [{ param: "moveOn" }, "CompletedOrPassed"] }, { or: [{ ref: "nextHasCompleted" }, { ref: "nextHasPassed" }] }],
+        [{ eq: [{ param: "moveOn" }, "NotApplicable"] }, true],
+        [true, false],
       ]},
     ]},
-  },
-  body: { and: [
-    { eq: [{ select: ["event", "auId"] }, { param: "auId" }] },
-    { cond: [
-      [{ eq: [{ param: "moveOn" }, "Completed"] }, { ref: "nextHasCompleted" }],
-      [{ eq: [{ param: "moveOn" }, "Passed"] }, { ref: "nextHasPassed" }],
-      [{ eq: [{ param: "moveOn" }, "CompletedAndPassed"] }, { and: [{ ref: "nextHasCompleted" }, { ref: "nextHasPassed" }] }],
-      [{ eq: [{ param: "moveOn" }, "CompletedOrPassed"] }, { or: [{ ref: "nextHasCompleted" }, { ref: "nextHasPassed" }] }],
-      [{ eq: [{ param: "moveOn" }, "NotApplicable"] }, true],
-      [true, false],
-    ]},
-  ]},
+  ],
 };
 
 const waiveTargetsAU = {

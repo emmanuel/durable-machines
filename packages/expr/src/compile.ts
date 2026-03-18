@@ -72,10 +72,11 @@ export function compile(expr: Expr, builtins?: BuiltinRegistry): CompiledExpr {
 
   // let
   if ("let" in op) {
-    const letEntries = Object.entries(op.let as Record<string, Expr>).map(
+    const [bindingsExpr, bodyExpr] = op.let as [Record<string, Expr>, Expr];
+    const letEntries = Object.entries(bindingsExpr).map(
       ([name, e]) => ({ name, fn: compile(e, builtins) }),
     );
-    const body = compile(op.body as Expr, builtins);
+    const body = compile(bodyExpr, builtins);
     return (s) => {
       const bindings = { ...s.bindings };
       const inner: Scope = { ...s, bindings };

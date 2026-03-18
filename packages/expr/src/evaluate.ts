@@ -185,11 +185,10 @@ export function evaluate(
 
     // let — evaluate bindings in order, then evaluate body in extended scope
     if ("let" in op) {
-      const letBindings = op.let as Record<string, Expr>;
-      const body = op.body as Expr;
+      const [bindingsExpr, body] = op.let as [Record<string, Expr>, Expr];
       const extendedBindings = { ...scope.bindings };
       const innerScope: Scope = { ...scope, bindings: extendedBindings };
-      for (const [key, bindingExpr] of Object.entries(letBindings)) {
+      for (const [key, bindingExpr] of Object.entries(bindingsExpr)) {
         extendedBindings[key] = evaluate(bindingExpr, innerScope, builtins);
       }
       return evaluate(body, innerScope, builtins);

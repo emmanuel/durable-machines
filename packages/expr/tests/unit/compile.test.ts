@@ -134,15 +134,14 @@ describe("compile — ref and param", () => {
 
 describe("compile — let", () => {
   it("binds and evaluates body", () => {
-    const fn = compile({ let: { doubled: { mul: [{ param: "n" }, 2] } }, body: { ref: "doubled" } });
+    const fn = compile({ let: [{ doubled: { mul: [{ param: "n" }, 2] } }, { ref: "doubled" }] });
     const scope = createScope({ context: {}, params: { n: 5 } });
     expect(fn(scope)).toBe(10);
   });
 
   it("sequential bindings reference earlier ones", () => {
     const fn = compile({
-      let: { a: 1, b: { add: [{ ref: "a" }, 1] } },
-      body: { ref: "b" },
+      let: [{ a: 1, b: { add: [{ ref: "a" }, 1] } }, { ref: "b" }],
     });
     expect(fn(emptyScope)).toBe(2);
   });
@@ -201,8 +200,7 @@ describe("compile — equivalence with evaluate", () => {
   const testCases: [string, Expr, Scope][] = [
     ["nested select + eq", { eq: [{ select: ["context", "x"] }, 5] }, createScope({ context: { x: 5 } })],
     ["let + cond", {
-      let: { v: { select: ["event", "type"] } },
-      body: { cond: [[{ eq: [{ ref: "v" }, "A"] }, 1], [true, 0]] },
+      let: [{ v: { select: ["event", "type"] } }, { cond: [[{ eq: [{ ref: "v" }, "A"] }, 1], [true, 0]] }],
     }, createScope({ context: {}, event: { type: "A" } })],
   ];
 

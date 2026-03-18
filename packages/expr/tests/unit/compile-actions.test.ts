@@ -26,17 +26,19 @@ describe("compileGuard", () => {
 
   it("handles let + body (verbSatisfiesAU pattern)", () => {
     const guard = compileGuard({
-      let: {
-        current: { select: ["context", "aus", { param: "auId" }] },
-        nextHasCompleted: { or: [
-          { select: ["current", "hasCompleted"] },
-          { eq: [{ param: "verbId" }, "http://adlnet.gov/expapi/verbs/completed"] },
+      let: [
+        {
+          current: { select: ["context", "aus", { param: "auId" }] },
+          nextHasCompleted: { or: [
+            { select: ["current", "hasCompleted"] },
+            { eq: [{ param: "verbId" }, "http://adlnet.gov/expapi/verbs/completed"] },
+          ]},
+        },
+        { and: [
+          { eq: [{ select: ["event", "auId"] }, { param: "auId" }] },
+          { ref: "nextHasCompleted" },
         ]},
-      },
-      body: { and: [
-        { eq: [{ select: ["event", "auId"] }, { param: "auId" }] },
-        { ref: "nextHasCompleted" },
-      ]},
+      ],
     });
 
     const scope = createScope({

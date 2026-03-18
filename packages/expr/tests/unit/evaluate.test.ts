@@ -139,25 +139,26 @@ describe("evaluate — let bindings", () => {
   it("binds values and evaluates body", () => {
     const scope = createScope({ context: { x: 10 } });
     expect(evaluate({
-      let: { doubled: { add: [{ select: ["context", "x"] }, { select: ["context", "x"] }] } },
-      body: { ref: "doubled" },
+      let: [{ doubled: { add: [{ select: ["context", "x"] }, { select: ["context", "x"] }] } }, { ref: "doubled" }],
     }, scope)).toBe(20);
   });
 
   it("later bindings can reference earlier ones", () => {
     const scope = createScope({ context: { x: 5 } });
     expect(evaluate({
-      let: {
-        a: { select: ["context", "x"] },
-        b: { add: [{ ref: "a" }, 1] },
-      },
-      body: { ref: "b" },
+      let: [
+        {
+          a: { select: ["context", "x"] },
+          b: { add: [{ ref: "a" }, 1] },
+        },
+        { ref: "b" },
+      ],
     }, scope)).toBe(6);
   });
 
   it("does not leak bindings to outer scope", () => {
     const scope = createScope({ context: {} });
-    evaluate({ let: { temp: 99 }, body: { ref: "temp" } }, scope);
+    evaluate({ let: [{ temp: 99 }, { ref: "temp" }] }, scope);
     expect(scope.bindings).toEqual({});
   });
 });

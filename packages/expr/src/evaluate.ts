@@ -204,6 +204,7 @@ export function evaluate(expr: Expr, scope: Scope, builtins?: BuiltinRegistry): 
   if ("every" in op) return evaluateIteration("every", op.every as unknown[], scope, builtins);
   if ("some" in op) return evaluateIteration("some", op.some as unknown[], scope, builtins);
   if ("reduce" in op) return evaluateReduce(op.reduce as unknown[], scope, builtins);
+  if ("mapVals" in op) return evaluateMapVals(op.mapVals as unknown[], scope, builtins);
 
   // pipe — sequential composition with $ binding
   if ("pipe" in op) return evaluatePipe(op.pipe as Expr[], scope, builtins);
@@ -320,6 +321,28 @@ function evaluateReduce(args: unknown[], scope: Scope, builtins?: BuiltinRegistr
     acc = evaluate(body, inner, builtins);
   }
   return acc;
+}
+
+function evaluateMapVals(args: unknown[], scope: Scope, builtins?: BuiltinRegistry): unknown {
+  let obj: unknown;
+  let bindName: string;
+  let body: Expr;
+  if (args.length === 3 && typeof args[1] === "string") {
+    obj = evaluate(args[0] as Expr, scope, builtins);
+    bindName = args[1];
+    body = args[2] as Expr;
+  } else {
+    obj = scope.bindings.$;
+    bindName = args[0] as string;
+    body = args[1] as Expr;
+  }
+  if (obj === null || typeof obj !== "object" || Array.isArray(obj)) return {};
+  const result: Record<string, unknown> = {};
+  for (const [key, val] of Object.entries(obj as Record<string, unknown>)) {
+    const inner: Scope = { ...scope, bindings: { ...scope.bindings, [bindName]: val, $key: key } };
+    result[key] = evaluate(body, inner, builtins);
+  }
+  return result;
 }
 
 function evaluatePipe(steps: Expr[], scope: Scope, builtins?: BuiltinRegistry): unknown {

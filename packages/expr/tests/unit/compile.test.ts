@@ -349,6 +349,21 @@ describe("compile — pipe", () => {
   });
 });
 
+describe("compile — mapVals", () => {
+  it("transforms all values", () => {
+    const scope = createScope({ context: { scores: { a: 10, b: 20 } } });
+    expect(compile({ mapVals: [{ select: ["context", "scores"] }, "v", { mul: [{ ref: "v" }, 3] }] })(scope)).toEqual({ a: 30, b: 60 });
+  });
+  it("transducer form", () => {
+    const scope = createScope({ context: {} });
+    scope.bindings.$ = { x: 5 };
+    expect(compile({ mapVals: ["v", { add: [{ ref: "v" }, 1] }] })(scope)).toEqual({ x: 6 });
+  });
+  it("returns {} for non-object", () => {
+    expect(compile({ mapVals: [42, "v", { ref: "v" }] })(emptyScope)).toEqual({});
+  });
+});
+
 describe("compile — equivalence with evaluate", () => {
   const testCases: [string, Expr, Scope][] = [
     ["nested select + eq", { eq: [{ select: ["context", "x"] }, 5] }, createScope({ context: { x: 5 } })],

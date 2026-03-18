@@ -30,41 +30,17 @@ export function compile(expr: Expr, builtins?: BuiltinRegistry): CompiledExpr {
   if ("lte" in op) { const [ca, cb] = compilePair(op.lte as [Expr, Expr], builtins); return (s) => (ca(s) as number) <= (cb(s) as number); }
 
   // Logic
-  if ("and" in op) {
-    const fns = (op.and as Expr[]).map(e => compile(e, builtins));
-    return (s) => fns.every(f => Boolean(f(s)));
-  }
-  if ("or" in op) {
-    const fns = (op.or as Expr[]).map(e => compile(e, builtins));
-    return (s) => fns.some(f => Boolean(f(s)));
-  }
-  if ("not" in op) {
-    const fn = compile(op.not as Expr, builtins);
-    return (s) => !fn(s);
-  }
-  if ("if" in op) {
-    const [cc, ct, ce] = (op.if as [Expr, Expr, Expr]).map(e => compile(e, builtins));
-    return (s) => cc(s) ? ct(s) : ce(s);
-  }
+  if ("and" in op) { const fns = (op.and as Expr[]).map(e => compile(e, builtins)); return (s) => fns.every(f => Boolean(f(s))); }
+  if ("or" in op) { const fns = (op.or as Expr[]).map(e => compile(e, builtins)); return (s) => fns.some(f => Boolean(f(s))); }
+  if ("not" in op) { const fn = compile(op.not as Expr, builtins); return (s) => !fn(s); }
+  if ("if" in op) { const [cc, ct, ce] = (op.if as [Expr, Expr, Expr]).map(e => compile(e, builtins)); return (s) => cc(s) ? ct(s) : ce(s); }
   if ("cond" in op) {
     const branches = (op.cond as [Expr, Expr][]).map(([g, v]) => [compile(g, builtins), compile(v, builtins)] as const);
-    return (s) => {
-      for (const [guard, value] of branches) {
-        if (guard(s)) return value(s);
-      }
-      return undefined;
-    };
+    return (s) => { for (const [g, v] of branches) { if (g(s)) return v(s); } return undefined; };
   }
 
   // Membership
-  if ("in" in op) {
-    const [cv, ca] = compilePair(op.in as [Expr, Expr], builtins);
-    return (s) => {
-      const arr = ca(s);
-      if (!Array.isArray(arr)) return false;
-      return arr.includes(cv(s));
-    };
-  }
+  if ("in" in op) { const [cv, ca] = compilePair(op.in as [Expr, Expr], builtins); return (s) => { const a = ca(s); return Array.isArray(a) ? a.includes(cv(s)) : false; }; }
 
   // Bindings
   if ("ref" in op) { const name = op.ref as string; return (s) => s.bindings[name]; }
@@ -90,18 +66,9 @@ export function compile(expr: Expr, builtins?: BuiltinRegistry): CompiledExpr {
   // Nullability
   if ("coalesce" in op) {
     const fns = (op.coalesce as Expr[]).map(e => compile(e, builtins));
-    return (s) => {
-      for (const f of fns) {
-        const v = f(s);
-        if (v != null) return v;
-      }
-      return undefined;
-    };
+    return (s) => { for (const f of fns) { const v = f(s); if (v != null) return v; } return undefined; };
   }
-  if ("isNull" in op) {
-    const fn = compile(op.isNull as Expr, builtins);
-    return (s) => fn(s) == null;
-  }
+  if ("isNull" in op) { const fn = compile(op.isNull as Expr, builtins); return (s) => fn(s) == null; }
 
   // Arithmetic
   if ("add" in op) { const [ca, cb] = compilePair(op.add as [Expr, Expr], builtins); return (s) => (ca(s) as number) + (cb(s) as number); }
@@ -167,6 +134,7 @@ export function compile(expr: Expr, builtins?: BuiltinRegistry): CompiledExpr {
   if ("every" in op) return compileIteration("every", op.every as unknown[], builtins);
   if ("some" in op) return compileIteration("some", op.some as unknown[], builtins);
   if ("reduce" in op) return compileReduce(op.reduce as unknown[], builtins);
+  if ("mapVals" in op) return compileIteration("mapVals", op.mapVals as unknown[], builtins);
 
   // pipe — sequential composition with $ binding
   if ("pipe" in op) {
@@ -197,15 +165,24 @@ export function compile(expr: Expr, builtins?: BuiltinRegistry): CompiledExpr {
 
 // ─── Iteration compilation helpers ────────────────────────────────────────────
 
-type IterOp = "filter" | "map" | "every" | "some";
+type IterOp = "filter" | "map" | "every" | "some" | "mapVals";
 
 function compileIteration(kind: IterOp, args: unknown[], builtins?: BuiltinRegistry): CompiledExpr {
   const isEager = args.length === 3 && typeof args[1] === "string";
   const cArr = isEager ? compile(args[0] as Expr, builtins) : undefined;
   const bindName = isEager ? (args[1] as string) : (args[0] as string);
   const cBody = compile((isEager ? args[2] : args[1]) as Expr, builtins);
+  if (kind === "mapVals") {
+    return (s) => {
+      const o = isEager ? cArr!(s) : s.bindings.$;
+      if (o === null || typeof o !== "object" || Array.isArray(o)) return {};
+      const r: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(o as Record<string, unknown>))
+        r[k] = cBody({ ...s, bindings: { ...s.bindings, [bindName]: v, $key: k } });
+      return r;
+    };
+  }
   const nonArrayVal = kind === "every" ? false : kind === "some" ? false : [];
-
   return (s) => {
     const arr = isEager ? cArr!(s) : s.bindings.$;
     if (!Array.isArray(arr)) return nonArrayVal;

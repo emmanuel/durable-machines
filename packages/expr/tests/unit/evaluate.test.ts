@@ -603,3 +603,45 @@ describe("evaluate — pipe", () => {
     )).toBe(4); // "A"(1) + "CCC"(3)
   });
 });
+
+describe("evaluate — mapVals", () => {
+  it("transforms all values", () => {
+    const scope = createScope({ context: { scores: { math: 80, english: 90 } } });
+    expect(evaluate(
+      { mapVals: [{ select: ["context", "scores"] }, "v", { mul: [{ ref: "v" }, 2] }] },
+      scope,
+    )).toEqual({ math: 160, english: 180 });
+  });
+  it("$key binding available", () => {
+    const scope = createScope({ context: { items: { a: 1, b: 2 } } });
+    expect(evaluate(
+      { mapVals: [{ select: ["context", "items"] }, "v", { ref: "$key" }] },
+      scope,
+    )).toEqual({ a: "a", b: "b" });
+  });
+  it("returns {} for non-object", () => {
+    const scope = createScope({ context: { val: 42 } });
+    expect(evaluate(
+      { mapVals: [{ select: ["context", "val"] }, "v", { ref: "v" }] },
+      scope,
+    )).toEqual({});
+  });
+  it("returns {} for array input", () => {
+    const scope = createScope({ context: { items: [1, 2, 3] } });
+    expect(evaluate(
+      { mapVals: [{ select: ["context", "items"] }, "v", { ref: "v" }] },
+      scope,
+    )).toEqual({});
+  });
+});
+
+describe("evaluate — mapVals (transducer)", () => {
+  it("reads $ as object", () => {
+    const scope = createScope({ context: {} });
+    scope.bindings.$ = { x: 1, y: 2 };
+    expect(evaluate(
+      { mapVals: ["v", { add: [{ ref: "v" }, 10] }] },
+      scope,
+    )).toEqual({ x: 11, y: 12 });
+  });
+});

@@ -1,5 +1,6 @@
 export type MoveOn = "Passed" | "Completed" | "CompletedAndPassed" | "CompletedOrPassed" | "NotApplicable";
 export type LaunchMethod = "OwnWindow" | "AnyWindow";
+export type ContentPurpose = "training" | "assessment";
 
 export interface AUDefinition {
   id: string;
@@ -8,6 +9,7 @@ export interface AUDefinition {
   masteryScore?: number;
   launchUrl: string;
   launchMethod: LaunchMethod;
+  purpose?: ContentPurpose;
 }
 
 export interface BlockChild {

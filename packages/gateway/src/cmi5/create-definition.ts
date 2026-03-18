@@ -1,6 +1,6 @@
 import type { MachineDefinition, StateDefinition } from "@durable-xstate/durable-machine";
 import type { CourseStructure, BlockChild, AUDefinition, BlockDefinition } from "./types.js";
-import { buildGuards, buildAUActions, buildCompletionActions, buildSessionActions } from "./expr-builders.js";
+import { buildGuards, buildAUActions, buildAssessmentActions, buildCompletionActions, buildSessionActions } from "./expr-builders.js";
 
 const MACHINE_ID = "registration";
 
@@ -54,7 +54,7 @@ export function createRegistrationDefinition(cs: CourseStructure): MachineDefini
     context,
     states: { active: activeState },
     guards: buildGuards(),
-    actions: { ...buildAUActions(), ...buildCompletionActions(), ...buildSessionActions() },
+    actions: { ...buildAUActions(), ...buildAssessmentActions(), ...buildCompletionActions(), ...buildSessionActions() },
   };
 }
 
@@ -83,6 +83,7 @@ function buildContext(cs: CourseStructure): Record<string, unknown> {
     satisfiedBlocks: [],
     courseSatisfied: false,
     courseSatisfiedAt: null,
+    activeSessionId: null,
     lastSatisfyingSessionId: null,
   };
 }
@@ -146,6 +147,8 @@ function buildBlockRegion(
 }
 
 function buildAURegion(au: AUDefinition): StateDefinition {
+  if (au.purpose === "assessment") return buildAssessmentAURegion(au);
+
   if (au.moveOn === "NotApplicable") {
     return {
       initial: "unsatisfied",
@@ -177,6 +180,49 @@ function buildAURegion(au: AUDefinition): StateDefinition {
             target: "satisfied",
             guard: { type: "waiveTargetsAU", params: { auId: au.id } },
             actions: { type: "waiveAU", params: { auId: au.id } },
+          },
+        },
+      },
+      satisfied: { type: "final" },
+    },
+  };
+}
+
+function buildAssessmentAURegion(au: AUDefinition): StateDefinition {
+  const params: Record<string, unknown> = {
+    auId: au.id, moveOn: au.moveOn, verbId: { select: ["event", "verbId"] },
+  };
+  if (au.masteryScore != null) params.masteryScore = au.masteryScore;
+
+  return {
+    initial: "unsatisfied",
+    states: {
+      unsatisfied: {
+        durable: true,
+        on: {
+          VERB_RECEIVED: [
+            { target: "pending_signoff", guard: { type: "verbSatisfiesAU", params }, actions: { type: "requestSignoff", params } },
+            { guard: { type: "verbUpdatesAU", params }, actions: { type: "updateAU", params } },
+          ],
+          WAIVED: {
+            target: "satisfied",
+            guard: { type: "waiveTargetsAU", params: { auId: au.id } },
+            actions: { type: "waiveAU", params: { auId: au.id } },
+          },
+        },
+      },
+      pending_signoff: {
+        durable: true,
+        on: {
+          SIGNOFF_APPROVED: {
+            target: "satisfied",
+            guard: { type: "signoffTargetsAU", params: { auId: au.id } },
+            actions: { type: "approveAssessment", params: { auId: au.id } },
+          },
+          SIGNOFF_RETURNED: {
+            target: "unsatisfied",
+            guard: { type: "signoffTargetsAU", params: { auId: au.id } },
+            actions: { type: "returnAssessment", params: { auId: au.id } },
           },
         },
       },

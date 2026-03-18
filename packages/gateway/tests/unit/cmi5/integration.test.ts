@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { createActor } from "xstate";
 import { createRegistrationDefinition } from "../../../src/cmi5/create-definition.js";
 import {
@@ -215,6 +215,166 @@ describe("CMI5 registration machine integration", () => {
     const json = JSON.stringify(def);
     const parsed = JSON.parse(json);
     expect(parsed).toEqual(def);
+  });
+
+  it("assessment AU: verb → pending_signoff → signoff_approved → satisfied", () => {
+    const cs = testCourseStructure();
+    cs.aus["au-1"].purpose = "assessment";
+    const def = createRegistrationDefinition(cs);
+    const machine = createMachineFromDefinition(def, emptyRegistry, { builtins: testBuiltins });
+    const emitted: Array<Record<string, unknown>> = [];
+    const actor = createActor(machine);
+    actor.on("*", (event) => { emitted.push(event as any); });
+    actor.start();
+
+    // Send passing verb → should move to pending_signoff
+    actor.send({
+      type: "VERB_RECEIVED",
+      auId: "au-1",
+      verbId: "http://adlnet.gov/expapi/verbs/passed",
+      score: 90,
+    });
+    let snap = actor.getSnapshot();
+    let ctx = snap.context as any;
+    expect(ctx.aus["au-1"].hasPassed).toBe(true);
+    expect(ctx.aus["au-1"].method).toBe("passed");
+    expect(ctx.aus["au-1"].satisfiedAt).toBeNull(); // NOT set yet
+    expect(emitted.some((e) => e.type === "ASSESSMENT_PENDING_SIGNOFF")).toBe(true);
+
+    // Approve signoff → should move to satisfied
+    actor.send({
+      type: "SIGNOFF_APPROVED",
+      auId: "au-1",
+      timestamp: "2025-01-02T00:00:00Z",
+    });
+    snap = actor.getSnapshot();
+    ctx = snap.context as any;
+    expect(ctx.aus["au-1"].satisfiedAt).toBe("2025-01-02T00:00:00Z");
+
+    // Complete au-2 → block + course cascade
+    actor.send({
+      type: "VERB_RECEIVED",
+      auId: "au-2",
+      verbId: "http://adlnet.gov/expapi/verbs/completed",
+    });
+    snap = actor.getSnapshot();
+    ctx = snap.context as any;
+    expect(ctx.satisfiedBlocks).toContain("block-1");
+    expect(ctx.courseSatisfied).toBe(true);
+
+    actor.stop();
+  });
+
+  it("assessment AU: verb → pending_signoff → signoff_returned → back to unsatisfied", () => {
+    const cs = testCourseStructure();
+    cs.aus["au-1"].purpose = "assessment";
+    const def = createRegistrationDefinition(cs);
+    const machine = createMachineFromDefinition(def, emptyRegistry, { builtins: testBuiltins });
+    const emitted: Array<Record<string, unknown>> = [];
+    const actor = createActor(machine);
+    actor.on("*", (event) => { emitted.push(event as any); });
+    actor.start();
+
+    // Pass → pending_signoff
+    actor.send({
+      type: "VERB_RECEIVED",
+      auId: "au-1",
+      verbId: "http://adlnet.gov/expapi/verbs/passed",
+      score: 90,
+    });
+    let snap = actor.getSnapshot();
+    expect((snap.context as any).aus["au-1"].hasPassed).toBe(true);
+
+    // Return → back to unsatisfied with flags reset
+    actor.send({
+      type: "SIGNOFF_RETURNED",
+      auId: "au-1",
+      supervisorId: "supervisor-1",
+      reason: "Needs improvement",
+      timestamp: "2025-01-02T00:00:00Z",
+    });
+    snap = actor.getSnapshot();
+    const ctx = snap.context as any;
+    expect(ctx.aus["au-1"].hasPassed).toBe(false);
+    expect(ctx.aus["au-1"].hasCompleted).toBe(false);
+    expect(ctx.aus["au-1"].hasFailed).toBe(false);
+    expect(ctx.aus["au-1"].method).toBeNull();
+    expect(ctx.aus["au-1"].score).toBeNull();
+    expect(emitted.some((e) => e.type === "ASSESSMENT_RETURNED")).toBe(true);
+
+    actor.stop();
+  });
+
+  it("session launch abandons existing open sessions", () => {
+    const machine = createTestMachine();
+    const emitted: Array<Record<string, unknown>> = [];
+    const actor = createActor(machine);
+    actor.on("*", (event) => { emitted.push(event as any); });
+    actor.start();
+
+    // Launch s1 + initialize
+    actor.send({ type: "LAUNCH_SESSION", sessionId: "s1", auId: "au-1", launchMode: "Normal", timestamp: "2025-01-01T00:00:00Z", fetchToken: "tok-1" });
+    actor.send({ type: "INITIALIZED", sessionId: "s1", timestamp: "2025-01-01T00:01:00Z" });
+
+    let snap = actor.getSnapshot();
+    expect((snap.context as any).sessions["s1"].state).toBe("active");
+
+    // Launch s2 → should abandon s1
+    actor.send({ type: "LAUNCH_SESSION", sessionId: "s2", auId: "au-2", launchMode: "Normal", timestamp: "2025-01-01T01:00:00Z", fetchToken: "tok-2" });
+    snap = actor.getSnapshot();
+    const ctx = snap.context as any;
+    expect(ctx.sessions["s1"].state).toBe("abandoned");
+    expect(ctx.sessions["s2"].state).toBe("launched");
+    expect(emitted.some((e) => e.type === "SESSIONS_ABANDONED")).toBe(true);
+
+    actor.stop();
+  });
+
+  it("session timeout emits EMIT_ABANDONED with duration", () => {
+    vi.useFakeTimers({ now: new Date("2025-01-01T00:00:00Z") });
+
+    // now() returns advancing clock time so duration can be computed
+    let nowCallCount = 0;
+    const builtins: Record<string, (...args: unknown[]) => unknown> = {
+      uuid: () => "test-uuid",
+      now: () => {
+        nowCallCount++;
+        // First call: during satisfyNotApplicableAU at machine start
+        // Second call: framework enriches the `after` event with timestamp
+        if (nowCallCount <= 1) return "2025-01-01T00:00:00Z";
+        return "2025-01-01T08:00:00Z";
+      },
+      iso8601Duration: (start: unknown, end: unknown) => {
+        const ms = new Date(end as string).getTime() - new Date(start as string).getTime();
+        return `PT${Math.max(0, ms / 1000)}S`;
+      },
+    };
+    const cs = testCourseStructure();
+    const def = createRegistrationDefinition(cs);
+    const machine = createMachineFromDefinition(def, emptyRegistry, { builtins });
+    const emitted: Array<Record<string, unknown>> = [];
+    const actor = createActor(machine);
+    actor.on("*", (event) => { emitted.push(event as any); });
+    actor.start();
+
+    // Launch + initialize a session
+    actor.send({ type: "LAUNCH_SESSION", sessionId: "s1", auId: "au-1", launchMode: "Normal", timestamp: "2025-01-01T00:00:00Z", fetchToken: "tok-1" });
+    actor.send({ type: "INITIALIZED", sessionId: "s1", timestamp: "2025-01-01T00:01:00Z" });
+
+    // Advance fake timers to trigger the `after` delayed transition (8 hours)
+    vi.advanceTimersByTime(28_800_000);
+
+    const snap = actor.getSnapshot();
+    expect((snap.context as any).sessions["s1"].state).toBe("abandoned");
+    expect((snap.context as any).activeSessionId).toBeNull();
+
+    const abandonedEffect = emitted.find((e) => e.type === "EMIT_ABANDONED");
+    expect(abandonedEffect).toBeDefined();
+    expect(abandonedEffect!.duration).toBe("PT28800S"); // 8 hours
+    expect(abandonedEffect!.auId).toBe("au-1");
+
+    actor.stop();
+    vi.useRealTimers();
   });
 
   it("definition passes validation", () => {

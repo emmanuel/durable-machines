@@ -76,6 +76,12 @@ export function buildGuards(): Record<string, unknown> {
         { eq: [{ select: ["event", "auId"] }, { param: "auId" }] },
       ],
     },
+    signoffTargetsAU: {
+      and: [
+        { in: [{ select: ["event", "type"] }, ["SIGNOFF_APPROVED", "SIGNOFF_RETURNED"]] },
+        { eq: [{ select: ["event", "auId"] }, { param: "auId" }] },
+      ],
+    },
   };
 }
 
@@ -202,6 +208,96 @@ function auEventFields(): Record<string, unknown> {
   };
 }
 
+// ─── Assessment actions ──────────────────────────────────────────────────
+
+export function buildAssessmentActions(): Record<string, unknown> {
+  return {
+    requestSignoff: buildRequestSignoffAction(),
+    approveAssessment: buildApproveAssessmentAction(),
+    returnAssessment: buildReturnAssessmentAction(),
+  };
+}
+
+function buildRequestSignoffAction(): unknown {
+  return {
+    type: "enqueueActions",
+    let: {
+      ...computeNextFlagsLet(),
+      sessionId: { coalesce: [{ select: ["event", "sessionId"] }, { fn: "uuid" }] },
+      timestamp: { coalesce: [{ select: ["event", "timestamp"] }, { fn: "now" }] },
+      auTitle: { coalesce: [{ select: ["context", "metadata", "auTitles", { param: "auId" }] }, { param: "auId" }] },
+      method: methodCond(),
+    },
+    actions: [
+      { type: "assign", transforms: [
+        { path: ["aus", { param: "auId" }, "hasCompleted"], set: { ref: "nextHasCompleted" } },
+        { path: ["aus", { param: "auId" }, "hasPassed"], set: { ref: "nextHasPassed" } },
+        { path: ["aus", { param: "auId" }, "hasFailed"], set: { ref: "nextHasFailed" } },
+        { path: ["aus", { param: "auId" }, "method"], set: { ref: "method" } },
+        { path: ["lastSatisfyingSessionId"], set: { ref: "sessionId" } },
+      ] },
+      { guard: { not: { isNull: { ref: "score" } } }, actions: [
+        { type: "assign", transforms: [{ path: ["aus", { param: "auId" }, "score"], set: { object: { scaled: { ref: "score" } } } }] },
+      ] },
+      { guard: { and: [{ ref: "nextHasPassed" }, { not: { select: ["current", "hasPassed"] } }] }, actions: [
+        { type: "emit", event: { type: "EMIT_AU_PASSED", ...auEventFields() } },
+      ] },
+      { type: "emit", event: {
+        type: "ASSESSMENT_PENDING_SIGNOFF",
+        ...auEventFields(),
+        score: { ref: "score" },
+      } },
+    ],
+  };
+}
+
+function buildApproveAssessmentAction(): unknown {
+  return {
+    type: "enqueueActions",
+    let: {
+      timestamp: { coalesce: [{ select: ["event", "timestamp"] }, { fn: "now" }] },
+      sessionId: { coalesce: [{ select: ["context", "lastSatisfyingSessionId"] }, { fn: "uuid" }] },
+      auTitle: { coalesce: [{ select: ["context", "metadata", "auTitles", { param: "auId" }] }, { param: "auId" }] },
+    },
+    actions: [
+      { type: "assign", transforms: [
+        { path: ["aus", { param: "auId" }, "satisfiedAt"], set: { ref: "timestamp" } },
+        { path: ["lastSatisfyingSessionId"], set: { ref: "sessionId" } },
+      ] },
+      { type: "emit", event: { type: "EMIT_SATISFIED_AU", ...auEventFields() } },
+    ],
+  };
+}
+
+function buildReturnAssessmentAction(): unknown {
+  return {
+    type: "enqueueActions",
+    let: {
+      timestamp: { coalesce: [{ select: ["event", "timestamp"] }, { fn: "now" }] },
+      auTitle: { coalesce: [{ select: ["context", "metadata", "auTitles", { param: "auId" }] }, { param: "auId" }] },
+    },
+    actions: [
+      { type: "assign", transforms: [
+        { path: ["aus", { param: "auId" }, "hasCompleted"], set: false },
+        { path: ["aus", { param: "auId" }, "hasPassed"], set: false },
+        { path: ["aus", { param: "auId" }, "hasFailed"], set: false },
+        { path: ["aus", { param: "auId" }, "method"], set: null },
+        { path: ["aus", { param: "auId" }, "score"], set: null },
+      ] },
+      { type: "emit", event: {
+        type: "ASSESSMENT_RETURNED",
+        registrationId: { select: ["context", "registrationId"] },
+        actor: { select: ["context", "actor"] },
+        auId: { param: "auId" },
+        auTitle: { ref: "auTitle" },
+        supervisorId: { coalesce: [{ select: ["event", "supervisorId"] }, "unknown"] },
+        reason: { select: ["event", "reason"] },
+        timestamp: { ref: "timestamp" },
+      } },
+    ],
+  };
+}
+
 // ─── Completion actions ────────────────────────────────────────────────────
 
 export function buildCompletionActions(): Record<string, unknown> {
@@ -286,16 +382,24 @@ function buildHandleSessionLaunchAction(): unknown {
     type: "enqueueActions",
     let: { sessionId: { select: ["event", "sessionId"] } },
     actions: [
-      { type: "assign", transforms: [{
-        path: ["sessions", { ref: "sessionId" }],
-        set: { object: {
+      { type: "emit", event: {
+        type: "SESSIONS_ABANDONED",
+        registrationId: { select: ["context", "registrationId"] },
+        actor: { select: ["context", "actor"] },
+        timestamp: { select: ["event", "timestamp"] },
+        sessions: { select: ["context", "sessions", { where: { in: ["state", ["launched", "active"]] } }] },
+      } },
+      { type: "assign", transforms: [
+        { path: ["sessions", { where: { in: ["state", ["launched", "active"]] } }, "state"], set: "abandoned" },
+        { path: ["sessions", { ref: "sessionId" }], set: { object: {
           state: "launched",
           auId: { select: ["event", "auId"] },
           launchMode: { select: ["event", "launchMode"] },
           launchedAt: { select: ["event", "timestamp"] },
           fetchToken: { select: ["event", "fetchToken"] },
-        } },
-      }] },
+        } } },
+        { path: ["activeSessionId"], set: { ref: "sessionId" } },
+      ] },
       { type: "emit", event: {
         type: "SESSION_LAUNCHED",
         registrationId: { select: ["context", "registrationId"] },
@@ -372,6 +476,7 @@ function buildHandleTerminatedAction(): unknown {
         { type: "assign", transforms: [
           { path: ["sessions", { ref: "sessionId" }, "state"], set: "terminated" },
           { path: ["sessions", { ref: "sessionId" }, "terminatedAt"], set: { select: ["event", "timestamp"] } },
+          { path: ["activeSessionId"], set: null },
         ] },
         { type: "emit", event: {
           type: "SESSION_TERMINATED",
@@ -388,10 +493,14 @@ function buildHandleTerminatedAction(): unknown {
 }
 
 function buildHandleSessionTimeoutAction(): unknown {
+  // Reads activeSessionId from context (not event) so this works transparently
+  // with XState `after` delayed transitions, which carry no custom payload.
   return {
     type: "enqueueActions",
     let: {
-      ...sessionLet(),
+      sessionId: { select: ["context", "activeSessionId"] },
+      session: { select: ["context", "sessions", { select: ["context", "activeSessionId"] }] },
+      timestamp: { coalesce: [{ select: ["event", "timestamp"] }, { fn: "now" }] },
       auTitle: { coalesce: [
         { select: ["context", "metadata", "auTitles", { select: ["session", "auId"] }] },
         { select: ["session", "auId"] },
@@ -404,13 +513,27 @@ function buildHandleSessionTimeoutAction(): unknown {
       ] }, actions: [
         { type: "assign", transforms: [
           { path: ["sessions", { ref: "sessionId" }, "state"], set: "abandoned" },
+          { path: ["activeSessionId"], set: null },
         ] },
         { type: "emit", event: {
           type: "SESSION_ABANDONED",
-          sessionId: { select: ["event", "sessionId"] },
+          sessionId: { ref: "sessionId" },
           auId: { select: ["session", "auId"] },
           registrationId: { select: ["context", "registrationId"] },
-          timestamp: { select: ["event", "timestamp"] },
+          timestamp: { ref: "timestamp" },
+        } },
+        { type: "emit", event: {
+          type: "EMIT_ABANDONED",
+          registrationId: { select: ["context", "registrationId"] },
+          actor: { select: ["context", "actor"] },
+          auId: { select: ["session", "auId"] },
+          auTitle: { ref: "auTitle" },
+          sessionId: { ref: "sessionId" },
+          timestamp: { ref: "timestamp" },
+          duration: { fn: "iso8601Duration", args: [
+            { select: ["session", "launchedAt"] },
+            { ref: "timestamp" },
+          ] },
         } },
       ] },
     ],

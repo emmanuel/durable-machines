@@ -140,12 +140,37 @@ describe("createRegistrationDefinition", () => {
     expect(sessions.states!.active.after!["28800000"]).toBeDefined();
   });
 
+  it("generates 3-state topology for assessment AU", () => {
+    const cs = simpleCourse();
+    cs.aus["au-1"].purpose = "assessment";
+    const def = createRegistrationDefinition(cs);
+    const au0 = def.states.active.states!.tracking.states!.block_0.states!.au_0;
+    expect(au0.initial).toBe("unsatisfied");
+    expect(au0.states!.unsatisfied.durable).toBe(true);
+    expect(au0.states!.pending_signoff).toBeDefined();
+    expect(au0.states!.pending_signoff.durable).toBe(true);
+    expect(au0.states!.satisfied.type).toBe("final");
+    // VERB_RECEIVED on unsatisfied targets pending_signoff
+    const verbTransitions = au0.states!.unsatisfied.on!.VERB_RECEIVED as any[];
+    expect(verbTransitions[0].target).toBe("pending_signoff");
+    expect(verbTransitions[0].actions.type).toBe("requestSignoff");
+    // SIGNOFF events on pending_signoff
+    const signoffApproved = au0.states!.pending_signoff.on!.SIGNOFF_APPROVED as any;
+    expect(signoffApproved.target).toBe("satisfied");
+    expect(signoffApproved.guard.type).toBe("signoffTargetsAU");
+    expect(signoffApproved.actions.type).toBe("approveAssessment");
+    const signoffReturned = au0.states!.pending_signoff.on!.SIGNOFF_RETURNED as any;
+    expect(signoffReturned.target).toBe("unsatisfied");
+    expect(signoffReturned.actions.type).toBe("returnAssessment");
+  });
+
   it("includes all named guards", () => {
     const def = createRegistrationDefinition(simpleCourse());
     expect(def.guards).toBeDefined();
     expect(def.guards!.verbSatisfiesAU).toBeDefined();
     expect(def.guards!.verbUpdatesAU).toBeDefined();
     expect(def.guards!.waiveTargetsAU).toBeDefined();
+    expect(def.guards!.signoffTargetsAU).toBeDefined();
   });
 
   it("includes all named actions", () => {
@@ -164,6 +189,9 @@ describe("createRegistrationDefinition", () => {
     expect(actionNames).toContain("handleTerminated");
     expect(actionNames).toContain("handleSessionTimeout");
     expect(actionNames).toContain("handleAnswered");
+    expect(actionNames).toContain("requestSignoff");
+    expect(actionNames).toContain("approveAssessment");
+    expect(actionNames).toContain("returnAssessment");
   });
 
   it("passes validateDefinition", () => {

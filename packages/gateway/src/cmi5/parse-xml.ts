@@ -34,7 +34,8 @@ export function parseCmi5Xml(xml: string): CourseStructure {
   const blocks: Record<string, BlockDefinition> = {};
   const rootChildren: BlockChild[] = [];
 
-  for (const child of children(courseNode, "course")) {
+  // In CMI5, blocks and AUs are children of <courseStructure>, not <course>
+  for (const child of children(csNode, "courseStructure")) {
     if ("au" in child) {
       const au = parseAU(child, aus);
       rootChildren.push({ type: "au", id: au.id });
@@ -62,6 +63,7 @@ function parseAU(node: OrderedNode, aus: Record<string, AUDefinition>): AUDefini
 
   const au: AUDefinition = { id, title, moveOn, launchUrl, launchMethod };
   if (masteryScore !== undefined) au.masteryScore = masteryScore;
+  if (a.purpose === "assessment") au.purpose = "assessment";
   aus[id] = au;
   return au;
 }

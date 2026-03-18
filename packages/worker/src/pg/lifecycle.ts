@@ -5,14 +5,16 @@ import type { WorkerAppContext, Logger } from "../types.js";
 import type {
   DurableMachine,
   DurableMachineOptions,
-} from "@durable-xstate/durable-machine";
-import type { EffectHandler, ResolvedEffect } from "@durable-xstate/durable-machine";
-import { createAppContext } from "@durable-xstate/durable-machine";
-import { createStore } from "@durable-xstate/durable-machine/pg";
-import type { PgStore } from "@durable-xstate/durable-machine/pg";
-import { createDurableMachine } from "@durable-xstate/durable-machine/pg";
-import type { PgDurableMachine } from "@durable-xstate/durable-machine/pg";
-import type { PgConfig } from "@durable-xstate/durable-machine/pg";
+} from "@durable-machines/machine";
+import type { EffectHandler } from "@durable-machines/machine";
+import { createAppContext } from "@durable-machines/machine";
+import { createStore } from "@durable-machines/machine/pg";
+import type { PgStore } from "@durable-machines/machine/pg";
+import { createDurableMachine } from "@durable-machines/machine/pg";
+import type { PgDurableMachine } from "@durable-machines/machine/pg";
+import type { PgConfig } from "@durable-machines/machine/pg";
+import { executeTask } from "@durable-machines/machine/pg/task-executor";
+import type { TaskExecutorDeps, TaskExecutorMetrics } from "@durable-machines/machine/pg/task-executor";
 import type { WorkerMetrics } from "../metrics.js";
 import { createWorkerMetrics, startTimer } from "../metrics.js";
 import {
@@ -69,7 +71,7 @@ export function createPgWorkerContext(
   const machines = new Map<string, PgDurableMachine>();
   const allEffectHandlers = new Map<string, EffectHandler>();
   let wakePoller: { stop: () => void } | null = null;
-  let effectPoller: { stop: () => void } | null = null;
+  let taskPoller: { stop: () => void; triggerNow: () => void } | null = null;
 
   // ── Semaphore for cross-instance concurrency control ────────────────
 
@@ -111,12 +113,19 @@ export function createPgWorkerContext(
     });
   }
 
+  /** Dispatch by machine name — used by task executor for direct dispatch after invoke completion */
+  function dispatchByName(instanceId: string, machineName: string): void {
+    const dm = machines.get(machineName);
+    if (!dm) return;
+    dispatch(instanceId, dm);
+  }
+
   // ── Adaptive Poller ────────────────────────────────────────────────────
 
   function adaptivePoll(
     pollFn: () => Promise<number>,
     opts: { minMs: number; maxMs: number; factor: number },
-  ): { stop: () => void } {
+  ): { stop: () => void; triggerNow: () => void } {
     let currentMs = opts.maxMs;
     let timer: ReturnType<typeof setTimeout>;
     let stopped = false;
@@ -142,6 +151,13 @@ export function createPgWorkerContext(
         stopped = true;
         clearTimeout(timer);
       },
+      triggerNow() {
+        if (stopped) return;
+        clearTimeout(timer);
+        currentMs = opts.minMs;
+        timer = setTimeout(() => void tick(), 0);
+        timer.unref();
+      },
     };
   }
 
@@ -161,58 +177,38 @@ export function createPgWorkerContext(
     }
   }
 
-  // ── Poll for pending effects ─────────────────────────────────────────────
+  // ── Unified Task Poller (effects + invokes) ──────────────────────────────
 
-  function computeBackoff(attempt: number): number {
-    const baseMs = 1000;
-    const rate = 2;
-    return baseMs * rate ** (attempt - 1);
-  }
-
-  async function pollEffects(): Promise<number> {
-    if (allEffectHandlers.size === 0) return 0;
-
+  async function pollTasks(): Promise<number> {
     try {
-      const rows = await store.claimPendingEffects(50);
+      const rows = await store.claimPendingTasks(50);
       if (rows.length > 0) {
-        metrics?.pollItemsFound.add(rows.length, { poll_type: "effects" });
+        metrics?.pollItemsFound.add(rows.length, { poll_type: "tasks" });
       }
-      for (const row of rows) {
-        const handler = allEffectHandlers.get(row.effectType);
-        if (!handler) {
-          await store.markEffectFailed(row.id, `No handler for "${row.effectType}"`, null);
-          metrics?.effectsExecutedTotal.add(1, { effect_type: row.effectType, status: "no_handler" });
-          logger.warn({ effectType: row.effectType }, "no handler for effect");
-          continue;
-        }
 
-        const end = metrics ? startTimer(metrics.effectExecutionDuration, { effect_type: row.effectType }) : undefined;
-        try {
-          await handler(
-            { type: row.effectType, ...row.effectPayload } as ResolvedEffect,
-            { tenantId: row.tenantId },
-          );
-          await store.markEffectCompleted(row.id);
-          metrics?.effectsExecutedTotal.add(1, { effect_type: row.effectType, status: "success" });
-        } catch (err) {
-          const exhausted = row.attempts >= row.maxAttempts;
-          const nextRetry = exhausted
-            ? null
-            : Date.now() + computeBackoff(row.attempts);
-          await store.markEffectFailed(
-            row.id,
-            err instanceof Error ? err.message : String(err),
-            nextRetry,
-          );
-          metrics?.effectsExecutedTotal.add(1, { effect_type: row.effectType, status: "error" });
-          logger.error({ effectType: row.effectType, err: String(err) }, "effect execution failed");
-        } finally {
-          end?.();
-        }
+      const taskMetrics: TaskExecutorMetrics | undefined = metrics
+        ? {
+            effectsExecutedTotal: metrics.effectsExecutedTotal,
+            effectExecutionDuration: metrics.effectExecutionDuration,
+          }
+        : undefined;
+
+      const taskDeps: TaskExecutorDeps = {
+        store,
+        machines,
+        effectHandlers: allEffectHandlers,
+        dispatch: dispatchByName,
+        logger,
+        invokeTimeoutMs: config.invokeTimeoutMs,
+      };
+
+      for (const row of rows) {
+        await executeTask(taskDeps, row, taskMetrics);
       }
+
       return rows.length;
     } catch (err) {
-      logger.error({ err: String(err) }, "effect poll failed");
+      logger.error({ err: String(err) }, "task poll failed");
       return 0;
     }
   }
@@ -223,18 +219,23 @@ export function createPgWorkerContext(
     async start(): Promise<void> {
       await store.ensureSchema();
 
-      // Recover effects stuck in "executing" from a previous crash (older than 5 min)
+      // Recover tasks stuck in "executing" from a previous crash (older than 5 min)
       const staleThreshold = Date.now() - 5 * 60 * 1000;
       const resetCount = await store.resetStaleEffects(staleThreshold);
       if (resetCount > 0) {
-        logger.info({ count: resetCount }, "reset stale effects from previous crash");
+        logger.info({ count: resetCount }, "reset stale tasks from previous crash");
       }
 
       await store.startListening(
+        // Event callback — dispatch machine event processing
         (machineName: string, instanceId: string, _topic: string) => {
           const dm = machines.get(machineName);
           if (!dm) return;
           dispatch(instanceId, dm);
+        },
+        // Task callback — trigger task poller immediately on new outbox task
+        (_instanceId: string) => {
+          taskPoller?.triggerNow();
         },
       );
 
@@ -244,7 +245,7 @@ export function createPgWorkerContext(
         factor: 2,
       });
 
-      effectPoller = adaptivePoll(pollEffects, {
+      taskPoller = adaptivePoll(pollTasks, {
         minMs: 100,
         maxMs: config.effectPollingIntervalMs ?? 1000,
         factor: 2,
@@ -257,8 +258,8 @@ export function createPgWorkerContext(
       logger.info({}, "PG worker backend stopping");
       wakePoller?.stop();
       wakePoller = null;
-      effectPoller?.stop();
-      effectPoller = null;
+      taskPoller?.stop();
+      taskPoller = null;
       await store.close();
       await pool.end();
     },

@@ -1,6 +1,7 @@
 import type { MachineDefinition, StateDefinition, TransitionDefinition, InvokeDefinition } from "./types.js";
 import type { ImplementationRegistry } from "./registry.js";
-import { isRef, resolveExpressions, resolveTemplate } from "./expressions.js";
+import type { BuiltinRegistry } from "@durable-machines/expr";
+import { compileInput } from "./desugar-input.js";
 import type { PromptConfig } from "../types.js";
 
 const META_KEY = "xstate-durable";
@@ -13,11 +14,12 @@ const META_KEY = "xstate-durable";
 export function transformDefinition(
   definition: MachineDefinition,
   _registry: ImplementationRegistry,
+  builtins?: BuiltinRegistry,
 ): Record<string, unknown> {
   const config: Record<string, unknown> = {
     id: definition.id,
     initial: definition.initial,
-    states: transformStates(definition.states),
+    states: transformStates(definition.states, builtins),
   };
 
   // Context: static defaults merged with input at runtime
@@ -34,15 +36,16 @@ export function transformDefinition(
 
 function transformStates(
   states: Record<string, StateDefinition>,
+  builtins?: BuiltinRegistry,
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const [key, state] of Object.entries(states)) {
-    result[key] = transformState(state);
+    result[key] = transformState(state, builtins);
   }
   return result;
 }
 
-function transformState(state: StateDefinition): Record<string, unknown> {
+function transformState(state: StateDefinition, builtins?: BuiltinRegistry): Record<string, unknown> {
   const config: Record<string, unknown> = {};
 
   // Type
@@ -57,11 +60,11 @@ function transformState(state: StateDefinition): Record<string, unknown> {
 
   // Child states
   if (state.states) {
-    config.states = transformStates(state.states);
+    config.states = transformStates(state.states, builtins);
   }
 
   // Meta: durable + prompt
-  const meta = buildMeta(state);
+  const meta = buildMeta(state, builtins);
   if (meta) {
     config.meta = meta;
   }
@@ -94,14 +97,14 @@ function transformState(state: StateDefinition): Record<string, unknown> {
   // invoke
   if (state.invoke) {
     const invokeList = Array.isArray(state.invoke) ? state.invoke : [state.invoke];
-    const transformed = invokeList.map(transformInvoke);
+    const transformed = invokeList.map((inv) => transformInvoke(inv, builtins));
     config.invoke = transformed.length === 1 ? transformed[0] : transformed;
   }
 
   return config;
 }
 
-function buildMeta(state: StateDefinition): Record<string, unknown> | undefined {
+function buildMeta(state: StateDefinition, builtins?: BuiltinRegistry): Record<string, unknown> | undefined {
   const isDurable = state.durable === true || state.prompt != null;
   const hasEffects = Array.isArray(state.effects) && state.effects.length > 0;
   if (!isDurable && !hasEffects) return undefined;
@@ -113,25 +116,26 @@ function buildMeta(state: StateDefinition): Record<string, unknown> | undefined 
   }
 
   if (state.prompt) {
-    durableMeta.prompt = transformPrompt(state.prompt);
+    durableMeta.prompt = transformPrompt(state.prompt, builtins);
   }
 
   if (hasEffects) {
-    // Keep template expressions as raw strings — resolved by the collector at runtime
+    // Store raw configs for validation/serialization and compiled resolvers for runtime
     durableMeta.effects = state.effects;
+    durableMeta.compiledEffects = state.effects!.map((e) => compileInput(e, builtins));
   }
 
   return { [META_KEY]: durableMeta };
 }
 
-function transformPrompt(prompt: PromptConfig): PromptConfig {
-  // If text contains template expressions, wrap it in a function
+function transformPrompt(prompt: PromptConfig, builtins?: BuiltinRegistry): PromptConfig {
+  // If text contains template expressions, compile via expr
   if (typeof prompt.text === "string" && prompt.text.includes("{{")) {
-    const template = prompt.text;
+    const compiled = compileInput(prompt.text, builtins);
     return {
       ...prompt,
       text: ({ context }: { context: Record<string, unknown> }) =>
-        resolveTemplate(template, { context }),
+        compiled({ context }),
     } as PromptConfig;
   }
   return prompt;
@@ -164,7 +168,7 @@ function transformTransition(trans: TransitionDefinition): Record<string, unknow
   return result;
 }
 
-function transformInvoke(inv: InvokeDefinition): Record<string, unknown> {
+function transformInvoke(inv: InvokeDefinition, builtins?: BuiltinRegistry): Record<string, unknown> {
   const result: Record<string, unknown> = {
     src: inv.src,
   };
@@ -173,17 +177,9 @@ function transformInvoke(inv: InvokeDefinition): Record<string, unknown> {
     result.id = inv.id;
   }
 
-  // Input: resolve $ref expressions at runtime
-  if (inv.input) {
-    if (isRef(inv.input)) {
-      const ref = inv.input.$ref;
-      result.input = ({ context, event }: { context: Record<string, unknown>; event?: any }) =>
-        resolveExpressions({ $ref: ref }, { context, event });
-    } else {
-      const defInput = inv.input;
-      result.input = ({ context, event }: { context: Record<string, unknown>; event?: any }) =>
-        resolveExpressions(defInput, { context, event });
-    }
+  // Input: desugar and compile via expr
+  if (inv.input !== undefined) {
+    result.input = compileInput(inv.input, builtins);
   }
 
   if (inv.onDone !== undefined) {

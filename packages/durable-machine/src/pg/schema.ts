@@ -41,7 +41,7 @@ CREATE INDEX IF NOT EXISTS idx_mi_wake ON machine_instances (wake_at) WHERE wake
 CREATE INDEX IF NOT EXISTS idx_mi_name ON machine_instances (machine_name);
 CREATE INDEX IF NOT EXISTS idx_mi_tenant ON machine_instances (tenant_id);
 
-CREATE TABLE IF NOT EXISTS invoke_results (
+CREATE TABLE IF NOT EXISTS step_cache (
   instance_id     UUID NOT NULL REFERENCES machine_instances(id) ON DELETE CASCADE,
   tenant_id       UUID NOT NULL DEFAULT current_setting('app.tenant_id', true)::uuid,
   step_key        TEXT NOT NULL,
@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS invoke_results (
   completed_at    BIGINT,
   PRIMARY KEY (instance_id, step_key)
 );
-CREATE INDEX IF NOT EXISTS idx_ir_tenant ON invoke_results (tenant_id);
+CREATE INDEX IF NOT EXISTS idx_sc_tenant ON step_cache (tenant_id);
 
 CREATE TABLE IF NOT EXISTS event_log (
   instance_id     UUID NOT NULL REFERENCES machine_instances(id) ON DELETE CASCADE,
@@ -112,8 +112,18 @@ CREATE TABLE IF NOT EXISTS effect_outbox (
   next_retry_at   BIGINT,
   last_error      TEXT,
   created_at      BIGINT NOT NULL,
-  completed_at    BIGINT
+  completed_at    BIGINT,
+  task_kind       TEXT NOT NULL DEFAULT 'effect',
+  machine_name    TEXT,
+  invoke_id       TEXT,
+  invoke_src      TEXT,
+  invoke_input    JSONB
 );
+ALTER TABLE effect_outbox ADD COLUMN IF NOT EXISTS task_kind TEXT NOT NULL DEFAULT 'effect';
+ALTER TABLE effect_outbox ADD COLUMN IF NOT EXISTS machine_name TEXT;
+ALTER TABLE effect_outbox ADD COLUMN IF NOT EXISTS invoke_id TEXT;
+ALTER TABLE effect_outbox ADD COLUMN IF NOT EXISTS invoke_src TEXT;
+ALTER TABLE effect_outbox ADD COLUMN IF NOT EXISTS invoke_input JSONB;
 CREATE INDEX IF NOT EXISTS idx_eo_pending
   ON effect_outbox (next_retry_at)
   WHERE status = 'pending';

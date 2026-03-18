@@ -3,7 +3,7 @@ import { initialTransition, transition } from "xstate";
 import { createMachineFromDefinition } from "../../../src/definition/create-machine.js";
 import { createImplementationRegistry } from "../../../src/definition/registry.js";
 import type { MachineDefinition } from "../../../src/definition/types.js";
-import { createBuiltinRegistry } from "@durable-xstate/expr";
+import { createBuiltinRegistry } from "@durable-machines/expr";
 
 describe("createMachineFromDefinition with expr guards/actions", () => {
   const builtins = createBuiltinRegistry({

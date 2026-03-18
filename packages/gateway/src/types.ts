@@ -73,7 +73,7 @@ export interface GatewayClient {
   /** Sends a batch of events in a single operation. */
   sendBatch<T>(messages: Array<{ workflowId: string; message: T; idempotencyKey?: string }>): Promise<void>;
   /** Retrieves the current durable state snapshot for a workflow. */
-  getState(workflowId: string): Promise<import("@durable-xstate/durable-machine").DurableStateSnapshot | null>;
+  getState(workflowId: string): Promise<import("@durable-machines/machine").DurableStateSnapshot | null>;
 }
 
 /** Options for {@link createWebhookGateway}. */

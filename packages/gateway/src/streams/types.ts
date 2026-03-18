@@ -1,5 +1,5 @@
 import type { ItemRouter, ItemTransform } from "../types.js";
-import type { Logger } from "@durable-xstate/durable-machine";
+import type { Logger } from "@durable-machines/machine";
 
 // Re-export Logger from durable-machine
 export type { Logger };

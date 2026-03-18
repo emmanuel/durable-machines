@@ -3,13 +3,13 @@ import {
   genericSource,
   fieldRouter,
   directTransform,
-} from "@durable-xstate/gateway";
+} from "@durable-machines/gateway";
 import {
   parseDBOSGatewayConfig,
   createDBOSGatewayContext,
   startDBOSGateway,
-} from "@durable-xstate/gateway/dbos";
-import type { SlackInteractivePayload } from "@durable-xstate/gateway";
+} from "@durable-machines/gateway/dbos";
+import type { SlackInteractivePayload } from "@durable-machines/gateway";
 
 function requireEnv(name: string): string {
   const val = process.env[name];

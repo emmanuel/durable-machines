@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { fromPromise, assign } from "xstate";
-import { createPgWorkerContext } from "@durable-xstate/worker/pg";
-import type { PgWorkerAppContext } from "@durable-xstate/worker/pg";
-import { durableSetup, durableState } from "@durable-xstate/durable-machine";
+import { createPgWorkerContext } from "@durable-machines/worker/pg";
+import type { PgWorkerAppContext } from "@durable-machines/worker/pg";
+import { durableSetup, durableState } from "@durable-machines/machine";
 import { createRestApi } from "../../src/rest-api.js";
 import { createDashboard } from "../../src/dashboard/index.js";
 import { Hono } from "hono";

@@ -70,3 +70,51 @@ describe("evaluate — fn (builtins)", () => {
     expect(builtins.custom).toBeDefined();
   });
 });
+
+describe("evaluate — fn (str builtin)", () => {
+  it("str with string args concatenates them", () => {
+    const scope = createScope({ context: {} });
+    expect(
+      evaluate({ fn: ["str", "hello", " ", "world"] }, scope, defaultBuiltins),
+    ).toBe("hello world");
+  });
+
+  it("str with numbers coerces to string", () => {
+    const scope = createScope({ context: {} });
+    expect(
+      evaluate({ fn: ["str", "count: ", 42] }, scope, defaultBuiltins),
+    ).toBe("count: 42");
+  });
+
+  it("str with null treats null as empty string", () => {
+    const scope = createScope({ context: {} });
+    expect(
+      evaluate({ fn: ["str", "a", null, "b"] }, scope, defaultBuiltins),
+    ).toBe("ab");
+  });
+
+  it("str with undefined treats undefined as empty string", () => {
+    const scope = createScope({ context: {} });
+    expect(
+      evaluate({ fn: ["str", undefined, "x"] }, scope, defaultBuiltins),
+    ).toBe("x");
+  });
+
+  it("str with no args returns empty string", () => {
+    const scope = createScope({ context: {} });
+    expect(
+      evaluate({ fn: ["str"] }, scope, defaultBuiltins),
+    ).toBe("");
+  });
+
+  it("str with select arg evaluates nested expressions", () => {
+    const scope = createScope({ context: { name: "Alice" } });
+    expect(
+      evaluate(
+        { fn: ["str", "Hello ", { select: ["context", "name"] }] },
+        scope,
+        defaultBuiltins,
+      ),
+    ).toBe("Hello Alice");
+  });
+});

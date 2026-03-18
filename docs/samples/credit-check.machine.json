@@ -21,7 +21,7 @@
     "CheckCredit": {
       "invoke": {
         "src": "callCreditCheckMicroservice",
-        "input": { "$ref": "context.customer" },
+        "input": { "select": ["context", "customer"] },
         "onDone": {
           "target": "EvaluateDecision",
           "actions": "storeCreditResult"
@@ -41,14 +41,14 @@
     "StartApplication": {
       "invoke": {
         "src": "startApplicationWorkflow",
-        "input": { "$ref": "context.customer" },
+        "input": { "select": ["context", "customer"] },
         "onDone": "End"
       }
     },
     "RejectApplication": {
       "invoke": {
         "src": "sendRejectionEmail",
-        "input": { "$ref": "context.customer" },
+        "input": { "select": ["context", "customer"] },
         "onDone": "End"
       }
     },

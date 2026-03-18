@@ -1,6 +1,6 @@
-import { consoleChannel } from "@durable-xstate/durable-machine";
-import { parsePgConfig } from "@durable-xstate/durable-machine/pg";
-import { createPgWorkerContext } from "@durable-xstate/worker/pg";
+import { consoleChannel } from "@durable-machines/machine";
+import { parsePgConfig } from "@durable-machines/machine/pg";
+import { createPgWorkerContext } from "@durable-machines/worker/pg";
 import { recruitingPipeline } from "./recruiting-pipeline.js";
 
 const candidateName = process.argv[2] || "Jane Doe";

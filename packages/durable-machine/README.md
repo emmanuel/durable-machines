@@ -1,11 +1,11 @@
-# @durable-xstate/durable-machine
+# @durable-machines/machine
 
 Durable XState v5 state machines powered by [DBOS Transact](https://docs.dbos.dev/). Write standard XState statecharts; this library runs them as durable workflows backed by Postgres — surviving crashes, restarts, and long-term waits without custom persistence code.
 
 ## Install
 
 ```bash
-npm install @durable-xstate/durable-machine xstate @dbos-inc/dbos-sdk
+npm install @durable-machines/machine xstate @dbos-inc/dbos-sdk
 ```
 
 Requires Node >= 24, XState >= 5, and DBOS SDK >= 4.
@@ -15,7 +15,7 @@ Requires Node >= 24, XState >= 5, and DBOS SDK >= 4.
 ```typescript
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import { setup, fromPromise, assign } from "xstate";
-import { createDurableMachine, durableState } from "@durable-xstate/durable-machine";
+import { createDurableMachine, durableState } from "@durable-machines/machine";
 
 const orderMachine = setup({
   types: {
@@ -131,7 +131,7 @@ Multiple delays, `reenter: true`, and named delays (defined in `setup({ delays }
 Channel adapters decouple prompt rendering from the state machine:
 
 ```typescript
-import { createDurableMachine, consoleChannel } from "@durable-xstate/durable-machine";
+import { createDurableMachine, consoleChannel } from "@durable-machines/machine";
 
 const channel = consoleChannel();
 const durable = createDurableMachine(machine, { channels: [channel] });
@@ -150,10 +150,10 @@ Built-in adapters:
 
 | Adapter | Import | Description |
 |---------|--------|-------------|
-| `consoleChannel()` | `@durable-xstate/durable-machine` | In-memory, for testing/development |
-| `slackChannel(options)` | `@durable-xstate/durable-machine` | Posts interactive messages to Slack |
-| `emailChannel(options)` | `@durable-xstate/durable-machine` | Sends prompt emails via a `sendEmail` callback |
-| `twilioSmsChannel(options)` | `@durable-xstate/durable-machine` | Sends prompt SMS via a `sendSms` callback |
+| `consoleChannel()` | `@durable-machines/machine` | In-memory, for testing/development |
+| `slackChannel(options)` | `@durable-machines/machine` | Posts interactive messages to Slack |
+| `emailChannel(options)` | `@durable-machines/machine` | Sends prompt emails via a `sendEmail` callback |
+| `twilioSmsChannel(options)` | `@durable-machines/machine` | Sends prompt SMS via a `sendSms` callback |
 
 ### External clients
 
@@ -161,7 +161,7 @@ Send events and read state from outside the DBOS runtime — only needs a Postgr
 
 ```typescript
 import { DBOSClient } from "@dbos-inc/dbos-sdk";
-import { sendMachineEvent, getMachineState } from "@durable-xstate/durable-machine";
+import { sendMachineEvent, getMachineState } from "@durable-machines/machine";
 
 const client = await DBOSClient.create({ systemDatabaseUrl: "postgresql://..." });
 await sendMachineEvent(client, "order-123", { type: "PAY" });
@@ -251,7 +251,7 @@ rows in Postgres, load into memory only to process events.
 
 ```typescript
 import { Pool } from "pg";
-import { createDurableMachine } from "@durable-xstate/durable-machine/pg";
+import { createDurableMachine } from "@durable-machines/machine/pg";
 
 const pool = new Pool({ connectionString: "postgresql://..." });
 const durable = createDurableMachine(orderMachine, { pool });
@@ -273,7 +273,7 @@ await handle.send({ type: "PAY" });
 
 ```typescript
 import { Pool } from "pg";
-import { sendMachineEvent, getMachineState } from "@durable-xstate/durable-machine/pg";
+import { sendMachineEvent, getMachineState } from "@durable-machines/machine/pg";
 
 const pool = new Pool({ connectionString: "postgresql://..." });
 await sendMachineEvent(pool, "order-123", { type: "PAY" });
@@ -284,12 +284,12 @@ const state = await getMachineState(pool, "order-123");
 
 ### DBOS (workflow-based)
 ```typescript
-import { createDurableMachine } from "@durable-xstate/durable-machine/dbos";
+import { createDurableMachine } from "@durable-machines/machine/dbos";
 ```
 
 ### Postgres (event-driven)
 ```typescript
-import { createDurableMachine } from "@durable-xstate/durable-machine/pg";
+import { createDurableMachine } from "@durable-machines/machine/pg";
 ```
 
 Same `DurableMachine` interface, same machine definitions. Switch by changing one import.

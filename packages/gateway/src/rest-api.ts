@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { DurableMachineError } from "@durable-xstate/durable-machine";
-import type { DurableMachine } from "@durable-xstate/durable-machine";
+import { DurableMachineError } from "@durable-machines/machine";
+import type { DurableMachine } from "@durable-machines/machine";
 import type { RestApiOptions } from "./rest-types.js";
 import { toStateResponse } from "./hateoas.js";
 

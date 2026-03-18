@@ -4,15 +4,15 @@ import {
   genericSource,
   fieldRouter,
   directTransform,
-} from "@durable-xstate/gateway";
-import { parseGatewayConfig } from "@durable-xstate/gateway";
+} from "@durable-machines/gateway";
+import { parseGatewayConfig } from "@durable-machines/gateway";
 import {
   createPgGatewayContext,
   startPgGateway,
-} from "@durable-xstate/gateway/pg";
-import type { SlackInteractivePayload } from "@durable-xstate/gateway";
-import type { DurableMachine } from "@durable-xstate/durable-machine";
-import { createDurableMachine, createStore } from "@durable-xstate/durable-machine/pg";
+} from "@durable-machines/gateway/pg";
+import type { SlackInteractivePayload } from "@durable-machines/gateway";
+import type { DurableMachine } from "@durable-machines/machine";
+import { createDurableMachine, createStore } from "@durable-machines/machine/pg";
 import { approvalMachine } from "./machine.js";
 import { recruitingPipeline } from "./recruiting-pipeline.js";
 

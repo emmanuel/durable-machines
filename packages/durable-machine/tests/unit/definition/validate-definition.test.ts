@@ -447,3 +447,111 @@ describe("expr guard/action definitions", () => {
     expect(result.errors[0]).toContain("missing");
   });
 });
+
+describe("expr invoke input validation", () => {
+  it("accepts expr select operator as invoke input", () => {
+    const def: MachineDefinition = {
+      id: "test",
+      initial: "processing",
+      states: {
+        processing: {
+          invoke: {
+            src: "processPayment",
+            input: { select: ["context", "total"] },
+            onDone: "done",
+            onError: "done",
+          },
+        },
+        done: { type: "final" },
+      },
+    };
+    const result = validateDefinition(def, registry);
+    expect(result.valid).toBe(true);
+  });
+
+  it("accepts expr object operator as invoke input", () => {
+    const def: MachineDefinition = {
+      id: "test",
+      initial: "processing",
+      states: {
+        processing: {
+          invoke: {
+            src: "processPayment",
+            input: { object: { total: { select: ["context", "total"] } } },
+            onDone: "done",
+            onError: "done",
+          },
+        },
+        done: { type: "final" },
+      },
+    };
+    const result = validateDefinition(def, registry);
+    expect(result.valid).toBe(true);
+  });
+
+  it("accepts expr fn operator as invoke input", () => {
+    const def: MachineDefinition = {
+      id: "test",
+      initial: "processing",
+      states: {
+        processing: {
+          invoke: {
+            src: "processPayment",
+            input: { fn: ["str", "hello"] },
+            onDone: "done",
+            onError: "done",
+          },
+        },
+        done: { type: "final" },
+      },
+    };
+    const result = validateDefinition(def, registry);
+    expect(result.valid).toBe(true);
+  });
+
+  it("still reports $ref with invalid prefix", () => {
+    const def: MachineDefinition = {
+      id: "test",
+      initial: "processing",
+      states: {
+        processing: {
+          invoke: {
+            src: "processPayment",
+            input: { $ref: "invalid.total" },
+            onDone: "done",
+            onError: "done",
+          },
+        },
+        done: { type: "final" },
+      },
+    };
+    const result = validateDefinition(def, registry);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContainEqual(
+      expect.stringContaining("invalid prefix"),
+    );
+  });
+
+  it("still reports unbalanced {{ }} in template", () => {
+    const def: MachineDefinition = {
+      id: "test",
+      initial: "processing",
+      states: {
+        processing: {
+          invoke: {
+            src: "processPayment",
+            input: { label: "{{ context.x" },
+            onDone: "done",
+            onError: "done",
+          },
+        },
+        done: { type: "final" },
+      },
+    };
+    const result = validateDefinition(def, registry);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContainEqual(
+      expect.stringContaining("unbalanced"),
+    );
+  });
+});

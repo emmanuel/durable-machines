@@ -1,5 +1,5 @@
 {
-  "name": "@durable-xstate/example-webhook-approval",
+  "name": "@durable-machines/example-webhook-approval",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -12,13 +12,13 @@
     "pg:gateway": "tsx src/pg-gateway.ts",
     "pg:start-workflow": "tsx src/pg-start-workflow.ts",
     "pg:start-recruiting": "tsx src/pg-start-recruiting.ts",
-    "pg:demo": "DATABASE_URL=${DATABASE_URL:-postgresql://durable_xstate:durable_xstate@localhost:5442/durable_xstate_test} SLACK_SIGNING_SECRET=${SLACK_SIGNING_SECRET:-dummy} tsx src/pg-demo.ts",
+    "pg:demo": "DATABASE_URL=${DATABASE_URL:-postgresql://durable_machines:durable_machines@localhost:5442/durable_machines_test} SLACK_SIGNING_SECRET=${SLACK_SIGNING_SECRET:-dummy} tsx src/pg-demo.ts",
     "start-recruiting": "tsx src/start-recruiting.ts"
   },
   "dependencies": {
-    "@durable-xstate/durable-machine": "workspace:*",
-    "@durable-xstate/gateway": "workspace:*",
-    "@durable-xstate/worker": "workspace:*",
+    "@durable-machines/machine": "workspace:*",
+    "@durable-machines/gateway": "workspace:*",
+    "@durable-machines/worker": "workspace:*",
     "@dbos-inc/dbos-sdk": "^4.0.0",
     "pg": "^8.13.0",
     "xstate": "^5.19.0"

@@ -404,7 +404,7 @@ sseConnections--;
 ```typescript
 export function genericSource(): WebhookSource<unknown> {
   console.warn(
-    "[durable-xstate] WARNING: genericSource() has no webhook verification. " +
+    "[durable-machines] WARNING: genericSource() has no webhook verification. " +
     "Do NOT use in production.",
   );
   // ...

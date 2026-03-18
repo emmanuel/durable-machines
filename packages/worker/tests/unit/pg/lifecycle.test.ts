@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { AnyStateMachine } from "xstate";
-import type { PgStore } from "@durable-xstate/durable-machine/pg";
-import type { PgDurableMachine } from "@durable-xstate/durable-machine/pg";
+import type { PgStore } from "@durable-machines/machine/pg";
+import type { PgDurableMachine } from "@durable-machines/machine/pg";
 
 // ─── Mocks ──────────────────────────────────────────────────────────────────
 
@@ -31,7 +31,7 @@ const mockClose = vi.fn().mockResolvedValue(undefined);
 
 const mockAppendEvent = vi.fn().mockResolvedValue({ seq: 1 });
 
-const mockStore: PgStore = {
+const mockStore = {
   ensureSchema: mockEnsureSchema,
   startListening: mockStartListening,
   stopListening: mockStopListening,
@@ -46,24 +46,36 @@ const mockStore: PgStore = {
   lockAndPeekEvent: vi.fn(),
   lockAndPeekEvents: vi.fn(),
   getEventLog: vi.fn().mockResolvedValue([]),
-  getInvokeResult: vi.fn(),
-  recordInvokeResult: vi.fn(),
-  listInvokeResults: vi.fn(),
+  getStepCache: vi.fn(),
+  setStepCache: vi.fn(),
+  getInvokeSteps: vi.fn(),
   finalizeInstance: vi.fn(),
   finalizeWithTransition: vi.fn(),
   appendTransition: vi.fn(),
   getTransitions: vi.fn(),
   insertEffects: vi.fn(),
-  claimPendingEffects: vi.fn().mockResolvedValue([]),
+  queueInvokeTask: vi.fn(),
+  claimPendingTasks: vi.fn().mockResolvedValue([]),
+  checkInvokeEventExists: vi.fn().mockResolvedValue(false),
+  cancelInvokeTask: vi.fn(),
+  cancelInstanceInvokes: vi.fn(),
+  checkTaskStatus: vi.fn().mockResolvedValue(null),
+  appendEventWithKey: vi.fn().mockResolvedValue({ seq: 1 }),
   markEffectCompleted: vi.fn(),
   markEffectFailed: vi.fn(),
   listEffects: vi.fn().mockResolvedValue([]),
   resetStaleEffects: vi.fn().mockResolvedValue(0),
   withTransaction: vi.fn(async (fn: any) => fn({})),
-};
+  ensureRoles: vi.fn(),
+  getStateDurations: vi.fn().mockResolvedValue([]),
+  getAggregateStateDurations: vi.fn().mockResolvedValue([]),
+  getTransitionCounts: vi.fn().mockResolvedValue([]),
+  getInstanceSummaries: vi.fn().mockResolvedValue([]),
+  forTenant: vi.fn(),
+} as unknown as PgStore;
 
-vi.mock("@durable-xstate/durable-machine/pg", async () => {
-  const actual = await vi.importActual("@durable-xstate/durable-machine/pg");
+vi.mock("@durable-machines/machine/pg", async () => {
+  const actual = await vi.importActual("@durable-machines/machine/pg");
   return {
     ...actual,
     createStore: vi.fn(() => mockStore),
@@ -75,8 +87,8 @@ vi.mock("@durable-xstate/durable-machine/pg", async () => {
 });
 
 // Mock createAppContext — pass-through to real implementation for lifecycle tests
-vi.mock("@durable-xstate/durable-machine", async () => {
-  return await vi.importActual("@durable-xstate/durable-machine");
+vi.mock("@durable-machines/machine", async () => {
+  return await vi.importActual("@durable-machines/machine");
 });
 
 // ─── Mock helpers ────────────────────────────────────────────────────────────

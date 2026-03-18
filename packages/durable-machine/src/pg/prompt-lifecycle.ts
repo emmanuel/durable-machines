@@ -24,7 +24,7 @@ export async function handlePromptEntry(
 
   const stepKey = `prompt:${JSON.stringify(snapshot.value)}`;
 
-  const cached = await store.getInvokeResult(instanceId, stepKey);
+  const cached = await store.getStepCache(instanceId, stepKey);
   if (cached) return;
 
   const handles: unknown[] = [];
@@ -38,7 +38,7 @@ export async function handlePromptEntry(
     handles.push(handle);
   }
 
-  await store.recordInvokeResult({
+  await store.setStepCache({
     instanceId,
     stepKey,
     output: handles,
@@ -58,13 +58,13 @@ export async function handlePromptExit(
   if (channels.length === 0) return;
 
   const stepKey = `prompt:${JSON.stringify(prevStateValue)}`;
-  const cached = await store.getInvokeResult(instanceId, stepKey);
+  const cached = await store.getStepCache(instanceId, stepKey);
   if (!cached) return;
 
   const handles = cached.output as unknown[];
 
   const resolveKey = `resolve-prompt:${JSON.stringify(prevStateValue)}`;
-  const resolved = await store.getInvokeResult(instanceId, resolveKey);
+  const resolved = await store.getStepCache(instanceId, resolveKey);
   if (resolved) return;
 
   for (let i = 0; i < channels.length; i++) {
@@ -75,7 +75,7 @@ export async function handlePromptExit(
     });
   }
 
-  await store.recordInvokeResult({
+  await store.setStepCache({
     instanceId,
     stepKey: resolveKey,
     output: true,

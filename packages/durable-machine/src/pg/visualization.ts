@@ -21,7 +21,7 @@ export async function getVisualizationState(
   const [row, transitions, steps] = await Promise.all([
     store.getInstance(workflowId),
     store.getTransitions(workflowId),
-    store.listInvokeResults(workflowId),
+    store.getInvokeSteps(workflowId),
   ]);
 
   const currentState = row

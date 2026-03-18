@@ -37,7 +37,7 @@
 | `src/definition/validate-definition.ts` | Accept guard/action names from definition expr bodies as alternative to registry. |
 | `src/definition/create-machine.ts` | Compile named exprs, wrap as XState guards/actions via `enqueueActions`, merge with registry, pass to `setup()`. |
 | `src/definition/index.ts` | Re-export new types. |
-| `package.json` | Add `@durable-xstate/expr` workspace dependency. |
+| `package.json` | Add `@durable-machines/expr` workspace dependency. |
 
 ### `packages/durable-machine/` (new files)
 
@@ -1021,7 +1021,7 @@ Validation accepts guard/action names that exist in EITHER the registry OR the d
 In `packages/durable-machine/package.json`, add to `dependencies`:
 
 ```json
-"@durable-xstate/expr": "workspace:*"
+"@durable-machines/expr": "workspace:*"
 ```
 
 Run: `cd /path/to/repo && pnpm install`
@@ -1038,7 +1038,7 @@ In `packages/durable-machine/src/definition/types.ts`, add to the `MachineDefini
   guards?: Record<string, unknown>;
   /**
    * Named action expressions. Each key is an action name referenced by transitions.
-   * Values are ActionDef objects from @durable-xstate/expr.
+   * Values are ActionDef objects from @durable-machines/expr.
    * At machine creation time, each expr is compiled into a closure.
    */
   actions?: Record<string, unknown>;
@@ -1198,7 +1198,7 @@ git commit -m "feat(durable-machine): extend MachineDefinition with expr guard/a
 ### Design
 
 `createMachineFromDefinition` gains an optional `builtins` parameter (or it's part of an options object). For each named guard/action in `definition.guards`/`.actions`:
-1. Compile with `compileGuard`/`compileAction` from `@durable-xstate/expr`
+1. Compile with `compileGuard`/`compileAction` from `@durable-machines/expr`
 2. Wrap guard: `({ context, event }, params) => compiledGuard(createScope({ context, event, params }))`
 3. Wrap action: `enqueueActions(({ context, event, enqueue }, params) => { for (result of compiledAction(scope)) { enqueue(xstateAction(result)) } })`
 4. Merge with registry (expr-compiled first, registry overwrites — validated no conflicts)
@@ -1214,7 +1214,7 @@ import { initialTransition, transition } from "xstate";
 import { createMachineFromDefinition } from "../../../src/definition/create-machine.js";
 import { createImplementationRegistry } from "../../../src/definition/registry.js";
 import type { MachineDefinition } from "../../../src/definition/types.js";
-import { createBuiltinRegistry } from "@durable-xstate/expr";
+import { createBuiltinRegistry } from "@durable-machines/expr";
 
 describe("createMachineFromDefinition with expr guards/actions", () => {
   const builtins = createBuiltinRegistry({
@@ -1379,7 +1379,7 @@ import { DurableMachineValidationError } from "../types.js";
 import {
   compileGuard, compileAction, createScope,
   type BuiltinRegistry, type ActionResult,
-} from "@durable-xstate/expr";
+} from "@durable-machines/expr";
 
 export interface ExprOptions {
   builtins?: BuiltinRegistry;
@@ -1499,7 +1499,7 @@ import { initialTransition, transition } from "xstate";
 import { createMachineFromDefinition } from "../../../src/definition/create-machine.js";
 import { createImplementationRegistry } from "../../../src/definition/registry.js";
 import type { MachineDefinition } from "../../../src/definition/types.js";
-import { createBuiltinRegistry } from "@durable-xstate/expr";
+import { createBuiltinRegistry } from "@durable-machines/expr";
 
 describe("registration machine via expr definitions", () => {
   const testBuiltins = createBuiltinRegistry({

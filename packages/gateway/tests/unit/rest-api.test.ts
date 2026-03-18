@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { createRestApi } from "../../src/rest-api.js";
-import { DurableMachineError } from "@durable-xstate/durable-machine";
-import type { DurableMachine, DurableMachineHandle, DurableStateSnapshot } from "@durable-xstate/durable-machine";
+import { DurableMachineError } from "@durable-machines/machine";
+import type { DurableMachine, DurableMachineHandle, DurableStateSnapshot } from "@durable-machines/machine";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

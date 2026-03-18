@@ -163,10 +163,11 @@ export function createDurableMachine<T extends AnyStateMachine>(
       },
 
       async getSteps() {
-        return store.listInvokeResults(workflowId);
+        return store.getInvokeSteps(workflowId);
       },
 
       async cancel(): Promise<void> {
+        await store.cancelInstanceInvokes(workflowId);
         await store.updateInstanceStatus(workflowId, "cancelled");
       },
 

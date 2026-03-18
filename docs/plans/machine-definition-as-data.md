@@ -130,7 +130,7 @@ export interface ActionDefinition {
 export interface InvokeDefinition {
   src: string;
   id?: string;
-  input?: Record<string, unknown> | { "$ref": string };
+  input?: unknown; // expr operator, $ref (legacy), or static value
   onDone?: TransitionDefinition | string;
   onError?: TransitionDefinition | string;
 }
@@ -147,35 +147,35 @@ export interface InvokeDefinition {
 
 ## Expression System
 
-Two expression forms for referencing runtime values in JSON definitions:
+> **Update**: The original `$ref`/`{{ }}` system (`expressions.ts`) has been replaced by
+> the `@durable-machines/expr` package. `$ref` and `{{ }}` are auto-desugared to expr AST
+> at transform time via `desugar-input.ts`. The `expressions.ts` file has been deleted.
 
-### `$ref` — Value extraction
+Invoke inputs, prompts, and effects use `@durable-machines/expr` for runtime value resolution:
 
-Used in invoke `input` and action `params` to reference context/event values:
+### `select` — Path navigation (replaces `$ref`)
 
 ```json
 {
   "invoke": {
     "src": "chargeCard",
     "input": {
-      "total": { "$ref": "context.total" },
-      "orderId": { "$ref": "context.orderId" }
+      "object": {
+        "total": { "select": ["context", "total"] },
+        "orderId": { "select": ["context", "orderId"] }
+      }
     }
   }
 }
 ```
 
-A `$ref` value is resolved at runtime to the referenced value, preserving its type.
-
-### `{{ template }}` — String interpolation
-
-Used in prompts, effects, and string values:
+### `fn` with `str` — String interpolation (replaces `{{ }}`)
 
 ```json
 {
   "prompt": {
     "type": "confirm",
-    "text": "Ship order {{ context.orderId }}?",
+    "text": { "fn": ["str", "Ship order ", { "select": ["context", "orderId"] }, "?"] },
     "confirmEvent": "SHIP",
     "cancelEvent": "CANCEL"
   }
@@ -185,26 +185,17 @@ Used in prompts, effects, and string values:
 ### Implementation
 
 ```ts
-// definition/expressions.ts
+// definition/desugar-input.ts
 
-/** Resolve a $ref expression to a runtime value */
-export function resolveRef(
-  ref: string,
-  scope: { context: Record<string, unknown>; event?: AnyEventObject; input?: Record<string, unknown> },
-): unknown;
+/** Convert legacy $ref / {{ }} to expr AST, then compile */
+export function compileInput(input: unknown, builtins?: BuiltinRegistry): (args) => unknown;
 
-/** Check if a value is a $ref expression */
-export function isRef(value: unknown): value is { "$ref": string };
-
-/** Recursively resolve all $ref and {{ template }} expressions in an object */
-export function resolveExpressions(
-  value: unknown,
-  scope: { context: Record<string, unknown>; event?: AnyEventObject; input?: Record<string, unknown> },
-): unknown;
+/** Recursive $ref / {{ }} → expr AST conversion */
+export function desugarInput(value: unknown): unknown;
 ```
 
-Dot-paths only for v1 — no complex expressions, filters, or conditionals. Scope
-prefixes: `context.*`, `event.*`, `input.*`.
+The full expr language (guards, actions, conditionals, arithmetic, iteration)
+is available in invoke inputs. See `@durable-machines/expr` for the complete operator set.
 
 ## Config Transformation
 
@@ -222,7 +213,7 @@ Transforms the JSON definition into an XState-compatible config object:
 | JSON definition | XState config |
 |----------------|---------------|
 | `context: { orderId: "default" }` | `context: ({ input }) => ({ orderId: "default", ...input })` — factory that merges static defaults with runtime input |
-| `invoke.input: { "$ref": "context.total" }` | `input: ({ context }) => resolveExpressions(invoke.input, { context })` — mapper function |
+| `invoke.input: { "select": ["context", "total"] }` | `input: compileInput(invoke.input)` — compiled expr closure |
 | `prompt: { text: "{{ context.name }}" }` | `meta["xstate-durable"].prompt` with text as resolver function |
 | `durable: true` | `meta["xstate-durable"].durable: true` |
 | `effects: [...]` | `meta["xstate-durable"].effects: [...]` |
@@ -327,8 +318,8 @@ End-to-end example showing how all pieces fit together:
 ### 1. App startup
 
 ```ts
-import { createImplementationRegistry } from "@durable-xstate/durable-machine/definition";
-import { createDurableMachine } from "@durable-xstate/durable-machine/pg";
+import { createImplementationRegistry } from "@durable-machines/machine/definition";
+import { createDurableMachine } from "@durable-machines/machine/pg";
 import { Pool } from "pg";
 import { Hono } from "hono";
 
@@ -478,7 +469,7 @@ registry, with definitions arriving at runtime and instances created on demand.
 |------|---------|
 | `src/definition/types.ts` | `MachineDefinition`, `StateDefinition`, `TransitionDefinition`, etc. |
 | `src/definition/registry.ts` | `createImplementationRegistry()` |
-| `src/definition/expressions.ts` | `$ref` resolution, template resolution, `resolveExpressions()` |
+| `src/definition/desugar-input.ts` | `$ref`/`{{ }}` → expr AST desugaring, `compileInput()` |
 | `src/definition/transform.ts` | `transformDefinition()` — JSON → XState config |
 | `src/definition/create-machine.ts` | `createMachineFromDefinition()` |
 | `src/definition/validate-definition.ts` | `validateDefinition()` → `{ valid, errors, warnings }` |
@@ -494,8 +485,7 @@ registry, with definitions arriving at runtime and instances created on demand.
 
 ### Unit tests
 
-- `tests/unit/definition/expressions.test.ts` — `$ref` resolution, template resolution,
-  nested objects, missing paths, edge cases
+- `tests/unit/definition/desugar-input.test.ts` — `$ref`/`{{ }}` desugaring, `compileInput()` end-to-end
 - `tests/unit/definition/registry.test.ts` — creation, immutability, missing id
 - `tests/unit/definition/validate-definition.test.ts` — all validation checks, structured
   error output, warnings
@@ -539,4 +529,4 @@ registry, with definitions arriving at runtime and instances created on demand.
 | `AnyStateMachine` return type | Lose compile-time types, gain runtime flexibility. TypeScript-defined machines still get full type safety. |
 | Registry is per-app | One registry serves all machines. Avoids duplication and ensures consistent behavior across dynamic definitions. |
 | `validateDefinition()` returns vs throws | API callers need structured errors, not try/catch. `validateMachineForDurability()` still throws for the second pass. |
-| `$ref` + `{{ template }}` expressions | Two complementary forms: `$ref` preserves types for values, templates interpolate strings. Covers all practical needs without a full expression language. |
+| `@durable-machines/expr` expressions | Full expression language replaces `$ref`/`{{ }}`. Legacy syntax auto-desugared to expr AST at transform time. |

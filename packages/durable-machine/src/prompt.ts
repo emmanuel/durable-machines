@@ -1,5 +1,6 @@
 import type { PromptConfig } from "./types.js";
 import type { EffectConfig } from "./effects.js";
+import { compileInput } from "./definition/desugar-input.js";
 
 const META_KEY = "xstate-durable";
 
@@ -28,12 +29,16 @@ const META_KEY = "xstate-durable";
  * ```
  */
 export function prompt(config: PromptConfig, options?: { effects?: EffectConfig[] }) {
+  const hasEffects = options?.effects && options.effects.length > 0;
   return {
     meta: {
       [META_KEY]: {
         durable: true,
         prompt: config,
-        ...(options?.effects ? { effects: options.effects } : {}),
+        ...(hasEffects ? {
+          effects: options!.effects,
+          compiledEffects: options!.effects!.map((e) => compileInput(e)),
+        } : {}),
       },
     },
   } as const;

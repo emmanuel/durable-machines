@@ -52,7 +52,7 @@
     "FinalizingApplication": {
       "invoke": {
         "src": "finalizeApplication",
-        "input": { "$ref": "context.applicantId" },
+        "input": { "select": ["context", "applicantId"] },
         "onDone": "Finalized"
       }
     },

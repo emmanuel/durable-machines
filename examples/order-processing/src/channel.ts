@@ -2,7 +2,7 @@ import type {
   ChannelAdapter,
   SendPromptParams,
   ResolvePromptParams,
-} from "@durable-xstate/durable-machine";
+} from "@durable-machines/machine";
 
 /**
  * A minimal channel adapter that logs prompts and resolutions to the console.

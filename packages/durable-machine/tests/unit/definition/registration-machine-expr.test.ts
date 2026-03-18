@@ -3,7 +3,7 @@ import { initialTransition, transition } from "xstate";
 import { createMachineFromDefinition } from "../../../src/definition/create-machine.js";
 import { createImplementationRegistry } from "../../../src/definition/registry.js";
 import type { MachineDefinition } from "../../../src/definition/types.js";
-import { createBuiltinRegistry } from "@durable-xstate/expr";
+import { createBuiltinRegistry } from "@durable-machines/expr";
 
 describe("registration machine via expr definitions", () => {
   const testBuiltins = createBuiltinRegistry({
@@ -25,29 +25,31 @@ describe("registration machine via expr definitions", () => {
       },
       guards: {
         verbSatisfiesAU: {
-          let: {
-            current: { select: ["context", "aus", { param: "auId" }] },
-            score: { select: ["event", "score"] },
-            nextHasCompleted: { or: [
-              { select: ["current", "hasCompleted"] },
-              { eq: [{ param: "verbId" }, "http://adlnet.gov/expapi/verbs/completed"] },
-            ]},
-            nextHasPassed: { or: [
-              { select: ["current", "hasPassed"] },
-              { and: [
-                { eq: [{ param: "verbId" }, "http://adlnet.gov/expapi/verbs/passed"] },
-                { if: [{ isNull: { ref: "score" } }, true, { gte: [{ ref: "score" }, { param: "masteryScore" }] }] },
+          let: [
+            {
+              current: { select: ["context", "aus", { param: "auId" }] },
+              score: { select: ["event", "score"] },
+              nextHasCompleted: { or: [
+                { select: ["current", "hasCompleted"] },
+                { eq: [{ param: "verbId" }, "http://adlnet.gov/expapi/verbs/completed"] },
+              ]},
+              nextHasPassed: { or: [
+                { select: ["current", "hasPassed"] },
+                { and: [
+                  { eq: [{ param: "verbId" }, "http://adlnet.gov/expapi/verbs/passed"] },
+                  { if: [{ isNull: { ref: "score" } }, true, { gte: [{ ref: "score" }, { param: "masteryScore" }] }] },
+                ]},
+              ]},
+            },
+            { and: [
+              { eq: [{ select: ["event", "auId"] }, { param: "auId" }] },
+              { cond: [
+                [{ eq: [{ param: "moveOn" }, "Completed"] }, { ref: "nextHasCompleted" }],
+                [{ eq: [{ param: "moveOn" }, "Passed"] }, { ref: "nextHasPassed" }],
+                [true, false],
               ]},
             ]},
-          },
-          body: { and: [
-            { eq: [{ select: ["event", "auId"] }, { param: "auId" }] },
-            { cond: [
-              [{ eq: [{ param: "moveOn" }, "Completed"] }, { ref: "nextHasCompleted" }],
-              [{ eq: [{ param: "moveOn" }, "Passed"] }, { ref: "nextHasPassed" }],
-              [true, false],
-            ]},
-          ]},
+          ],
         },
       },
       actions: {
@@ -127,21 +129,23 @@ describe("registration machine via expr definitions", () => {
       },
       guards: {
         verbSatisfiesAU: {
-          let: {
-            current: { select: ["context", "aus", { param: "auId" }] },
-            score: { select: ["event", "score"] },
-            nextHasPassed: { or: [
-              { select: ["current", "hasPassed"] },
-              { and: [
-                { eq: [{ param: "verbId" }, "http://adlnet.gov/expapi/verbs/passed"] },
-                { if: [{ isNull: { ref: "score" } }, true, { gte: [{ ref: "score" }, { param: "masteryScore" }] }] },
+          let: [
+            {
+              current: { select: ["context", "aus", { param: "auId" }] },
+              score: { select: ["event", "score"] },
+              nextHasPassed: { or: [
+                { select: ["current", "hasPassed"] },
+                { and: [
+                  { eq: [{ param: "verbId" }, "http://adlnet.gov/expapi/verbs/passed"] },
+                  { if: [{ isNull: { ref: "score" } }, true, { gte: [{ ref: "score" }, { param: "masteryScore" }] }] },
+                ]},
               ]},
+            },
+            { and: [
+              { eq: [{ select: ["event", "auId"] }, { param: "auId" }] },
+              { ref: "nextHasPassed" },
             ]},
-          },
-          body: { and: [
-            { eq: [{ select: ["event", "auId"] }, { param: "auId" }] },
-            { ref: "nextHasPassed" },
-          ]},
+          ],
         },
       },
       actions: {

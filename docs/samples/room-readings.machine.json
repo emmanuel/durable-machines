@@ -51,7 +51,7 @@
     "GenerateReport": {
       "invoke": {
         "src": "produceReport",
-        "input": { "$ref": "context" },
+        "input": { "select": ["context"] },
         "onDone": {
           "target": "ConsumeReading",
           "actions": "resetReadings"

@@ -67,7 +67,7 @@ export function* walkStateNodes(
  *
  * @example
  * ```ts
- * import { validateMachineForDurability } from "@durable-xstate/durable-machine";
+ * import { validateMachineForDurability } from "@durable-machines/machine";
  *
  * try {
  *   validateMachineForDurability(myMachine);

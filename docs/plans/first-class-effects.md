@@ -36,7 +36,7 @@ merges `meta` via shallow Object.assign, a separate `effects()` spread would clo
 existing markers:
 
 ```ts
-import { durableState, prompt } from "@durable-xstate/durable-machine";
+import { durableState, prompt } from "@durable-machines/machine";
 
 const machine = createMachine({
   id: "order",

@@ -3,6 +3,7 @@ import { fromPromise } from "xstate";
 import { transformDefinition } from "../../../src/definition/transform.js";
 import { createImplementationRegistry } from "../../../src/definition/registry.js";
 import type { MachineDefinition } from "../../../src/definition/types.js";
+import { defaultBuiltins } from "@durable-machines/expr";
 
 const META_KEY = "xstate-durable";
 
@@ -108,7 +109,7 @@ describe("transformDefinition", () => {
         done: { type: "final" },
       },
     };
-    const config = transformDefinition(def, registry);
+    const config = transformDefinition(def, registry, defaultBuiltins);
     const states = config.states as Record<string, any>;
     const meta = states.asking.meta[META_KEY];
 
@@ -164,6 +165,30 @@ describe("transformDefinition", () => {
       total: 42,
       currency: "USD",
     });
+  });
+
+  it("transforms invoke.input with expr select", () => {
+    const def: MachineDefinition = {
+      id: "test",
+      initial: "processing",
+      states: {
+        processing: {
+          invoke: {
+            src: "processPayment",
+            input: { select: ["context", "total"] },
+            onDone: "done",
+            onError: "done",
+          },
+        },
+        done: { type: "final" },
+      },
+    };
+    const config = transformDefinition(def, registry);
+    const states = config.states as Record<string, any>;
+    const inputFn = states.processing.invoke.input;
+
+    expect(typeof inputFn).toBe("function");
+    expect(inputFn({ context: { total: 77 } })).toBe(77);
   });
 
   it("transforms invoke.onDone string shorthand to { target }", () => {
@@ -351,7 +376,7 @@ describe("transformDefinition", () => {
     expect(states.transient.always).toEqual({ target: "done" });
   });
 
-  it("includes effects in meta alongside durable", () => {
+  it("stores raw effects and compiled resolvers in meta", () => {
     const effects = [{ type: "webhook", url: "https://example.com" }];
     const def: MachineDefinition = {
       id: "test",
@@ -367,12 +392,18 @@ describe("transformDefinition", () => {
     };
     const config = transformDefinition(def, registry);
     const states = config.states as Record<string, any>;
+    const meta = states.waiting.meta[META_KEY];
 
-    expect(states.waiting.meta[META_KEY].durable).toBe(true);
-    expect(states.waiting.meta[META_KEY].effects).toEqual(effects);
+    expect(meta.durable).toBe(true);
+    // Raw effects preserved for validation/serialization
+    expect(meta.effects).toEqual(effects);
+    // Compiled resolvers for runtime
+    expect(meta.compiledEffects).toHaveLength(1);
+    expect(typeof meta.compiledEffects[0]).toBe("function");
+    expect(meta.compiledEffects[0]({ context: {} })).toEqual({ type: "webhook", url: "https://example.com" });
   });
 
-  it("preserves template expressions as raw strings in effects", () => {
+  it("compiles template expressions in effects as resolver functions", () => {
     const effects = [
       { type: "webhook", url: "https://example.com/{{ context.orderId }}" },
     ];
@@ -388,12 +419,18 @@ describe("transformDefinition", () => {
         done: { type: "final" },
       },
     };
-    const config = transformDefinition(def, registry);
+    const config = transformDefinition(def, registry, defaultBuiltins);
     const states = config.states as Record<string, any>;
+    const meta = states.waiting.meta[META_KEY];
 
-    expect(states.waiting.meta[META_KEY].effects[0].url).toBe(
-      "https://example.com/{{ context.orderId }}",
-    );
+    // Raw effects preserved
+    expect(meta.effects).toEqual(effects);
+    // Compiled resolvers resolve templates
+    expect(typeof meta.compiledEffects[0]).toBe("function");
+    expect(meta.compiledEffects[0]({ context: { orderId: "o-42" } })).toEqual({
+      type: "webhook",
+      url: "https://example.com/o-42",
+    });
   });
 
   it("includes effects-only meta without durable flag", () => {
@@ -415,9 +452,18 @@ describe("transformDefinition", () => {
     };
     const config = transformDefinition(def, registry);
     const states = config.states as Record<string, any>;
+    const meta = states.processing.meta[META_KEY];
 
     // effects alone don't set durable: true
-    expect(states.processing.meta[META_KEY].durable).toBeUndefined();
-    expect(states.processing.meta[META_KEY].effects).toEqual(effects);
+    expect(meta.durable).toBeUndefined();
+    // Raw effects preserved
+    expect(meta.effects).toEqual(effects);
+    // Compiled resolvers for runtime
+    expect(meta.compiledEffects).toHaveLength(1);
+    expect(typeof meta.compiledEffects[0]).toBe("function");
+    expect(meta.compiledEffects[0]({ context: {} })).toEqual({
+      type: "log",
+      message: "entered",
+    });
   });
 });

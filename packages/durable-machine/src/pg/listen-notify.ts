@@ -1,21 +1,27 @@
 import type { Pool, Client as PgClient } from "pg";
 
 export type ListenCallback = (machineName: string, instanceId: string, topic: string) => void;
+export type TaskCallback = (instanceId: string) => void;
 
 export interface ListenNotifyHandle {
-  startListening(callback: ListenCallback): Promise<void>;
+  startListening(eventCallback: ListenCallback, taskCallback?: TaskCallback): Promise<void>;
   stopListening(): Promise<void>;
 }
 
 /**
  * Creates a dedicated LISTEN/NOTIFY client (not from the pool) with
  * automatic reconnect using exponential backoff.
+ *
+ * Listens on two channels:
+ * - `machine_event`: fired when new events are inserted into event_log
+ * - `effect_pending`: fired when new tasks are inserted into effect_outbox
  */
 export function createListenNotify(pool: Pool, enabled: boolean): ListenNotifyHandle {
   let listenClient: PgClient | null = null;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let stopped = false;
-  let listenCallback: ListenCallback | null = null;
+  let eventCb: ListenCallback | null = null;
+  let taskCb: TaskCallback | null = null;
   let reconnectAttempt = 0;
   const MAX_RECONNECT_MS = 30_000;
 
@@ -32,17 +38,20 @@ export function createListenNotify(pool: Pool, enabled: boolean): ListenNotifyHa
       );
       await client.connect();
       await client.query("LISTEN machine_event");
+      await client.query("LISTEN effect_pending");
       reconnectAttempt = 0;
 
       listenClient = client as unknown as PgClient;
 
       client.on("notification", (msg: any) => {
-        if (msg.channel === "machine_event" && msg.payload && listenCallback) {
+        if (msg.channel === "machine_event" && msg.payload && eventCb) {
           const parts = msg.payload.split("::");
           if (parts.length < 2) return;
           const [machineName, instanceId, topic] = parts;
           if (!machineName || !instanceId) return;
-          listenCallback(machineName, instanceId, topic ?? "event");
+          eventCb(machineName, instanceId, topic ?? "event");
+        } else if (msg.channel === "effect_pending" && msg.payload && taskCb) {
+          taskCb(msg.payload);
         }
       });
 
@@ -66,14 +75,16 @@ export function createListenNotify(pool: Pool, enabled: boolean): ListenNotifyHa
   }
 
   return {
-    async startListening(callback: ListenCallback): Promise<void> {
-      listenCallback = callback;
+    async startListening(eventCallback: ListenCallback, taskCallback?: TaskCallback): Promise<void> {
+      eventCb = eventCallback;
+      taskCb = taskCallback ?? null;
       if (enabled) await connectListener();
     },
 
     async stopListening(): Promise<void> {
       stopped = true;
-      listenCallback = null;
+      eventCb = null;
+      taskCb = null;
       if (reconnectTimer) {
         clearTimeout(reconnectTimer);
         reconnectTimer = null;

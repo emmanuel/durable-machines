@@ -4,12 +4,12 @@ import {
   serializeMachineDefinition,
   computeStateDurations,
   detectActiveStep,
-} from "@durable-xstate/durable-machine";
+} from "@durable-machines/machine";
 import type {
   DurableMachine,
   DurableStateSnapshot,
   TransitionRecord,
-} from "@durable-xstate/durable-machine";
+} from "@durable-machines/machine";
 import type { MachineRegistry } from "../rest-types.js";
 import { getAvailableEvents, getAvailableEventSchemas } from "../hateoas.js";
 import { extractGraphData } from "./graph.js";
@@ -353,8 +353,8 @@ async function buildDetailData(
   machineId: string,
   instanceId: string,
   snapshot: DurableStateSnapshot,
-  steps: import("@durable-xstate/durable-machine").StepInfo[],
-  handle: import("@durable-xstate/durable-machine").DurableMachineHandle,
+  steps: import("@durable-machines/machine").StepInfo[],
+  handle: import("@durable-machines/machine").DurableMachineHandle,
   graphDirection: "RIGHT" | "DOWN",
 ): Promise<InstanceDetailData> {
   const definition = serializeMachineDefinition(durable.machine);
@@ -456,7 +456,7 @@ function extractVisitedStates(transitions: TransitionRecord[]): string[] {
 export function computeActiveSleep(
   graphData: GraphData,
   activeStates: string[],
-  stateDurations: import("@durable-xstate/durable-machine").StateDuration[],
+  stateDurations: import("@durable-machines/machine").StateDuration[],
 ): ActiveSleep | null {
   // Find after-edges whose source is an active state
   for (const edge of graphData.edges) {

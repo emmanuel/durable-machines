@@ -45,7 +45,7 @@ functionality.
 ```ts
 // rest-types.ts
 
-import type { DurableMachine } from "@durable-xstate/durable-machine";
+import type { DurableMachine } from "@durable-machines/machine";
 
 /** Map of machine name → DurableMachine instance */
 export type MachineRegistry = Map<string, DurableMachine>;
@@ -252,7 +252,7 @@ app.delete("/:machineId/instances/:instanceId", async (c) => {
 ```ts
 // hateoas.ts
 import type { AnyStateMachine } from "xstate";
-import type { DurableMachine, DurableStateSnapshot } from "@durable-xstate/durable-machine";
+import type { DurableMachine, DurableStateSnapshot } from "@durable-machines/machine";
 import type { HateoasLinks, StateResponse } from "./rest-types.js";
 
 /**
@@ -412,8 +412,8 @@ export function createRestApi(options: RestApiOptions): Hono {
 
 ```ts
 import { serve } from "@hono/node-server";
-import { createDurableMachine } from "@durable-xstate/durable-machine/pg";
-import { createRestApi } from "@durable-xstate/gateway";
+import { createDurableMachine } from "@durable-machines/machine/pg";
+import { createRestApi } from "@durable-machines/gateway";
 import { Pool } from "pg";
 import { orderMachine, ticketMachine } from "./machines.js";
 
@@ -432,8 +432,8 @@ serve({ fetch: app.fetch, port: 3000 });
 ### Usage example — CF Worker with DO backend
 
 ```ts
-import { createDurableMachine } from "@durable-xstate/cloudflare";
-import { createRestApi } from "@durable-xstate/gateway";
+import { createDurableMachine } from "@durable-machines/cloudflare";
+import { createRestApi } from "@durable-machines/gateway";
 import { orderMachine } from "./machines.js";
 
 export default {
@@ -507,7 +507,7 @@ app.onError((err, c) => {
 | File | Changes |
 |------|---------|
 | `packages/gateway/src/index.ts` | Re-export `createRestApi` and types |
-| `packages/gateway/package.json` | Add `@durable-xstate/durable-machine` as peer dependency |
+| `packages/gateway/package.json` | Add `@durable-machines/machine` as peer dependency |
 
 ## Tests
 

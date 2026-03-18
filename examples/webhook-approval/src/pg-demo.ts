@@ -3,7 +3,7 @@
  * and creates a recruiting-pipeline instance — all in one process.
  *
  * Usage:
- *   pnpm --filter @durable-xstate/example-webhook-approval pg:demo
+ *   pnpm --filter @durable-machines/example-webhook-approval pg:demo
  */
 
 import { execSync, fork } from "node:child_process";

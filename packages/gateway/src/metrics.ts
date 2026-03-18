@@ -22,7 +22,7 @@ export interface GatewayMetrics {
 export function createGatewayMetrics(): GatewayMetrics {
   const exporter = new PrometheusExporter({ preventServerStart: true });
   const provider = new MeterProvider({ readers: [exporter] });
-  const meter = provider.getMeter("durable-xstate.gateway");
+  const meter = provider.getMeter("durable-machines.gateway");
 
   const webhooksReceived = meter.createCounter(
     "webhook_gateway_received_total",

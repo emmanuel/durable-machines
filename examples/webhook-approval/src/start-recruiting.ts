@@ -1,5 +1,5 @@
-import { consoleChannel } from "@durable-xstate/durable-machine";
-import { parseWorkerConfig, createDBOSWorkerContext } from "@durable-xstate/worker/dbos";
+import { consoleChannel } from "@durable-machines/machine";
+import { parseWorkerConfig, createDBOSWorkerContext } from "@durable-machines/worker/dbos";
 import { recruitingPipeline } from "./recruiting-pipeline.js";
 
 const candidateName = process.argv[2] || "Jane Doe";

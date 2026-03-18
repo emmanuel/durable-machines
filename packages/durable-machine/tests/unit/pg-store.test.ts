@@ -269,13 +269,13 @@ describe("PgStore", () => {
     }
   });
 
-  // ── Invoke Results ────────────────────────────────────────────────────
+  // ── Step Cache ──────────────────────────────────────────────────────
 
-  it("recordInvokeResult + getInvokeResult round-trip", async () => {
+  it("setStepCache + getStepCache round-trip", async () => {
     const id = uuidv7();
     await store.createInstance({ id, machineName: "m1", stateValue: "idle", context: {}, input: null });
 
-    await store.recordInvokeResult({
+    await store.setStepCache({
       instanceId: id,
       stepKey: "invoke:processPayment",
       output: { chargeId: "ch_1" },
@@ -283,36 +283,41 @@ describe("PgStore", () => {
       completedAt: 2000,
     });
 
-    const result = await store.getInvokeResult(id, "invoke:processPayment");
+    const result = await store.getStepCache(id, "invoke:processPayment");
     expect(result).not.toBeNull();
     expect(result!.output).toMatchObject({ chargeId: "ch_1" });
     expect(result!.error).toBeNull();
   });
 
-  it("recordInvokeResult idempotent (ON CONFLICT DO NOTHING)", async () => {
+  it("setStepCache idempotent (ON CONFLICT DO NOTHING)", async () => {
     const id = uuidv7();
     await store.createInstance({ id, machineName: "m1", stateValue: "idle", context: {}, input: null });
 
-    await store.recordInvokeResult({ instanceId: id, stepKey: "step-1", output: { a: 1 } });
-    await store.recordInvokeResult({ instanceId: id, stepKey: "step-1", output: { a: 2 } });
+    await store.setStepCache({ instanceId: id, stepKey: "step-1", output: { a: 1 } });
+    await store.setStepCache({ instanceId: id, stepKey: "step-1", output: { a: 2 } });
 
-    const result = await store.getInvokeResult(id, "step-1");
+    const result = await store.getStepCache(id, "step-1");
     expect(result!.output).toMatchObject({ a: 1 });
   });
 
-  it("listInvokeResults returns StepInfo[]", async () => {
+  it("getInvokeSteps returns StepInfo[] from event_log", async () => {
     const id = uuidv7();
     await store.createInstance({ id, machineName: "m1", stateValue: "idle", context: {}, input: null });
 
-    await store.recordInvokeResult({ instanceId: id, stepKey: "invoke:a", output: { r: 1 }, startedAt: 100, completedAt: 200 });
-    await store.recordInvokeResult({ instanceId: id, stepKey: "invoke:b", output: { r: 2 }, startedAt: 300, completedAt: 400 });
+    // Insert done/error actor events into event_log
+    await store.appendEvent(id, { type: "xstate.done.actor.a", output: { r: 1 } });
+    await store.appendEvent(id, { type: "xstate.error.actor.b", error: "something failed" });
 
-    const steps = await store.listInvokeResults(id);
+    const steps = await store.getInvokeSteps(id);
     expect(steps).toHaveLength(2);
     expect(steps[0].name).toBe("invoke:a");
-    expect(steps[0].startedAtEpochMs).toBe(100);
-    expect(steps[0].completedAtEpochMs).toBe(200);
+    expect(steps[0].output).toMatchObject({ r: 1 });
+    expect(steps[0].error).toBeUndefined();
+    expect(steps[0].completedAtEpochMs).toBeTypeOf("number");
     expect(steps[1].name).toBe("invoke:b");
+    expect(steps[1].error).toBe("something failed");
+    expect(steps[1].output).toBeUndefined();
+    expect(steps[1].completedAtEpochMs).toBeTypeOf("number");
   });
 
   // ── Transition Log ────────────────────────────────────────────────────

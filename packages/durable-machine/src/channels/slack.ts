@@ -30,7 +30,7 @@ export interface SlackPromptHandle {
  *
  * @example
  * ```ts
- * import { slackChannel } from "@durable-xstate/durable-machine";
+ * import { slackChannel } from "@durable-machines/machine";
  *
  * const channel = slackChannel({
  *   botToken: process.env.SLACK_BOT_TOKEN!,

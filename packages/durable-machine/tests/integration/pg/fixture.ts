@@ -88,7 +88,7 @@ export function createPgFixture(opts?: {
   async function pollEffects(): Promise<void> {
     if (allEffectHandlers.size === 0) return;
     try {
-      const rows = await store.claimPendingEffects(50);
+      const rows = await store.claimPendingTasks(50);
       for (const row of rows) {
         const handler = allEffectHandlers.get(row.effectType);
         if (!handler) {

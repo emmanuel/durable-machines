@@ -1,6 +1,6 @@
 -- 001-multi-tenancy.sql
 --
--- Migrates an existing durable-xstate schema (TEXT PKs) to
+-- Migrates an existing durable-machines schema (TEXT PKs) to
 -- multi-tenant UUID-based schema with RLS.
 --
 -- Prerequisites:
@@ -47,8 +47,8 @@ CREATE TABLE IF NOT EXISTS tenants (
 INSERT INTO tenants (id, jwt_iss, jwt_aud, jwks_url, name, created_at, updated_at)
 VALUES (
   uuidv7(),
-  'urn:durable-xstate:default',
-  'urn:durable-xstate:default',
+  'urn:durable-machines:default',
+  'urn:durable-machines:default',
   'https://example.com/.well-known/jwks.json',
   'default',
   EXTRACT(EPOCH FROM NOW())::bigint * 1000,
@@ -62,7 +62,7 @@ ON CONFLICT (jwt_iss, jwt_aud) DO NOTHING;
 ALTER TABLE event_log       DROP CONSTRAINT IF EXISTS event_log_instance_id_fkey;
 ALTER TABLE transition_log  DROP CONSTRAINT IF EXISTS transition_log_instance_id_fkey;
 ALTER TABLE effect_outbox   DROP CONSTRAINT IF EXISTS effect_outbox_instance_id_fkey;
-ALTER TABLE invoke_results  DROP CONSTRAINT IF EXISTS invoke_results_instance_id_fkey;
+ALTER TABLE step_cache  DROP CONSTRAINT IF EXISTS step_cache_instance_id_fkey;
 
 -- Convert machine_instances.id from TEXT to UUID
 ALTER TABLE machine_instances
@@ -90,7 +90,7 @@ DO $$ BEGIN
   END IF;
 END $$;
 
-ALTER TABLE invoke_results
+ALTER TABLE step_cache
   ALTER COLUMN instance_id TYPE UUID USING instance_id::uuid;
 
 -- Re-add FKs with CASCADE
@@ -106,8 +106,8 @@ ALTER TABLE effect_outbox
   ADD CONSTRAINT effect_outbox_instance_id_fkey
   FOREIGN KEY (instance_id) REFERENCES machine_instances(id) ON DELETE CASCADE;
 
-ALTER TABLE invoke_results
-  ADD CONSTRAINT invoke_results_instance_id_fkey
+ALTER TABLE step_cache
+  ADD CONSTRAINT step_cache_instance_id_fkey
   FOREIGN KEY (instance_id) REFERENCES machine_instances(id) ON DELETE CASCADE;
 
 -- ── 5. Add tenant_id columns ────────────────────────────────────────────────
@@ -176,17 +176,17 @@ BEGIN
       SET DEFAULT current_setting('app.tenant_id', true)::uuid;
   END IF;
 
-  -- invoke_results
+  -- step_cache
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.columns
-    WHERE table_name = 'invoke_results' AND column_name = 'tenant_id'
+    WHERE table_name = 'step_cache' AND column_name = 'tenant_id'
   ) THEN
-    ALTER TABLE invoke_results ADD COLUMN tenant_id UUID;
-    UPDATE invoke_results r SET tenant_id = (
+    ALTER TABLE step_cache ADD COLUMN tenant_id UUID;
+    UPDATE step_cache r SET tenant_id = (
       SELECT tenant_id FROM machine_instances m WHERE m.id = r.instance_id
     );
-    ALTER TABLE invoke_results ALTER COLUMN tenant_id SET NOT NULL;
-    ALTER TABLE invoke_results ALTER COLUMN tenant_id
+    ALTER TABLE step_cache ALTER COLUMN tenant_id SET NOT NULL;
+    ALTER TABLE step_cache ALTER COLUMN tenant_id
       SET DEFAULT current_setting('app.tenant_id', true)::uuid;
   END IF;
 END $$;
@@ -197,7 +197,7 @@ CREATE INDEX IF NOT EXISTS idx_mi_tenant ON machine_instances (tenant_id);
 CREATE INDEX IF NOT EXISTS idx_el_tenant ON event_log (tenant_id);
 CREATE INDEX IF NOT EXISTS idx_tl_tenant ON transition_log (tenant_id);
 CREATE INDEX IF NOT EXISTS idx_eo_tenant ON effect_outbox (tenant_id);
-CREATE INDEX IF NOT EXISTS idx_ir_tenant ON invoke_results (tenant_id);
+CREATE INDEX IF NOT EXISTS idx_ir_tenant ON step_cache (tenant_id);
 
 -- ── 7. Roles and RLS ───────────────────────────────────────────────────────
 
@@ -267,16 +267,16 @@ DO $$ BEGIN
     CREATE POLICY admin_bypass ON effect_outbox FOR ALL TO dm_admin USING (true);
   END IF;
 
-  -- invoke_results
-  ALTER TABLE invoke_results ENABLE ROW LEVEL SECURITY;
-  ALTER TABLE invoke_results FORCE ROW LEVEL SECURITY;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'invoke_results' AND policyname = 'tenant_isolation') THEN
-    CREATE POLICY tenant_isolation ON invoke_results FOR ALL TO dm_tenant
+  -- step_cache
+  ALTER TABLE step_cache ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE step_cache FORCE ROW LEVEL SECURITY;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'step_cache' AND policyname = 'tenant_isolation') THEN
+    CREATE POLICY tenant_isolation ON step_cache FOR ALL TO dm_tenant
       USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
       WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'invoke_results' AND policyname = 'admin_bypass') THEN
-    CREATE POLICY admin_bypass ON invoke_results FOR ALL TO dm_admin USING (true);
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'step_cache' AND policyname = 'admin_bypass') THEN
+    CREATE POLICY admin_bypass ON step_cache FOR ALL TO dm_admin USING (true);
   END IF;
 END $$;
 

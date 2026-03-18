@@ -8,7 +8,7 @@ import { DurableMachineValidationError } from "../types.js";
 import {
   compileGuard, compileAction, createScope,
   type BuiltinRegistry, type ActionResult,
-} from "@durable-xstate/expr";
+} from "@durable-machines/expr";
 
 export interface ExprOptions {
   builtins?: BuiltinRegistry;
@@ -37,11 +37,11 @@ export function createMachineFromDefinition(
     throw new DurableMachineValidationError(result.errors);
   }
 
-  // 2. Transform JSON → XState config
-  const config = transformDefinition(definition, registry);
-
-  // 3. Compile expr guard/action definitions
+  // 2. Compile expr guard/action definitions
   const builtins = exprOptions?.builtins;
+
+  // 3. Transform JSON → XState config
+  const config = transformDefinition(definition, registry, builtins);
 
   const compiledGuards: Record<string, (...args: any[]) => boolean> = {};
   if (definition.guards) {

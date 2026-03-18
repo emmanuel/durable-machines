@@ -1,12 +1,12 @@
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import {
   createDurableMachine,
-} from "@durable-xstate/durable-machine/dbos";
+} from "@durable-machines/machine/dbos";
 import type {
   DurableMachine,
-} from "@durable-xstate/durable-machine";
-import { createAppContext } from "@durable-xstate/durable-machine";
-import type { AppContextBackend } from "@durable-xstate/durable-machine";
+} from "@durable-machines/machine";
+import { createAppContext } from "@durable-machines/machine";
+import type { AppContextBackend } from "@durable-machines/machine";
 import type { WorkerAppContext } from "../types.js";
 import {
   createWorkerContext,

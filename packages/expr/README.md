@@ -1,4 +1,4 @@
-# @durable-xstate/expr
+# @durable-machines/expr
 
 A JSON expression evaluator for serializable XState v5 machine logic. Expressions are plain JSON objects — no code strings, no `eval`, fully serializable and database-storable.
 
@@ -9,13 +9,13 @@ XState v5 machines use JavaScript functions for guards, actions, and assignments
 ## Install
 
 ```bash
-pnpm add @durable-xstate/expr
+pnpm add @durable-machines/expr
 ```
 
 ## Quick Start
 
 ```typescript
-import { evaluate, compile, createScope, defaultBuiltins } from "@durable-xstate/expr";
+import { evaluate, compile, createScope, defaultBuiltins } from "@durable-machines/expr";
 
 const scope = createScope({
   context: { count: 5, items: ["a", "b", "c"] },
@@ -80,7 +80,7 @@ See [EXPR_SPEC.md](./EXPR_SPEC.md) for the complete language specification.
 
 **Actions** as declarative transforms:
 ```typescript
-import { evaluateActions, createScope } from "@durable-xstate/expr";
+import { evaluateActions, createScope } from "@durable-machines/expr";
 
 const action = {
   type: "assign" as const,
@@ -99,7 +99,7 @@ const results = evaluateActions([action], createScope({ context: { count: 0 } })
 Register custom functions callable via `{ "fn": ["name", arg1, arg2] }`:
 
 ```typescript
-import { createBuiltinRegistry } from "@durable-xstate/expr";
+import { createBuiltinRegistry } from "@durable-machines/expr";
 
 const builtins = createBuiltinRegistry({
   clamp: (val, min, max) => Math.max(min as number, Math.min(max as number, val as number)),

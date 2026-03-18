@@ -6,6 +6,7 @@ export { defaultBuiltins, createBuiltinRegistry } from "./builtins.js";
 export { createScope } from "./types.js";
 export { compile } from "./compile.js";
 export { compileGuard, compileAction } from "./compile-actions.js";
+export { isExprOperator } from "./introspection.js";
 export type {
   Scope, Expr, Path, PathNavigator, Transform,
   ActionDef, AssignActionDef, EmitActionDef, RaiseActionDef,

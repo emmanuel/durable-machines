@@ -1,7 +1,6 @@
 import type { AnyStateMachine, AnyMachineSnapshot, AnyEventObject } from "xstate";
-import { getEffectsConfig } from "./effects.js";
+import { getCompiledEffects } from "./effects.js";
 import type { ResolvedEffect } from "./effects.js";
-import { resolveExpressions } from "./definition/expressions.js";
 
 /**
  * Executable action object shape returned by XState's `transition()`.
@@ -76,16 +75,13 @@ export function collectAndResolveEffects(
   const effects: ResolvedEffect[] = [];
 
   for (const node of enteredNodes) {
-    const configs = getEffectsConfig(node.meta);
-    if (!configs) continue;
+    const compiledEffects = getCompiledEffects(node.meta);
+    if (!compiledEffects) continue;
 
-    const scope = {
-      context: (nextSnapshot as any).context ?? {},
-      event,
-    };
+    const context = (nextSnapshot as any).context ?? {};
 
-    for (const config of configs) {
-      const resolved = resolveExpressions(config, scope) as ResolvedEffect;
+    for (const resolveEffect of compiledEffects) {
+      const resolved = resolveEffect({ context, event }) as ResolvedEffect;
       effects.push(resolved);
     }
   }

@@ -13,7 +13,7 @@
 import { z } from "zod";
 import type { Server } from "node:http";
 import type { AnyStateMachine } from "xstate";
-import type { DurableMachine } from "@durable-xstate/durable-machine";
+import type { DurableMachine } from "@durable-machines/machine";
 import type { WorkerAppContext } from "./types.js";
 import { createAdminServer } from "./admin.js";
 import { createWorkerMetrics, startTimer } from "./metrics.js";
@@ -67,7 +67,7 @@ export function parseWorkerConfig(
 export interface WorkerContextOptions {
   machines: Record<string, {
     machine: import("xstate").AnyStateMachine;
-    options?: import("@durable-xstate/durable-machine").DurableMachineOptions;
+    options?: import("@durable-machines/machine").DurableMachineOptions;
   }>;
   /** Pre-created metrics. If omitted and adminPort is set, created automatically. */
   metrics?: WorkerMetrics;

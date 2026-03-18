@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add tenant isolation to durable-xstate via PostgreSQL RLS, UUIDv7 IDs, and a proxy-pool `forTenant()` API.
+**Goal:** Add tenant isolation to durable-machines via PostgreSQL RLS, UUIDv7 IDs, and a proxy-pool `forTenant()` API.
 
 **Architecture:** All data tables gain a `tenant_id UUID` column with GUC-based DEFAULT. Three PG roles (`dm_app`, `dm_tenant`, `dm_admin`) control access via `FORCE ROW LEVEL SECURITY`. The store exposes `forTenant(id)` returning a scoped PgStore backed by a proxy pool that injects `SET LOCAL ROLE dm_tenant` + GUC per transaction.
 

@@ -22,7 +22,7 @@ export interface MachineDefinition {
   guards?: Record<string, unknown>;
   /**
    * Named action expressions. Each key is an action name referenced by transitions.
-   * Values are ActionDef objects from @durable-xstate/expr.
+   * Values are ActionDef objects from @durable-machines/expr.
    * At machine creation time, each expr is compiled into a closure.
    */
   actions?: Record<string, unknown>;
@@ -80,8 +80,8 @@ export interface InvokeDefinition {
   src: string;
   /** Invocation ID. Defaults to XState's auto-generated ID. */
   id?: string;
-  /** Static input or `$ref` expressions resolved at runtime. */
-  input?: Record<string, unknown> | { $ref: string };
+  /** Input expression — `$ref`, expr operator, or static value, resolved at runtime. */
+  input?: unknown;
   /** Transition on successful completion. String shorthand resolves to `{ target: "stateName" }`. */
   onDone?: TransitionDefinition | string;
   /** Transition on error. String shorthand resolves to `{ target: "stateName" }`. */

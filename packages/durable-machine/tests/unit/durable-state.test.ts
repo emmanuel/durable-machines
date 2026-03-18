@@ -11,10 +11,11 @@ describe("durableState()", () => {
   it("includes effects in meta when provided", () => {
     const effects = [{ type: "webhook", url: "https://example.com" }];
     const result = durableState({ effects });
-    expect(result.meta["xstate-durable"]).toEqual({
-      durable: true,
-      effects,
-    });
+    const meta = result.meta["xstate-durable"];
+    expect(meta.durable).toBe(true);
+    expect(meta.effects).toEqual(effects);
+    expect(meta.compiledEffects).toHaveLength(1);
+    expect(typeof meta.compiledEffects[0]).toBe("function");
   });
 
   it("omits effects key when not provided", () => {

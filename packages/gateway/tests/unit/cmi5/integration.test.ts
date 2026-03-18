@@ -3,7 +3,7 @@ import { createActor } from "xstate";
 import { createRegistrationDefinition } from "../../../src/cmi5/create-definition.js";
 import {
   createMachineFromDefinition, createImplementationRegistry, validateDefinition,
-} from "@durable-xstate/durable-machine";
+} from "@durable-machines/machine";
 import type { CourseStructure } from "../../../src/cmi5/types.js";
 
 // Deterministic builtins for testing

@@ -1,5 +1,5 @@
 {
-  "name": "@durable-xstate/expr",
+  "name": "@durable-machines/expr",
   "version": "0.1.0",
   "description": "JSON expression evaluator for serializable XState v5 machine logic",
   "type": "module",
@@ -28,7 +28,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/emmanuel/durable-xstate.git",
+    "url": "https://github.com/emmanuel/durable-machines.git",
     "directory": "packages/expr"
   },
   "author": "Emmanuel Gomez",

@@ -1,6 +1,6 @@
 # XState Machine-as-Data Samples
 
-Machine-as-data equivalents of real XState v5 examples, using the `@durable-xstate/expr` evaluator for guards and actions.
+Machine-as-data equivalents of real XState v5 examples, using the `@durable-machines/expr` evaluator for guards and actions.
 
 Each example has two files:
 - `*.xstate.json` — XState machine config snapshot (closures noted as `__closure:` or `__assign:` strings)
@@ -51,11 +51,11 @@ Each example has two files:
 | `at` array index access | tic-tac-toe |
 | `len` length | todomvc |
 | `ref` / `$index` bindings | tic-tac-toe, todomvc |
-| `fn` builtins | todomvc (`uuid`) |
+| `fn` builtins | todomvc (`uuid`), `str` (string concatenation) |
 | Named guards (`guards:` section) | All except toggle, donut-maker |
 | Named actions (`actions:` section) | All except toggle, donut-maker |
 | `invoke` with service reference | credit-check, applicant-request, book-lending, room-readings, trivia-game, check-inbox |
-| `invoke` with `$ref` input | credit-check, applicant-request, book-lending, room-readings |
+| `invoke` with `select` input | credit-check, applicant-request, book-lending, room-readings, college-application |
 | `invoke` with `object` input | check-inbox |
 | `append` transform | car-auction, todomvc |
 | `effects` on entry | purchase-order |
@@ -71,7 +71,7 @@ Each example has two files:
 
 ### `fromCallback` → `after` delayed transitions
 
-Several XState examples use `fromCallback` actors for periodic scheduling (timer ticks, polling intervals). In durable-xstate, this pattern maps to `after` delayed transitions that loop back to the same state:
+Several XState examples use `fromCallback` actors for periodic scheduling (timer ticks, polling intervals). In durable-machines, this pattern maps to `after` delayed transitions that loop back to the same state:
 
 ```json
 {
@@ -100,9 +100,26 @@ XState `fromPromise` actors become named service invocations. The runtime resolv
 
 Examples: credit-check, book-lending, trivia-game, check-inbox.
 
+### `invoke` with `select` input
+
+Pass context values to invoked actors using expr `select` paths:
+
+```json
+{
+  "invoke": {
+    "src": "processPayment",
+    "input": { "select": ["context", "customer"] },
+    "onDone": "paid",
+    "onError": "failed"
+  }
+}
+```
+
+Examples: credit-check, applicant-request, book-lending, room-readings, college-application.
+
 ## Operators Not Yet Demonstrated
 
-The following operators are implemented in `@durable-xstate/expr` but not yet used by any sample machine:
+The following operators are implemented in `@durable-machines/expr` but not yet used by any sample machine:
 
 | Operator | Description |
 |----------|-------------|

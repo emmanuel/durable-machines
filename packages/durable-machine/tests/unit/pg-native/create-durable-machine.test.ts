@@ -68,15 +68,21 @@ function createMockStore(): PgStore {
     lockAndPeekEvent: vi.fn(),
     lockAndPeekEvents: vi.fn(),
     getEventLog: vi.fn().mockResolvedValue([]),
-    getInvokeResult: vi.fn().mockResolvedValue(null),
-    recordInvokeResult: vi.fn(),
-    listInvokeResults: vi.fn().mockResolvedValue([]),
+    getStepCache: vi.fn().mockResolvedValue(null),
+    setStepCache: vi.fn(),
+    getInvokeSteps: vi.fn().mockResolvedValue([]),
     finalizeInstance: vi.fn(),
     finalizeWithTransition: vi.fn(),
     appendTransition: vi.fn(),
     getTransitions: vi.fn().mockResolvedValue([]),
     insertEffects: vi.fn(),
-    claimPendingEffects: vi.fn().mockResolvedValue([]),
+    queueInvokeTask: vi.fn(),
+    claimPendingTasks: vi.fn().mockResolvedValue([]),
+    checkInvokeEventExists: vi.fn().mockResolvedValue(false),
+    cancelInvokeTask: vi.fn(),
+    cancelInstanceInvokes: vi.fn(),
+    checkTaskStatus: vi.fn().mockResolvedValue(null),
+    appendEventWithKey: vi.fn().mockResolvedValue({ seq: 1 }),
     markEffectCompleted: vi.fn(),
     markEffectFailed: vi.fn(),
     listEffects: vi.fn().mockResolvedValue([]),
@@ -259,13 +265,13 @@ describe("createNativeDurableMachine", () => {
       await dm.start(TEST_WORKFLOW_ID, {});
 
       // handleInvocation checks for cached result (crash recovery)
-      expect(store.getInvokeResult).toHaveBeenCalledWith(
+      expect(store.getStepCache).toHaveBeenCalledWith(
         TEST_WORKFLOW_ID,
         "actor-1",
       );
 
       // handleInvocation records the invoke result
-      expect(store.recordInvokeResult).toHaveBeenCalledWith(
+      expect(store.setStepCache).toHaveBeenCalledWith(
         expect.objectContaining({
           instanceId: TEST_WORKFLOW_ID,
           stepKey: "actor-1",
@@ -428,13 +434,13 @@ describe("createNativeDurableMachine", () => {
       await dm.consumeAndProcess(TEST_WORKFLOW_ID);
 
       // handleInvocation was called (checks crash-recovery cache)
-      expect(store.getInvokeResult).toHaveBeenCalledWith(
+      expect(store.getStepCache).toHaveBeenCalledWith(
         TEST_WORKFLOW_ID,
         "step-x",
       );
 
       // handleInvocation recorded the result
-      expect(store.recordInvokeResult).toHaveBeenCalledWith(
+      expect(store.setStepCache).toHaveBeenCalledWith(
         expect.objectContaining({
           instanceId: TEST_WORKFLOW_ID,
           stepKey: "step-x",
@@ -630,7 +636,7 @@ describe("createNativeDurableMachine", () => {
       );
       await dm.start(TEST_WORKFLOW_ID, {});
 
-      expect(mockStore.recordInvokeResult).toHaveBeenCalledWith(
+      expect(mockStore.setStepCache).toHaveBeenCalledWith(
         expect.objectContaining({
           instanceId: TEST_WORKFLOW_ID,
           stepKey: "actor-ok",
@@ -667,7 +673,7 @@ describe("createNativeDurableMachine", () => {
       );
       await dm.start(TEST_WORKFLOW_ID, {});
 
-      expect(mockStore.recordInvokeResult).toHaveBeenCalledWith(
+      expect(mockStore.setStepCache).toHaveBeenCalledWith(
         expect.objectContaining({
           instanceId: TEST_WORKFLOW_ID,
           stepKey: "actor-err",
@@ -699,7 +705,7 @@ describe("createNativeDurableMachine", () => {
       );
       await dm.start(TEST_WORKFLOW_ID, {});
 
-      expect(mockStore.recordInvokeResult).toHaveBeenCalledWith(
+      expect(mockStore.setStepCache).toHaveBeenCalledWith(
         expect.objectContaining({
           error: { message: expect.stringContaining('No actor implementation for "unknownActor"') },
         }),
@@ -716,7 +722,7 @@ describe("createNativeDurableMachine", () => {
       );
       await dm.start(TEST_WORKFLOW_ID, {});
 
-      expect(mockStore.recordInvokeResult).toHaveBeenCalledWith(
+      expect(mockStore.setStepCache).toHaveBeenCalledWith(
         expect.objectContaining({
           error: { message: expect.stringContaining('No actor implementation for "anyActor"') },
         }),
@@ -740,7 +746,7 @@ describe("createNativeDurableMachine", () => {
       );
       await dm.start(TEST_WORKFLOW_ID, {});
 
-      expect(mockStore.recordInvokeResult).toHaveBeenCalledWith(
+      expect(mockStore.setStepCache).toHaveBeenCalledWith(
         expect.objectContaining({
           error: { message: expect.stringContaining("timed out after 50ms") },
         }),
@@ -766,7 +772,7 @@ describe("createNativeDurableMachine", () => {
       );
       await dm.start(TEST_WORKFLOW_ID, {});
 
-      expect(mockStore.recordInvokeResult).toHaveBeenCalledWith(
+      expect(mockStore.setStepCache).toHaveBeenCalledWith(
         expect.objectContaining({
           output: { doubled: { x: 1 } },
           error: null,
@@ -774,13 +780,13 @@ describe("createNativeDurableMachine", () => {
       );
     });
 
-    it("crash recovery — getInvokeResult returns cached → skips execution", async () => {
+    it("crash recovery — getStepCache returns cached → skips execution", async () => {
       const inv = { id: "actor-cached", src: "someActor", input: {} };
       const mockPool = makeInvocationPool(inv);
       const mockStore = createMockStore();
 
       // Simulate cached result
-      (mockStore.getInvokeResult as ReturnType<typeof vi.fn>).mockResolvedValue({
+      (mockStore.getStepCache as ReturnType<typeof vi.fn>).mockResolvedValue({
         output: "cached",
         error: null,
       });
@@ -798,7 +804,7 @@ describe("createNativeDurableMachine", () => {
       await dm.start(TEST_WORKFLOW_ID, {});
 
       // Should NOT record a new result (skipped execution)
-      expect(mockStore.recordInvokeResult).not.toHaveBeenCalled();
+      expect(mockStore.setStepCache).not.toHaveBeenCalled();
     });
   });
 

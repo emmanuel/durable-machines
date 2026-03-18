@@ -8,8 +8,8 @@ export { prompt, getPromptConfig, getPromptEvents } from "./prompt.js";
 // Schema-driven setup
 export { durableSetup, schemaToFormFields } from "./schema.js";
 export type { FieldSchema, ObjectFieldSchema, EventSchemaMap, ResolveEvents, ResolveFields } from "./schema.js";
-export { createEffectHandlerRegistry, createEffectHandlers, getEffectsConfig } from "./effects.js";
-export type { EffectConfig, ResolvedEffect, EffectHandler, EffectHandlerContext, EffectHandlerRegistry } from "./effects.js";
+export { createEffectHandlerRegistry, createEffectHandlers, getEffectsConfig, getCompiledEffects } from "./effects.js";
+export type { EffectConfig, ResolvedEffect, EffectHandler, EffectHandlerContext, EffectHandlerRegistry, CompiledEffectResolver } from "./effects.js";
 
 // Effect collector
 export { collectAndResolveEffects } from "./effect-collector.js";
@@ -50,6 +50,10 @@ export { emailChannel } from "./channels/email.js";
 export type { EmailChannelOptions, EmailPromptHandle, SendEmailParams } from "./channels/email.js";
 export { twilioSmsChannel } from "./channels/twilio-sms.js";
 export type { TwilioSmsChannelOptions, TwilioSmsPromptHandle } from "./channels/twilio-sms.js";
+
+// HTTP actor
+export { httpActor } from "./actors/http.js";
+export type { HttpActorInput, HttpActorOutput } from "./actors/http.js";
 
 // Definition (machine-as-data)
 export * from "./definition/index.js";

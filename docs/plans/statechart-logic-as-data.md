@@ -28,7 +28,7 @@ This unlocks:
 
 ### Why JS first
 
-- The existing durable-xstate Node.js runtime is production-ready
+- The existing durable-machines Node.js runtime is production-ready
 - The expression evaluator is small (~200 lines of JS)
 - Can validate the expression language design against real machines (the CMI5 registration machine) before committing to additional runtime implementations
 - The XState v5 conformance tests run in JS
@@ -444,7 +444,7 @@ The registration machine conditionally emits effects based on what just changed 
 
 This is idiomatic XState v5: `enqueueActions` is the only place where conditional action logic lives. `let` captures pre-transition snapshots. Plain actions (assign, unconditional emit) execute always. Guarded blocks (conditional emit) execute only when their guard passes. All entries evaluated in order — the assign runs first, then the guarded emit checks against the let-bound pre-transition value, then the unconditional emit fires.
 
-**Runtime integration (durable-xstate):**
+**Runtime integration (durable-machines):**
 
 ```ts
 const actor = createActor(machine, { snapshot });
@@ -592,7 +592,7 @@ Integrate the evaluator with XState v5's `setup()` / `createMachine()` pattern:
 - Drop-in replacement: machine configs with data expressions produce identical snapshots to equivalent host-code implementations
 - Conformance test: registration machine as data vs current host-code version
 
-### Phase 3: durable-xstate integration
+### Phase 3: durable-machines integration
 
 Wire the data-expression evaluator into the existing event processor:
 
@@ -652,7 +652,7 @@ Wrap the Rust evaluator as a PostgreSQL extension:
 
 ## Open Questions
 
-- **Naming:** What to call the expression evaluator package. `@durable-xstate/expr`? `statechart-expr`?
+- **Naming:** What to call the expression evaluator package. `@durable-machines/expr`? `statechart-expr`?
 - **Schema drift:** Machine config v1 produces state, then config v2 is deployed. Migration/compatibility story TBD.
 - **`where` navigator semantics:** When a `where` navigator matches zero elements, should `set` create the element or no-op?
 - **~~`let` scoping across actions:~~** ✅ Resolved: `let` on `enqueueActions` scopes across all entries. For transitions with multiple independent actions (not needing shared let bindings), use a plain action list. For transitions needing pre-transition capture + conditional logic, wrap in `enqueueActions` with `let`.

@@ -16,8 +16,11 @@ export interface Logger {
 /** Lifecycle status of a durable machine instance. */
 export type InstanceStatus = "running" | "done" | "error" | "cancelled";
 
-/** Execution status of a single effect in the transactional outbox. */
-export type EffectOutboxStatus = "pending" | "executing" | "completed" | "failed";
+/** Execution status of a single task in the transactional outbox. */
+export type EffectOutboxStatus = "pending" | "executing" | "completed" | "failed" | "cancelled";
+
+/** Discriminator for outbox task rows. */
+export type TaskKind = "effect" | "invoke";
 
 // ─── Durable State ──────────────────────────────────────────────────────────
 

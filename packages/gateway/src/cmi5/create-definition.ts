@@ -1,4 +1,4 @@
-import type { MachineDefinition, StateDefinition } from "@durable-xstate/durable-machine";
+import type { MachineDefinition, StateDefinition } from "@durable-machines/machine";
 import type { CourseStructure, BlockChild, AUDefinition, BlockDefinition } from "./types.js";
 import { buildGuards, buildAUActions, buildAssessmentActions, buildCompletionActions, buildSessionActions } from "./expr-builders.js";
 

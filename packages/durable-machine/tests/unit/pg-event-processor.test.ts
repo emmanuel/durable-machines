@@ -13,13 +13,21 @@ import type { PgStore, MachineRow } from "../../src/pg/store.js";
 
 function createMockStore(): PgStore & {
   instances: Map<string, MachineRow>;
-  invokeResults: Map<string, { output: unknown; error: unknown }>;
+  stepCache: Map<string, { output: unknown; error: unknown }>;
   transitions: Array<{ instanceId: string; from: unknown; to: unknown; event: string | null; ts: number }>;
   eventLog: Map<string, Array<{ seq: number; payload: unknown; topic: string; source: string | null; createdAt: number }>>;
   nextSeq: number;
+  queueInvokeTask: ReturnType<typeof vi.fn>;
+  cancelInvokeTask: ReturnType<typeof vi.fn>;
+  cancelInstanceInvokes: ReturnType<typeof vi.fn>;
+  checkTaskStatus: ReturnType<typeof vi.fn>;
+  appendEventWithKey: ReturnType<typeof vi.fn>;
+  checkInvokeEventExists: ReturnType<typeof vi.fn>;
+  getInvokeSteps: ReturnType<typeof vi.fn>;
+  claimPendingTasks: ReturnType<typeof vi.fn>;
 } {
   const instances = new Map<string, MachineRow>();
-  const invokeResults = new Map<string, { output: unknown; error: unknown }>();
+  const stepCache = new Map<string, { output: unknown; error: unknown }>();
   const transitions: Array<{ instanceId: string; from: unknown; to: unknown; event: string | null; ts: number }> = [];
   const eventLog = new Map<string, Array<{ seq: number; payload: unknown; topic: string; source: string | null; createdAt: number }>>();
   let nextSeq = 1;
@@ -29,15 +37,25 @@ function createMockStore(): PgStore & {
     release: vi.fn(),
   };
 
+  const queueInvokeTask = vi.fn().mockResolvedValue(undefined);
+  const cancelInvokeTask = vi.fn().mockResolvedValue(undefined);
+  const cancelInstanceInvokes = vi.fn().mockResolvedValue(undefined);
+  const checkTaskStatus = vi.fn().mockResolvedValue(null);
+  const appendEventWithKey = vi.fn().mockResolvedValue(null);
+  const checkInvokeEventExists = vi.fn().mockResolvedValue(false);
+  const getInvokeSteps = vi.fn().mockResolvedValue([]);
+  const claimPendingTasks = vi.fn().mockResolvedValue([]);
+
   const store: any = {
     instances,
-    invokeResults,
+    stepCache,
     transitions,
     eventLog,
     get nextSeq() { return nextSeq; },
     withTransaction: async (fn: any) => fn(mockClient),
 
     async ensureSchema() {},
+    async ensureRoles() {},
 
     async createInstance(params: {
       id: string;
@@ -54,6 +72,7 @@ function createMockStore(): PgStore & {
       const now = Date.now();
       instances.set(id, {
         id,
+        tenantId: "default",
         machineName,
         stateValue: stateValue as any,
         context,
@@ -141,11 +160,11 @@ function createMockStore(): PgStore & {
       return entries;
     },
 
-    async getInvokeResult(instanceId: string, stepKey: string) {
-      return invokeResults.get(`${instanceId}:${stepKey}`) ?? null;
+    async getStepCache(instanceId: string, stepKey: string) {
+      return stepCache.get(`${instanceId}:${stepKey}`) ?? null;
     },
 
-    async recordInvokeResult(params: {
+    async setStepCache(params: {
       instanceId: string;
       stepKey: string;
       output: unknown;
@@ -153,24 +172,27 @@ function createMockStore(): PgStore & {
     }) {
       const { instanceId, stepKey, output, error } = params;
       const key = `${instanceId}:${stepKey}`;
-      if (!invokeResults.has(key)) {
-        invokeResults.set(key, { output, error: error ?? null });
+      if (!stepCache.has(key)) {
+        stepCache.set(key, { output, error: error ?? null });
       }
     },
 
-    async listInvokeResults(instanceId: string) {
-      const results: any[] = [];
-      for (const [key, val] of invokeResults) {
-        if (key.startsWith(`${instanceId}:`)) {
-          results.push({
-            name: key.slice(instanceId.length + 1),
-            output: val.output,
-            error: val.error,
-          });
-        }
-      }
-      return results;
-    },
+    // Task queue methods
+    queueInvokeTask,
+    cancelInvokeTask,
+    cancelInstanceInvokes,
+    checkTaskStatus,
+    appendEventWithKey,
+    checkInvokeEventExists,
+    getInvokeSteps,
+    claimPendingTasks,
+
+    // Effect outbox stubs
+    async insertEffects() {},
+    async markEffectCompleted() {},
+    async markEffectFailed() {},
+    async listEffects() { return []; },
+    async resetStaleEffects() { return 0; },
 
     async finalizeInstance(params: {
       client: any; instanceId: string;
@@ -213,7 +235,7 @@ function createMockStore(): PgStore & {
       transitions.push({ instanceId, from: fromState, to: toState, event, ts });
     },
 
-    async appendTransition(instanceId: string, from: unknown, to: unknown, event: string | null, ts: number, _contextSnapshot?: Record<string, unknown> | null) {
+    async appendTransition(instanceId: string, from: unknown, to: unknown, event: string | null, ts: number, _contextSnapshot?: Record<string, unknown> | null, _tenantId?: string) {
       transitions.push({ instanceId, from, to, event, ts });
     },
 
@@ -223,9 +245,17 @@ function createMockStore(): PgStore & {
         .map((t) => ({ from: t.from, to: t.to, event: t.event, ts: t.ts }));
     },
 
+    // Analytics stubs
+    async getStateDurations() { return []; },
+    async getAggregateStateDurations() { return []; },
+    async getTransitionCounts() { return []; },
+    async getInstanceSummaries() { return []; },
+
     async startListening() {},
     async stopListening() {},
     async close() {},
+
+    forTenant() { return store; },
   };
 
   return store;
@@ -405,7 +435,7 @@ describe("PG Event Processor", () => {
       expect(row!.status).toBe("running");
     });
 
-    it("executes invocations inline during startup", async () => {
+    it("parks in invoke state and queues task during startup", async () => {
       // A machine that starts in an invoke state
       const autoInvokeMachine = setup({
         types: {
@@ -443,9 +473,16 @@ describe("PG Event Processor", () => {
 
       await processStartup(deps, "startup-inv", {});
 
+      // State should be parked in the invoke state, NOT the post-invoke state
       const row = store.instances.get("startup-inv");
-      expect(row!.stateValue).toBe("done");
-      expect(row!.context).toMatchObject({ result: "auto" });
+      expect(row!.stateValue).toBe("working");
+      expect(row!.status).toBe("running");
+
+      // queueInvokeTask should have been called
+      expect(store.queueInvokeTask).toHaveBeenCalledTimes(1);
+      const call = store.queueInvokeTask.mock.calls[0][0];
+      expect(call.instanceId).toBe("startup-inv");
+      expect(call.invokeSrc).toBe("autoWork");
     });
 
     it("records transition when enableAnalytics is true", async () => {
@@ -482,7 +519,7 @@ describe("PG Event Processor", () => {
       expect(row!.status).toBe("done");
     });
 
-    it("executes invocation and transitions on done", async () => {
+    it("parks in invoke state and queues task on transition to invoke", async () => {
       const deps: EventProcessorOptions = {
         store,
         machine: invokeMachine,
@@ -494,12 +531,19 @@ describe("PG Event Processor", () => {
 
       await processBatchFromLog(deps, "evt-inv", 1);
 
+      // State should be parked in the invoke state
       const row = store.instances.get("evt-inv");
-      expect(row!.stateValue).toBe("complete");
-      expect(row!.context).toMatchObject({ result: "worked" });
+      expect(row!.stateValue).toBe("working");
+      expect(row!.status).toBe("running");
+
+      // queueInvokeTask should have been called
+      expect(store.queueInvokeTask).toHaveBeenCalledTimes(1);
+      const call = store.queueInvokeTask.mock.calls[0][0];
+      expect(call.instanceId).toBe("evt-inv");
+      expect(call.invokeSrc).toBe("doWork");
     });
 
-    it("captures invocation error and transitions on error", async () => {
+    it("parks in invoke state and queues task for failing invoke machine", async () => {
       const deps: EventProcessorOptions = {
         store,
         machine: failingInvokeMachine,
@@ -511,12 +555,22 @@ describe("PG Event Processor", () => {
 
       await processBatchFromLog(deps, "evt-err", 1);
 
+      // State should be parked in the invoke state (actual failure
+      // happens asynchronously when the task executor runs)
       const row = store.instances.get("evt-err");
-      expect(row!.stateValue).toBe("failed");
-      expect(row!.context).toMatchObject({ error: "caught" });
+      expect(row!.stateValue).toBe("working");
+      expect(row!.status).toBe("running");
+
+      // queueInvokeTask should have been called
+      expect(store.queueInvokeTask).toHaveBeenCalledTimes(1);
+      const call = store.queueInvokeTask.mock.calls[0][0];
+      expect(call.instanceId).toBe("evt-err");
+      expect(call.invokeSrc).toBe("failWork");
     });
 
-    it("skips invocation when cached result exists", async () => {
+    it("queues invoke task regardless of cached results", async () => {
+      // In the new architecture, invocations are never executed inline.
+      // The event processor always parks and queues a task.
       const deps: EventProcessorOptions = {
         store,
         machine: invokeMachine,
@@ -524,19 +578,16 @@ describe("PG Event Processor", () => {
       };
 
       await processStartup(deps, "evt-cache", {});
-
-      // Pre-cache the invoke result
-      store.invokeResults.set(`evt-cache:invoke:doWork`, {
-        output: { result: "cached" },
-        error: null,
-      });
-
       await store.appendEvent("evt-cache", { type: "START" });
       await processBatchFromLog(deps, "evt-cache", 1);
 
+      // State is parked in the invoke state
       const row = store.instances.get("evt-cache");
-      expect(row!.stateValue).toBe("complete");
-      expect(row!.context).toMatchObject({ result: "cached" });
+      expect(row!.stateValue).toBe("working");
+      expect(row!.status).toBe("running");
+
+      // queueInvokeTask was called
+      expect(store.queueInvokeTask).toHaveBeenCalledTimes(1);
     });
 
     it("sends prompt on entry to prompt state", async () => {
@@ -611,9 +662,10 @@ describe("PG Event Processor", () => {
       expect(row!.eventCursor).toBe(seq);
     });
 
-    it("does not persist final state when cancelled during invocation", async () => {
-      // Use a slow invocation to simulate cancellation during execution
-      const slowMachine = setup({
+    it("parks in invoke state and queues task instead of executing inline", async () => {
+      // In the new architecture, invocations are never executed inline.
+      // Cancellation is handled by cancelInvokeTask, not during inline execution.
+      const invokeMachineForCancel = setup({
         types: {
           context: {} as { result?: string },
           events: {} as { type: "START" },
@@ -621,9 +673,6 @@ describe("PG Event Processor", () => {
         },
         actors: {
           slowWork: fromPromise(async () => {
-            // During this invocation, we'll set status to cancelled
-            const inst = store.instances.get("evt-cancel");
-            if (inst) inst.status = "cancelled";
             return { result: "done" };
           }),
         },
@@ -654,7 +703,7 @@ describe("PG Event Processor", () => {
 
       const deps: EventProcessorOptions = {
         store,
-        machine: slowMachine,
+        machine: invokeMachineForCancel,
         options: {},
       };
 
@@ -663,56 +712,16 @@ describe("PG Event Processor", () => {
       await processBatchFromLog(deps, "evt-cancel", 1);
 
       const row = store.instances.get("evt-cancel");
-      // Should stay cancelled — final state should not be persisted
-      expect(row!.status).toBe("cancelled");
+      // Machine parks in the invoke state and queues a task
       expect(row!.stateValue).toBe("working");
+      expect(row!.status).toBe("running");
+      expect(store.queueInvokeTask).toHaveBeenCalledTimes(1);
     });
 
-    it("persists intermediate invoking state before executing invocation", async () => {
-      let stateValueDuringInvoke: unknown;
-
-      const spyMachine = setup({
-        types: {
-          context: {} as { result?: string },
-          events: {} as { type: "START" },
-          input: {} as Record<string, never>,
-        },
-        actors: {
-          spyWork: fromPromise(async () => {
-            // Capture the persisted state during invocation
-            const inst = store.instances.get("evt-spy");
-            stateValueDuringInvoke = inst?.stateValue;
-            return { result: "spied" };
-          }),
-        },
-      }).createMachine({
-        id: "spyInvoke",
-        initial: "waiting",
-        context: {},
-        states: {
-          waiting: {
-            ...durableState(),
-            on: { START: "working" },
-          },
-          working: {
-            invoke: {
-              src: "spyWork",
-              input: () => ({}),
-              onDone: {
-                target: "complete",
-                actions: assign({ result: ({ event }) => (event.output as any).result }),
-              },
-              onError: "failed",
-            },
-          },
-          complete: { type: "final" },
-          failed: { type: "final" },
-        },
-      });
-
+    it("persists invoke state and queues task in the same transaction", async () => {
       const deps: EventProcessorOptions = {
         store,
-        machine: spyMachine,
+        machine: invokeMachine,
         options: {},
       };
 
@@ -720,58 +729,23 @@ describe("PG Event Processor", () => {
       await store.appendEvent("evt-spy", { type: "START" });
       await processBatchFromLog(deps, "evt-spy", 1);
 
-      // During invocation, state should have been persisted as "working"
-      expect(stateValueDuringInvoke).toBe("working");
-      // After completion, final state should be "complete"
+      // State is persisted as the invoke state "working"
       const row = store.instances.get("evt-spy");
-      expect(row!.stateValue).toBe("complete");
-      expect(row!.status).toBe("done");
+      expect(row!.stateValue).toBe("working");
+      expect(row!.status).toBe("running");
+
+      // queueInvokeTask was called to schedule the invocation
+      expect(store.queueInvokeTask).toHaveBeenCalledTimes(1);
+      const call = store.queueInvokeTask.mock.calls[0][0];
+      expect(call.instanceId).toBe("evt-spy");
+      expect(call.invokeSrc).toBe("doWork");
+      expect(call.stateValue).toBe("working");
     });
 
-    it("does not advance cursor in Txn 1 when invocation is detected", async () => {
-      let cursorDuringInvoke: number | undefined;
-
-      const cursorSpyMachine = setup({
-        types: {
-          context: {} as { result?: string },
-          events: {} as { type: "START" },
-          input: {} as Record<string, never>,
-        },
-        actors: {
-          cursorWork: fromPromise(async () => {
-            const inst = store.instances.get("evt-cursor-inv");
-            cursorDuringInvoke = inst?.eventCursor;
-            return { result: "ok" };
-          }),
-        },
-      }).createMachine({
-        id: "cursorInvoke",
-        initial: "waiting",
-        context: {},
-        states: {
-          waiting: {
-            ...durableState(),
-            on: { START: "working" },
-          },
-          working: {
-            invoke: {
-              src: "cursorWork",
-              input: () => ({}),
-              onDone: {
-                target: "complete",
-                actions: assign({ result: ({ event }) => (event.output as any).result }),
-              },
-              onError: "failed",
-            },
-          },
-          complete: { type: "final" },
-          failed: { type: "final" },
-        },
-      });
-
+    it("advances cursor to the event that caused the invoke state", async () => {
       const deps: EventProcessorOptions = {
         store,
-        machine: cursorSpyMachine,
+        machine: invokeMachine,
         options: {},
       };
 
@@ -779,11 +753,13 @@ describe("PG Event Processor", () => {
       const { seq } = await store.appendEvent("evt-cursor-inv", { type: "START" });
       await processBatchFromLog(deps, "evt-cursor-inv", 1);
 
-      // During invocation, cursor should NOT have been advanced
-      expect(cursorDuringInvoke).toBe(0);
-      // After completion, cursor should be advanced
+      // Cursor advances to the event that caused the transition to the invoke state
       const row = store.instances.get("evt-cursor-inv");
       expect(row!.eventCursor).toBe(seq);
+      // State is parked in the invoke state
+      expect(row!.stateValue).toBe("working");
+      // Task was queued
+      expect(store.queueInvokeTask).toHaveBeenCalledTimes(1);
     });
 
     it("fires correct after event via event log", async () => {

@@ -6,7 +6,7 @@ import type {
   DurableStateSnapshot,
   StepInfo,
   TransitionRecord,
-} from "@durable-xstate/durable-machine";
+} from "@durable-machines/machine";
 
 // ── Mock Factories ──────────────────────────────────────────────────────────
 

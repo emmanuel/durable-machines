@@ -28,18 +28,18 @@ jobs:
       postgres:
         image: postgres:17
         env:
-          POSTGRES_USER: durable_xstate
-          POSTGRES_PASSWORD: durable_xstate
-          POSTGRES_DB: durable_xstate_test
+          POSTGRES_USER: durable_machines
+          POSTGRES_PASSWORD: durable_machines
+          POSTGRES_DB: durable_machines_test
         ports:
           - 5442:5432
         options: >-
-          --health-cmd "pg_isready -U durable_xstate"
+          --health-cmd "pg_isready -U durable_machines"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
     env:
-      PG_TEST_DATABASE_URL: postgresql://durable_xstate:durable_xstate@localhost:5442/durable_xstate_test
+      PG_TEST_DATABASE_URL: postgresql://durable_machines:durable_machines@localhost:5442/durable_machines_test
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-pnpm

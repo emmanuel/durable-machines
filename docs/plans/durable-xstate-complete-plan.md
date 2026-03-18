@@ -1,4 +1,4 @@
-# `durable-xstate` — Complete Design & Implementation Plan
+# `durable-machines` — Complete Design & Implementation Plan
 
 > Durable XState v5 state machines powered by DBOS Transact.
 > Write standard XState machines. Mark your wait points. Get durability for free.
@@ -39,7 +39,7 @@ The two are complementary at a deep level: XState's clean separation of pure log
 
 ```ts
 import { setup, assign, fromPromise } from "xstate";
-import { createDurableMachine, durableState } from "@durable-xstate/durable-machine";
+import { createDurableMachine, durableState } from "@durable-machines/machine";
 
 const orderMachine = setup({ /* normal XState setup */ }).createMachine({
   id: "order",
@@ -703,10 +703,10 @@ Two things mean a pod needs to be running:
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
-  name: durable-xstate-machines
+  name: durable-machines-machines
 spec:
   scaleTargetRef:
-    name: durable-xstate-worker
+    name: durable-machines-worker
   minReplicaCount: 0
   maxReplicaCount: 10
   pollingInterval: 15
@@ -808,7 +808,7 @@ DBOS Conductor solves this in hosted deployments. For self-hosted, we build the 
 One table:
 
 ```sql
-CREATE TABLE IF NOT EXISTS durable_xstate_executors (
+CREATE TABLE IF NOT EXISTS durable_machines_executors (
   executor_id    TEXT PRIMARY KEY,
   last_heartbeat TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   started_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -823,10 +823,10 @@ Two background loops per executor:
 
 ```sql
 WITH reaper_lock AS (
-  SELECT pg_try_advisory_xact_lock(hashtext('durable-xstate-reaper')) AS acquired
+  SELECT pg_try_advisory_xact_lock(hashtext('durable-machines-reaper')) AS acquired
 ),
 dead AS (
-  DELETE FROM durable_xstate_executors
+  DELETE FROM durable_machines_executors
   WHERE last_heartbeat < NOW() - INTERVAL '30 seconds'
     AND (SELECT acquired FROM reaper_lock)
   RETURNING executor_id
@@ -837,7 +837,7 @@ orphaned_executors AS (
   WHERE ws.status = 'PENDING' AND ws.name LIKE 'xstate:%'
     AND ws.executor_id != $MY_EXECUTOR_ID
     AND NOT EXISTS (
-      SELECT 1 FROM durable_xstate_executors xe WHERE xe.executor_id = ws.executor_id
+      SELECT 1 FROM durable_machines_executors xe WHERE xe.executor_id = ws.executor_id
     )
 )
 UPDATE dbos.workflow_status
@@ -1065,7 +1065,7 @@ The machine declares *what* it needs from the human. A channel adapter decides *
 **The `prompt()` helper** — sets XState metadata, just like `durableState()`:
 
 ```ts
-import { prompt, durableState } from "@durable-xstate/durable-machine";
+import { prompt, durableState } from "@durable-machines/machine";
 
 waitingForApproval: {
   ...durableState(),
@@ -1375,7 +1375,7 @@ function validateMachineForDurability(machine: AnyStateMachine): void {
 ## 18. File Structure
 
 ```
-durable-xstate/
+durable-machines/
 ├── src/
 │   ├── index.ts                    # public exports
 │   ├── create-durable-machine.ts   # createDurableMachine() entry point
@@ -1413,7 +1413,7 @@ durable-xstate/
 ├── adapters/
 │   └── keda.ts                     # KEDA manifest generator (~50 lines)
 ├── migrations/
-│   └── 001_executors.sql           # CREATE TABLE durable_xstate_executors
+│   └── 001_executors.sql           # CREATE TABLE durable_machines_executors
 ├── tests/
 │   ├── unit/
 │   │   ├── machine-logic.test.ts   # pure XState transition tests

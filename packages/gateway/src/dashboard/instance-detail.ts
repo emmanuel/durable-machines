@@ -2,7 +2,7 @@ import type {
   DurableStateSnapshot,
   StepInfo,
   EffectStatus,
-} from "@durable-xstate/durable-machine";
+} from "@durable-machines/machine";
 import { esc, statusBadge, layout } from "./html.js";
 import { renderActivityFeed } from "./activity-feed.js";
 import type { InstanceDetailData } from "./types.js";

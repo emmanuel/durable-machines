@@ -1,5 +1,5 @@
 import { fromPromise, assign } from "xstate";
-import { durableSetup, durableState, prompt } from "@durable-xstate/durable-machine";
+import { durableSetup, durableState, prompt } from "@durable-machines/machine";
 
 // ─── Simulated async actors ────────────────────────────────────────────────
 

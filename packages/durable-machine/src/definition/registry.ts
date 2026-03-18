@@ -1,4 +1,5 @@
 import type { AnyActorLogic } from "xstate";
+import { httpActor } from "../actors/http.js";
 
 /** A frozen collection of named implementations for use with JSON machine definitions. */
 export interface ImplementationRegistry {
@@ -24,7 +25,7 @@ export function createImplementationRegistry(config: {
 }): ImplementationRegistry {
   return Object.freeze({
     id: config.id,
-    actors: Object.freeze({ ...config.actors }),
+    actors: Object.freeze({ http: httpActor, ...config.actors }),
     guards: Object.freeze({ ...config.guards }),
     actions: Object.freeze({ ...config.actions }),
     delays: Object.freeze({ ...config.delays }),

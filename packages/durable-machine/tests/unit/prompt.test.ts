@@ -25,11 +25,12 @@ describe("prompt()", () => {
     };
     const effects = [{ type: "webhook", url: "https://example.com" }];
     const result = prompt(config, { effects });
-    expect(result.meta["xstate-durable"]).toEqual({
-      durable: true,
-      prompt: config,
-      effects,
-    });
+    const meta = result.meta["xstate-durable"];
+    expect(meta.durable).toBe(true);
+    expect(meta.prompt).toEqual(config);
+    expect(meta.effects).toEqual(effects);
+    expect(meta.compiledEffects).toHaveLength(1);
+    expect(typeof meta.compiledEffects[0]).toBe("function");
   });
 
   it("omits effects when not provided", () => {

@@ -32,7 +32,7 @@ export function startTimer(
 export function createWorkerMetrics(): WorkerMetrics {
   const exporter = new PrometheusExporter({ preventServerStart: true });
   const provider = new MeterProvider({ readers: [exporter] });
-  const meter = provider.getMeter("durable-xstate.worker");
+  const meter = provider.getMeter("durable-machines.worker");
 
   const machineRegistrationDuration = meter.createHistogram(
     "worker_machine_registration_duration_seconds",

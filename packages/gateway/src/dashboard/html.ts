@@ -2,7 +2,7 @@ import type {
   DurableMachineStatus,
   FormField,
   SerializedMachine,
-} from "@durable-xstate/durable-machine";
+} from "@durable-machines/machine";
 import { CSS } from "./styles.js";
 import { CLIENT_JS } from "./client.js";
 import type { LayoutOptions, MachineListItem } from "./types.js";

@@ -1,4 +1,4 @@
-import type { DurableMachine, InstanceStatus } from "@durable-xstate/durable-machine";
+import type { DurableMachine, InstanceStatus } from "@durable-machines/machine";
 import type { MiddlewareHandler } from "hono";
 
 /** Map of machine name → DurableMachine instance. */

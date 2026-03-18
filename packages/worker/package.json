@@ -1,5 +1,5 @@
 {
-  "name": "@durable-xstate/worker",
+  "name": "@durable-machines/worker",
   "version": "0.2.0",
   "description": "Worker process lifecycle for durable XState machines",
   "type": "module",
@@ -44,16 +44,16 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/emmanuel/durable-xstate.git",
+    "url": "https://github.com/emmanuel/durable-machines.git",
     "directory": "packages/worker"
   },
-  "homepage": "https://github.com/emmanuel/durable-xstate/tree/main/packages/worker",
+  "homepage": "https://github.com/emmanuel/durable-machines/tree/main/packages/worker",
   "bugs": {
-    "url": "https://github.com/emmanuel/durable-xstate/issues"
+    "url": "https://github.com/emmanuel/durable-machines/issues"
   },
   "author": "Emmanuel Gomez",
   "dependencies": {
-    "@durable-xstate/durable-machine": "workspace:*",
+    "@durable-machines/machine": "workspace:*",
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/exporter-prometheus": "^0.213.0",
     "@opentelemetry/sdk-metrics": "^2.6.0",

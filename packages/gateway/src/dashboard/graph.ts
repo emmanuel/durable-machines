@@ -1,4 +1,4 @@
-import type { SerializedMachine, SerializedStateNode } from "@durable-xstate/durable-machine";
+import type { SerializedMachine, SerializedStateNode } from "@durable-machines/machine";
 
 /** A node in the graph layout input. */
 export interface GraphNode {

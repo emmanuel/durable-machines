@@ -1,8 +1,14 @@
 import type { Pool, PoolClient } from "pg";
 import type { StateValue } from "xstate";
-import type { StepInfo, TransitionRecord, InstanceStatus, EffectOutboxStatus } from "../types.js";
+import type { StepInfo, TransitionRecord, InstanceStatus, EffectOutboxStatus, TaskKind } from "../types.js";
 import type { ResolvedEffect } from "../effects.js";
 import type { StoreInstruments } from "./store-metrics.js";
+import {
+  Q_LIST_INSTANCES, Q_LIST_INSTANCES_BY_MACHINE, Q_LIST_INSTANCES_BY_STATUS,
+  Q_LIST_INSTANCES_BY_MACHINE_AND_STATUS,
+  Q_GET_EVENT_LOG, Q_GET_EVENT_LOG_AFTER, Q_GET_EVENT_LOG_LIMIT,
+  Q_GET_EVENT_LOG_AFTER_LIMIT,
+} from "./queries.js";
 
 export interface PgStoreOptions {
   pool: Pool;
@@ -60,6 +66,14 @@ export interface EffectOutboxRow {
   completedAt: number | null;
 }
 
+export interface TaskOutboxRow extends EffectOutboxRow {
+  taskKind: TaskKind;
+  machineName: string | null;
+  invokeId: string | null;
+  invokeSrc: string | null;
+  invokeInput: unknown | null;
+}
+
 export interface CreateInstanceParams {
   id: string;
   machineName: string;
@@ -92,7 +106,7 @@ export interface TransitionData {
   contextSnapshot?: Record<string, unknown> | null;
 }
 
-export interface RecordInvokeResultParams {
+export interface SetStepCacheParams {
   instanceId: string;
   stepKey: string;
   output: unknown;
@@ -103,9 +117,21 @@ export interface RecordInvokeResultParams {
   tenantId?: string;
 }
 
+export interface QueueInvokeTaskParams {
+  client: PoolClient;
+  instanceId: string;
+  machineName: string;
+  invokeId: string;
+  invokeSrc: string;
+  invokeInput: unknown;
+  stateValue: StateValue;
+  maxAttempts?: number;
+}
+
 export interface InsertEffectsParams {
   client: PoolClient;
   instanceId: string;
+  machineName?: string;
   stateValue: StateValue;
   effects: ResolvedEffect[];
   maxAttempts?: number;
@@ -143,6 +169,98 @@ export interface InstanceSummaryRow {
   currentState: StateValue;
   totalTransitions: number;
 }
+
+// ─── Row Mappers & Query Dispatch ────────────────────────────────────────────
+
+/** Strip dangerous keys to prevent prototype pollution from deserialized JSON. */
+export function sanitizeContext(obj: unknown): Record<string, unknown> {
+  if (typeof obj !== "object" || obj === null) return {};
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (key === "__proto__" || key === "constructor" || key === "prototype") continue;
+    result[key] = value;
+  }
+  return result;
+}
+
+export function rowToMachine(row: any): MachineRow {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    machineName: row.machine_name,
+    stateValue: row.state_value as StateValue,
+    context: sanitizeContext(row.context),
+    status: row.status as InstanceStatus,
+    firedDelays: row.fired_delays as Array<string | number>,
+    wakeAt: row.wake_at != null ? Number(row.wake_at) : null,
+    wakeEvent: row.wake_event ?? null,
+    input: row.input as Record<string, unknown> | null,
+    eventCursor: Number(row.event_cursor),
+    createdAt: Number(row.created_at),
+    updatedAt: Number(row.updated_at),
+  };
+}
+
+export function rowToEffect(row: any): EffectOutboxRow {
+  return {
+    id: row.id,
+    instanceId: row.instance_id,
+    tenantId: row.tenant_id,
+    stateValue: row.state_value as StateValue,
+    effectType: row.effect_type,
+    effectPayload: row.effect_payload as Record<string, unknown>,
+    status: row.status as EffectOutboxStatus,
+    attempts: Number(row.attempts),
+    maxAttempts: Number(row.max_attempts),
+    lastError: row.last_error ?? null,
+    createdAt: Number(row.created_at),
+    completedAt: row.completed_at != null ? Number(row.completed_at) : null,
+  };
+}
+
+export function rowToTask(row: any): TaskOutboxRow {
+  return {
+    ...rowToEffect(row),
+    taskKind: row.task_kind ?? "effect",
+    machineName: row.machine_name ?? null,
+    invokeId: row.invoke_id ?? null,
+    invokeSrc: row.invoke_src ?? null,
+    invokeInput: row.invoke_input ?? null,
+  };
+}
+
+export function rowToEventLog(r: any): EventLogEntry {
+  return {
+    seq: Number(r.seq),
+    topic: r.topic as string,
+    payload: r.payload,
+    source: r.source as string | null,
+    createdAt: Number(r.created_at),
+  };
+}
+
+export function pickListQuery(
+  machineName?: string,
+  status?: string,
+): [{ name: string; text: string }, unknown[]] {
+  if (machineName && status) return [Q_LIST_INSTANCES_BY_MACHINE_AND_STATUS, [machineName, status]];
+  if (machineName) return [Q_LIST_INSTANCES_BY_MACHINE, [machineName]];
+  if (status) return [Q_LIST_INSTANCES_BY_STATUS, [status]];
+  return [Q_LIST_INSTANCES, []];
+}
+
+export function pickEventLogQuery(
+  instanceId: string,
+  afterSeq?: number,
+  limit?: number,
+): [{ name: string; text: string }, unknown[]] {
+  if (afterSeq !== undefined && limit !== undefined) return [Q_GET_EVENT_LOG_AFTER_LIMIT, [instanceId, afterSeq, limit]];
+  if (afterSeq !== undefined) return [Q_GET_EVENT_LOG_AFTER, [instanceId, afterSeq]];
+  if (limit !== undefined) return [Q_GET_EVENT_LOG_LIMIT, [instanceId, limit]];
+  return [Q_GET_EVENT_LOG, [instanceId]];
+}
+
+// ─── PgStore Interface ──────────────────────────────────────────────────────
 
 export interface PgStore {
   // Transaction management
@@ -204,13 +322,28 @@ export interface PgStore {
     opts?: { afterSeq?: number; limit?: number },
   ): Promise<EventLogEntry[]>;
 
-  // Invoke results
-  getInvokeResult(
+  // Step cache (used by prompt-lifecycle for idempotent prompt tracking)
+  getStepCache(
     instanceId: string,
     stepKey: string,
   ): Promise<{ output: unknown; error: unknown } | null>;
-  recordInvokeResult(params: RecordInvokeResultParams): Promise<void>;
-  listInvokeResults(instanceId: string): Promise<StepInfo[]>;
+  setStepCache(params: SetStepCacheParams): Promise<void>;
+
+  // Task queue (invoke + effect outbox)
+  queueInvokeTask(params: QueueInvokeTaskParams): Promise<void>;
+  claimPendingTasks(limit?: number): Promise<TaskOutboxRow[]>;
+  checkInvokeEventExists(instanceId: string, idempotencyKey: string): Promise<boolean>;
+  cancelInvokeTask(client: PoolClient, instanceId: string, invokeId: string): Promise<void>;
+  cancelInstanceInvokes(instanceId: string): Promise<void>;
+  checkTaskStatus(taskId: string): Promise<EffectOutboxStatus | null>;
+  appendEventWithKey(
+    instanceId: string,
+    payload: unknown,
+    idempotencyKey: string,
+    topic?: string,
+    source?: string,
+  ): Promise<{ seq: number } | null>;
+  getInvokeSteps(instanceId: string): Promise<StepInfo[]>;
 
   // CTE finalize
   finalizeInstance(params: FinalizeParams): Promise<void>;
@@ -230,11 +363,10 @@ export interface PgStore {
 
   // Effect outbox
   insertEffects(params: InsertEffectsParams): Promise<void>;
-  claimPendingEffects(limit?: number): Promise<EffectOutboxRow[]>;
   markEffectCompleted(effectId: string): Promise<void>;
   markEffectFailed(effectId: string, error: string, nextRetryAt: number | null): Promise<void>;
   listEffects(instanceId: string): Promise<EffectOutboxRow[]>;
-  /** Reset effects stuck in "executing" since before `olderThanMs` back to "pending". Returns count of reset rows. */
+  /** Reset tasks stuck in "executing" since before `olderThanMs` back to "pending". Returns count of reset rows. */
   resetStaleEffects(olderThanMs: number): Promise<number>;
 
   // Analytics (read-only, query transition_log directly)
@@ -245,7 +377,8 @@ export interface PgStore {
 
   // LISTEN/NOTIFY
   startListening(
-    callback: (machineName: string, instanceId: string, topic: string) => void,
+    eventCallback: (machineName: string, instanceId: string, topic: string) => void,
+    taskCallback?: (instanceId: string) => void,
   ): Promise<void>;
   stopListening(): Promise<void>;
 

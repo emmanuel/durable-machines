@@ -52,7 +52,7 @@
     "GetBookStatus": {
       "invoke": {
         "src": "getStatusForBook",
-        "input": { "$ref": "context.book.id" },
+        "input": { "select": ["context", "book", "id"] },
         "onDone": {
           "target": "BookStatusDecision",
           "actions": "updateBookStatus"
@@ -69,7 +69,7 @@
     "ReportStatusToLender": {
       "invoke": {
         "src": "sendStatusToLender",
-        "input": { "$ref": "context.book" },
+        "input": { "select": ["context", "book"] },
         "onDone": "WaitForLenderResponse"
       }
     },
@@ -83,14 +83,14 @@
     "RequestHold": {
       "invoke": {
         "src": "requestHoldForLender",
-        "input": { "$ref": "context.book" },
+        "input": { "select": ["context", "book"] },
         "onDone": "SleepTwoWeeks"
       }
     },
     "CancelRequest": {
       "invoke": {
         "src": "cancelHoldRequest",
-        "input": { "$ref": "context.book" },
+        "input": { "select": ["context", "book"] },
         "onDone": "End"
       }
     },
@@ -106,14 +106,14 @@
         "CheckingOut": {
           "invoke": {
             "src": "checkOutBook",
-            "input": { "$ref": "context.book.id" },
+            "input": { "select": ["context", "book", "id"] },
             "onDone": "NotifyingLender"
           }
         },
         "NotifyingLender": {
           "invoke": {
             "src": "notifyLenderForCheckout",
-            "input": { "$ref": "context.book" },
+            "input": { "select": ["context", "book"] },
             "onDone": "Done"
           }
         },

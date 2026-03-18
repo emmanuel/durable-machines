@@ -1,8 +1,8 @@
-# durable-xstate
+# durable-machines
 
 Durable XState v5 state machines powered by [DBOS Transact](https://docs.dbos.dev/).
 
-Write standard XState statecharts. `durable-xstate` runs them as durable workflows backed by Postgres — surviving crashes, restarts, and long-term waits without custom persistence code.
+Write standard XState statecharts. `durable-machines` runs them as durable workflows backed by Postgres — surviving crashes, restarts, and long-term waits without custom persistence code.
 
 ## Why
 
@@ -17,7 +17,7 @@ XState defines the *shape* of workflow logic: states, transitions, guards, actio
 ## Install
 
 ```bash
-npm install @durable-xstate/durable-machine xstate @dbos-inc/dbos-sdk
+npm install @durable-machines/machine xstate @dbos-inc/dbos-sdk
 ```
 
 Requires Node >= 24, XState >= 5, and DBOS SDK >= 4.
@@ -27,7 +27,7 @@ Requires Node >= 24, XState >= 5, and DBOS SDK >= 4.
 ```typescript
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import { setup, fromPromise, assign } from "xstate";
-import { createDurableMachine, durableState } from "@durable-xstate/durable-machine";
+import { createDurableMachine, durableState } from "@durable-machines/machine";
 
 // 1. Define a standard XState machine
 const orderMachine = setup({
@@ -151,7 +151,7 @@ Multiple delays are supported — the workflow fires them in order. Self-targeti
 Channel adapters decouple prompt rendering from the state machine. The machine declares *what* to ask; the adapter decides *how* to deliver it (Slack, email, webhook, etc.).
 
 ```typescript
-import { createDurableMachine, durableState, consoleChannel } from "@durable-xstate/durable-machine";
+import { createDurableMachine, durableState, consoleChannel } from "@durable-machines/machine";
 
 const channel = consoleChannel();
 const durable = createDurableMachine(machine, { channels: [channel] });
@@ -174,7 +174,7 @@ Send events and read state from outside the DBOS runtime — only needs a Postgr
 
 ```typescript
 import { DBOSClient } from "@dbos-inc/dbos-sdk";
-import { sendMachineEvent, getMachineState } from "@durable-xstate/durable-machine";
+import { sendMachineEvent, getMachineState } from "@durable-machines/machine";
 
 const client = new DBOSClient("postgresql://...");
 await client.connect();
@@ -217,7 +217,7 @@ Returned by `start()` and `get()`:
 Wraps XState's `setup()` with schema-driven event/input types and machine metadata. Schemas survive to runtime on `machine.schemas` and drive typed form fields in the dashboard.
 
 ```typescript
-import { durableSetup, durableState } from "@durable-xstate/durable-machine";
+import { durableSetup, durableState } from "@durable-machines/machine";
 
 const machine = durableSetup({
   // Machine metadata — displayed in the dashboard
@@ -300,7 +300,7 @@ Both backends implement the same `DurableMachine` interface. Choose based on you
 ### DBOS backend
 
 ```typescript
-import { createDurableMachine } from "@durable-xstate/durable-machine";
+import { createDurableMachine } from "@durable-machines/machine";
 const durable = createDurableMachine(machine);
 ```
 
@@ -309,7 +309,7 @@ Each machine instance lives as a **suspended async function** in Node.js memory.
 ### PostgreSQL backend
 
 ```typescript
-import { createPgDurableMachine } from "@durable-xstate/durable-machine";
+import { createPgDurableMachine } from "@durable-machines/machine";
 const durable = createPgDurableMachine(machine, { pool });
 ```
 

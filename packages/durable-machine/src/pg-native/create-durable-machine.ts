@@ -99,8 +99,8 @@ async function handleInvocation(
   invocation: { id: string; src: string; input: unknown },
   options: PgNativeDurableMachineOptions,
 ): Promise<void> {
-  // 1. Check invoke_results for cached result (crash recovery)
-  const cached = await store.getInvokeResult(instanceId, invocation.id);
+  // 1. Check step_cache for cached result (crash recovery)
+  const cached = await store.getStepCache(instanceId, invocation.id);
   if (cached) return; // Already processed; result event already in event_log
 
   // 2. Look up actor handler from registry
@@ -140,7 +140,7 @@ async function handleInvocation(
   const completedAt = Date.now();
 
   // 3. Record result
-  await store.recordInvokeResult({
+  await store.setStepCache({
     instanceId,
     stepKey: invocation.id,
     output,
@@ -276,7 +276,7 @@ export function createNativeDurableMachine(
       },
 
       async getSteps() {
-        return store.listInvokeResults(workflowId);
+        return store.getInvokeSteps(workflowId);
       },
 
       async getTransitions(): Promise<TransitionRecord[]> {

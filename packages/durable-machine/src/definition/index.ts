@@ -16,8 +16,8 @@ export { createImplementationRegistry } from "./registry.js";
 // Validation
 export { validateDefinition } from "./validate-definition.js";
 
-// Expressions
-export { isRef, resolveRef, resolveExpressions, resolveTemplate } from "./expressions.js";
+// Input desugaring + compilation
+export { desugarInput, compileInput } from "./desugar-input.js";
 
 // Transform
 export { transformDefinition } from "./transform.js";

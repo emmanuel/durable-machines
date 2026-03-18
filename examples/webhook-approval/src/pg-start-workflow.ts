@@ -1,6 +1,6 @@
-import { consoleChannel } from "@durable-xstate/durable-machine";
-import { parsePgConfig } from "@durable-xstate/durable-machine/pg";
-import { createPgWorkerContext } from "@durable-xstate/worker/pg";
+import { consoleChannel } from "@durable-machines/machine";
+import { parsePgConfig } from "@durable-machines/machine/pg";
+import { createPgWorkerContext } from "@durable-machines/worker/pg";
 import { approvalMachine } from "./machine.js";
 
 const requestId = process.argv[2] || `req-${Date.now()}`;

@@ -4,7 +4,7 @@ import type {
   DurableMachine,
   DurableMachineOptions,
   Logger,
-} from "@durable-xstate/durable-machine";
+} from "@durable-machines/machine";
 
 /** Extends {@link AppContext} with machine registration for worker processes. */
 export interface WorkerAppContext extends AppContext {

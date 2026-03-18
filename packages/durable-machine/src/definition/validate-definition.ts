@@ -1,6 +1,7 @@
 import type { MachineDefinition, StateDefinition, TransitionDefinition } from "./types.js";
 import type { ImplementationRegistry } from "./registry.js";
 import { getPromptEvents } from "../prompt.js";
+import { isExprOperator } from "@durable-machines/expr";
 
 /** Structured validation result suitable for API responses. */
 export interface DefinitionValidationResult {
@@ -162,7 +163,7 @@ function validateStateNode(
       }
 
       // Validate template syntax in effect payload values
-      validateExpressions(effect, path, errors);
+      validateInvokeInput(effect, path, errors);
     }
   }
 
@@ -230,7 +231,7 @@ function validateTransitions(
 
     // Validate input expressions
     if (inv.input) {
-      validateExpressions(inv.input, path, errors);
+      validateInvokeInput(inv.input, path, errors);
     }
   }
 }
@@ -317,12 +318,13 @@ function resolveTarget(
   return undefined;
 }
 
-function validateExpressions(
+function validateInvokeInput(
   value: unknown,
   path: string,
   errors: string[],
 ): void {
   if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    // $ref — still validate prefix for helpful error messages
     if ("$ref" in value && typeof (value as any).$ref === "string") {
       const ref = (value as any).$ref as string;
       const prefix = ref.split(".")[0];
@@ -334,8 +336,11 @@ function validateExpressions(
       }
       return;
     }
+    // Expr operator objects are accepted without further validation
+    if (isExprOperator(value)) return;
+
     for (const val of Object.values(value)) {
-      validateExpressions(val, path, errors);
+      validateInvokeInput(val, path, errors);
     }
     return;
   }
@@ -353,7 +358,7 @@ function validateExpressions(
 
   if (Array.isArray(value)) {
     for (const item of value) {
-      validateExpressions(item, path, errors);
+      validateInvokeInput(item, path, errors);
     }
   }
 }

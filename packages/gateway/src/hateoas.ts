@@ -1,4 +1,4 @@
-import type { DurableMachine, DurableStateSnapshot, FormField } from "@durable-xstate/durable-machine";
+import type { DurableMachine, DurableStateSnapshot, FormField } from "@durable-machines/machine";
 import type { HateoasLinks, StateResponse, InstanceRef } from "./rest-types.js";
 
 /**

@@ -26,7 +26,7 @@ export { parseGatewayConfig, createGatewayContext, startGateway } from "./lifecy
 export type { GatewayConfig, GatewayContext, InternalGatewayContext, GatewayContextOptions, GatewayCorsOptions, GatewayStoreAdapter, GatewayHandle } from "./lifecycle.js";
 
 // Durable machine type (re-exported for consumers using MachineRegistry)
-export type { DurableMachine } from "@durable-xstate/durable-machine";
+export type { DurableMachine } from "@durable-machines/machine";
 
 // Types
 export type {

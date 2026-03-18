@@ -70,24 +70,18 @@ export const Q_LOCK_AND_PEEK_EVENTS = {
          ) e ON true`,
 } as const;
 
-// ─── Invoke Results ──────────────────────────────────────────────────────────
+// ─── Step Cache (used by prompt-lifecycle for idempotent prompt tracking) ────
 
-export const Q_GET_INVOKE_RESULT = {
-  name: "dm_get_invoke_result",
-  text: `SELECT output, error FROM invoke_results WHERE instance_id = $1 AND step_key = $2`,
+export const Q_GET_STEP_CACHE = {
+  name: "dm_get_step_cache",
+  text: `SELECT output, error FROM step_cache WHERE instance_id = $1 AND step_key = $2`,
 } as const;
 
-export const Q_RECORD_INVOKE_RESULT = {
-  name: "dm_record_invoke_result",
-  text: `INSERT INTO invoke_results (instance_id, step_key, output, error, started_at, completed_at)
+export const Q_SET_STEP_CACHE = {
+  name: "dm_set_step_cache",
+  text: `INSERT INTO step_cache (instance_id, step_key, output, error, started_at, completed_at)
        VALUES ($1, $2, $3, $4, $5, $6)
        ON CONFLICT (instance_id, step_key) DO NOTHING`,
-} as const;
-
-export const Q_LIST_INVOKE_RESULTS = {
-  name: "dm_list_invoke_results",
-  text: `SELECT step_key, output, error, started_at, completed_at
-       FROM invoke_results WHERE instance_id = $1 ORDER BY started_at ASC`,
 } as const;
 
 // ─── CTE Finalize ────────────────────────────────────────────────────────────
@@ -128,8 +122,8 @@ export const Q_GET_TRANSITIONS = {
 
 // ─── Effect Outbox ───────────────────────────────────────────────────────────
 
-export const Q_CLAIM_PENDING_EFFECTS = {
-  name: "dm_claim_pending_effects",
+export const Q_CLAIM_PENDING_TASKS = {
+  name: "dm_claim_pending_tasks",
   text: `UPDATE effect_outbox
        SET status = 'executing', attempts = attempts + 1
        WHERE id IN (
@@ -218,8 +212,58 @@ export const Q_GET_EVENT_LOG_AFTER_LIMIT = {
 
 export const Q_INSERT_EFFECTS = {
   name: "dm_insert_effects",
-  text: `INSERT INTO effect_outbox (instance_id, state_value, effect_type, effect_payload, max_attempts, created_at)
-         SELECT * FROM UNNEST($1::uuid[], $2::jsonb[], $3::text[], $4::jsonb[], $5::int[], $6::bigint[])`,
+  text: `INSERT INTO effect_outbox (instance_id, state_value, effect_type, effect_payload, max_attempts, created_at, task_kind, machine_name)
+         SELECT * FROM UNNEST($1::uuid[], $2::jsonb[], $3::text[], $4::jsonb[], $5::int[], $6::bigint[], $7::text[], $8::text[])`,
+} as const;
+
+// ─── Invoke Task ─────────────────────────────────────────────────────────────
+
+export const Q_INSERT_INVOKE_TASK = {
+  name: "dm_insert_invoke_task",
+  text: `INSERT INTO effect_outbox
+         (instance_id, state_value, effect_type, effect_payload, max_attempts, created_at,
+          task_kind, machine_name, invoke_id, invoke_src, invoke_input)
+         VALUES ($1, $2, 'invoke', '{}', $3, $4, 'invoke', $5, $6, $7, $8)`,
+} as const;
+
+export const Q_CHECK_INVOKE_EVENT_EXISTS = {
+  name: "dm_check_invoke_event_exists",
+  text: `SELECT 1 FROM event_log WHERE instance_id = $1 AND idempotency_key = $2 LIMIT 1`,
+} as const;
+
+export const Q_CANCEL_INVOKE_TASK = {
+  name: "dm_cancel_invoke_task",
+  text: `UPDATE effect_outbox
+         SET status = 'cancelled', completed_at = $3
+         WHERE instance_id = $1 AND invoke_id = $2 AND status IN ('pending', 'executing')`,
+} as const;
+
+export const Q_CANCEL_INSTANCE_INVOKES = {
+  name: "dm_cancel_instance_invokes",
+  text: `UPDATE effect_outbox
+         SET status = 'cancelled', completed_at = $2
+         WHERE instance_id = $1 AND task_kind = 'invoke' AND status IN ('pending', 'executing')`,
+} as const;
+
+export const Q_CHECK_TASK_STATUS = {
+  name: "dm_check_task_status",
+  text: `SELECT status FROM effect_outbox WHERE id = $1`,
+} as const;
+
+export const Q_APPEND_EVENT_WITH_KEY = {
+  name: "dm_append_event_with_key",
+  text: `INSERT INTO event_log (instance_id, topic, payload, source, idempotency_key, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (instance_id, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
+       RETURNING seq`,
+} as const;
+
+export const Q_GET_INVOKE_STEPS = {
+  name: "dm_get_invoke_steps",
+  text: `SELECT payload, created_at FROM event_log
+         WHERE instance_id = $1
+           AND (payload->>'type' LIKE 'xstate.done.actor.%' OR payload->>'type' LIKE 'xstate.error.actor.%')
+         ORDER BY seq ASC`,
 } as const;
 
 // ─── Analytics ───────────────────────────────────────────────────────────────

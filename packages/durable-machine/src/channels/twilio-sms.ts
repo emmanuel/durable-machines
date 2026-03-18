@@ -32,7 +32,7 @@ export interface TwilioSmsPromptHandle {
  *
  * @example
  * ```ts
- * import { twilioSmsChannel } from "@durable-xstate/durable-machine";
+ * import { twilioSmsChannel } from "@durable-machines/machine";
  *
  * const channel = twilioSmsChannel({
  *   accountSid: process.env.TWILIO_ACCOUNT_SID!,

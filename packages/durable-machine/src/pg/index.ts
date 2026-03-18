@@ -2,9 +2,9 @@ export { createDurableMachine } from "./create-durable-machine.js";
 export type { PgDurableMachineOptions, PgDurableMachine } from "./create-durable-machine.js";
 export { createStore } from "./store.js";
 export type {
-  PgStore, PgStoreOptions, MachineRow, EffectOutboxRow, EventLogEntry,
+  PgStore, PgStoreOptions, MachineRow, EffectOutboxRow, TaskOutboxRow, EventLogEntry,
   CreateInstanceParams, FinalizeParams, TransitionData,
-  RecordInvokeResultParams, InsertEffectsParams,
+  SetStepCacheParams, QueueInvokeTaskParams, InsertEffectsParams,
   StateDurationRow, AggregateStateDuration, TransitionCountRow, InstanceSummaryRow,
 } from "./store.js";
 export type { TenantRow } from "./store-types.js";

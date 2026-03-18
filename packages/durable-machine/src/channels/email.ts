@@ -42,7 +42,7 @@ export interface EmailPromptHandle {
  *
  * @example
  * ```ts
- * import { emailChannel } from "@durable-xstate/durable-machine";
+ * import { emailChannel } from "@durable-machines/machine";
  *
  * const channel = emailChannel({
  *   sendEmail: async ({ to, subject, html }) => {

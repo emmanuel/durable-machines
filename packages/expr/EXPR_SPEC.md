@@ -1,6 +1,6 @@
 # Expr Language Specification
 
-This document is the complete specification for the `@durable-xstate/expr` expression language. It is sufficient to produce a conforming implementation in any programming language.
+This document is the complete specification for the `@durable-machines/expr` expression language. It is sufficient to produce a conforming implementation in any programming language.
 
 ---
 

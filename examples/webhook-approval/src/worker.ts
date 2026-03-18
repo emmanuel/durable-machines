@@ -1,5 +1,5 @@
-import { consoleChannel } from "@durable-xstate/durable-machine";
-import { parseWorkerConfig, createDBOSWorkerContext, startDBOSWorker } from "@durable-xstate/worker/dbos";
+import { consoleChannel } from "@durable-machines/machine";
+import { parseWorkerConfig, createDBOSWorkerContext, startDBOSWorker } from "@durable-machines/worker/dbos";
 import { approvalMachine } from "./machine.js";
 import { recruitingPipeline } from "./recruiting-pipeline.js";
 

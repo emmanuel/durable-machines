@@ -20,7 +20,7 @@ importers:
       '@dbos-inc/dbos-sdk':
         specifier: ^4.0.0
         version: 4.9.11
-      '@durable-xstate/durable-machine':
+      '@durable-machines/machine':
         specifier: workspace:*
         version: link:../../packages/durable-machine
       xstate:
@@ -42,13 +42,13 @@ importers:
       '@dbos-inc/dbos-sdk':
         specifier: ^4.0.0
         version: 4.9.11
-      '@durable-xstate/durable-machine':
-        specifier: workspace:*
-        version: link:../../packages/durable-machine
-      '@durable-xstate/gateway':
+      '@durable-machines/gateway':
         specifier: workspace:*
         version: link:../../packages/gateway
-      '@durable-xstate/worker':
+      '@durable-machines/machine':
+        specifier: workspace:*
+        version: link:../../packages/durable-machine
+      '@durable-machines/worker':
         specifier: workspace:*
         version: link:../../packages/worker
       pg:
@@ -73,7 +73,7 @@ importers:
 
   packages/durable-machine:
     dependencies:
-      '@durable-xstate/expr':
+      '@durable-machines/expr':
         specifier: workspace:*
         version: link:../expr
       '@opentelemetry/api':
@@ -129,7 +129,7 @@ importers:
 
   packages/gateway:
     dependencies:
-      '@durable-xstate/durable-machine':
+      '@durable-machines/machine':
         specifier: workspace:*
         version: link:../durable-machine
       '@hono/node-server':
@@ -160,7 +160,7 @@ importers:
       '@dbos-inc/dbos-sdk':
         specifier: ^4.0.0
         version: 4.9.11
-      '@durable-xstate/worker':
+      '@durable-machines/worker':
         specifier: workspace:*
         version: link:../worker
       '@types/node':
@@ -190,7 +190,7 @@ importers:
 
   packages/worker:
     dependencies:
-      '@durable-xstate/durable-machine':
+      '@durable-machines/machine':
         specifier: workspace:*
         version: link:../durable-machine
       '@opentelemetry/api':

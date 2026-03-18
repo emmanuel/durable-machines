@@ -1,5 +1,5 @@
 {
-  "name": "@durable-xstate/gateway",
+  "name": "@durable-machines/gateway",
   "version": "0.2.0",
   "description": "Webhook gateway for routing external webhooks to durable XState machines",
   "type": "module",
@@ -113,16 +113,16 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/emmanuel/durable-xstate.git",
+    "url": "https://github.com/emmanuel/durable-machines.git",
     "directory": "packages/gateway"
   },
-  "homepage": "https://github.com/emmanuel/durable-xstate/tree/main/packages/gateway",
+  "homepage": "https://github.com/emmanuel/durable-machines/tree/main/packages/gateway",
   "bugs": {
-    "url": "https://github.com/emmanuel/durable-xstate/issues"
+    "url": "https://github.com/emmanuel/durable-machines/issues"
   },
   "author": "Emmanuel Gomez",
   "dependencies": {
-    "@durable-xstate/durable-machine": "workspace:*",
+    "@durable-machines/machine": "workspace:*",
     "@hono/node-server": "^1.14.0",
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/exporter-prometheus": "^0.213.0",
@@ -146,7 +146,7 @@
   },
   "devDependencies": {
     "@dbos-inc/dbos-sdk": "^4.0.0",
-    "@durable-xstate/worker": "workspace:*",
+    "@durable-machines/worker": "workspace:*",
     "@types/node": "^22.0.0",
     "@types/pg": "^8.0.0",
     "pg": "^8.0.0",

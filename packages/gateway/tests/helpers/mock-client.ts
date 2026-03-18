@@ -1,5 +1,5 @@
 import type { GatewayClient } from "../../src/types.js";
-import type { DurableStateSnapshot } from "@durable-xstate/durable-machine";
+import type { DurableStateSnapshot } from "@durable-machines/machine";
 
 export interface SendCall {
   workflowId: string;

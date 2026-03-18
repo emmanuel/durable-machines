@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createRegistrationDefinition } from "../../../src/cmi5/create-definition.js";
-import { validateDefinition, createImplementationRegistry } from "@durable-xstate/durable-machine";
+import { validateDefinition, createImplementationRegistry } from "@durable-machines/machine";
 import type { CourseStructure } from "../../../src/cmi5/types.js";
 
 const emptyRegistry = createImplementationRegistry({ id: "empty" });

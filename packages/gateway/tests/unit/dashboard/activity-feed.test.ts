@@ -5,7 +5,7 @@ import type {
   TransitionRecord,
   EventLogEntry,
   StepInfo,
-} from "@durable-xstate/durable-machine";
+} from "@durable-machines/machine";
 
 describe("buildActivityFeed", () => {
   it("creates transition entries from transition records", () => {

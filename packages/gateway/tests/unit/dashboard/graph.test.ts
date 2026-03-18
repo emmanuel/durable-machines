@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { extractGraphData } from "../../../src/dashboard/graph.js";
 import { computeActiveSleep } from "../../../src/dashboard/routes.js";
-import type { SerializedMachine, StateDuration } from "@durable-xstate/durable-machine";
+import type { SerializedMachine, StateDuration } from "@durable-machines/machine";
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 

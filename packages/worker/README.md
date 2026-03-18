@@ -1,19 +1,19 @@
-# @durable-xstate/worker
+# @durable-machines/worker
 
 Worker process lifecycle for durable XState machines. Handles configuration, machine registration, admin server, graceful shutdown, and Prometheus metrics in a structured three-phase startup.
 
 ## Install
 
 ```bash
-npm install @durable-xstate/worker
+npm install @durable-machines/worker
 ```
 
 ## Quick start (generic)
 
 ```typescript
-import { parseWorkerConfig, createWorkerContext, startWorker } from "@durable-xstate/worker";
-import type { WorkerAppContext } from "@durable-xstate/worker";
-import { createPgWorkerContext } from "@durable-xstate/worker/pg";
+import { parseWorkerConfig, createWorkerContext, startWorker } from "@durable-machines/worker";
+import type { WorkerAppContext } from "@durable-machines/worker";
+import { createPgWorkerContext } from "@durable-machines/worker/pg";
 import { orderMachine } from "./machines/order.js";
 
 const workerConfig = parseWorkerConfig();
@@ -31,8 +31,8 @@ const handle = await startWorker(ctx);
 ## DBOS backend
 
 ```typescript
-import { parseDBOSWorkerConfig, createDBOSWorkerContext, startDBOSWorker } from "@durable-xstate/worker/dbos";
-import { consoleChannel } from "@durable-xstate/durable-machine";
+import { parseDBOSWorkerConfig, createDBOSWorkerContext, startDBOSWorker } from "@durable-machines/worker/dbos";
+import { consoleChannel } from "@durable-machines/machine";
 import { orderMachine } from "./machines/order.js";
 
 const config = parseDBOSWorkerConfig();
@@ -55,9 +55,9 @@ Requires `@dbos-inc/dbos-sdk` peer dependency.
 Using the convenience `startPgWorker`:
 
 ```typescript
-import { startPgWorker } from "@durable-xstate/worker/pg";
-import { parsePgConfig } from "@durable-xstate/durable-machine/pg";
-import { parseWorkerConfig } from "@durable-xstate/worker";
+import { startPgWorker } from "@durable-machines/worker/pg";
+import { parsePgConfig } from "@durable-machines/machine/pg";
+import { parseWorkerConfig } from "@durable-machines/worker";
 import pino from "pino";
 
 const pgConfig = parsePgConfig();
@@ -72,9 +72,9 @@ const handle = await startPgWorker(pgConfig, workerConfig, {
 Or step by step:
 
 ```typescript
-import { createPgWorkerContext } from "@durable-xstate/worker/pg";
-import { createWorkerContext, startWorker, parseWorkerConfig, createWorkerMetrics } from "@durable-xstate/worker";
-import { parsePgConfig } from "@durable-xstate/durable-machine/pg";
+import { createPgWorkerContext } from "@durable-machines/worker/pg";
+import { createWorkerContext, startWorker, parseWorkerConfig, createWorkerMetrics } from "@durable-machines/worker";
+import { parsePgConfig } from "@durable-machines/machine/pg";
 
 const pgConfig = parsePgConfig();
 const workerConfig = parseWorkerConfig();
@@ -95,7 +95,7 @@ Requires `pg` peer dependency.
 After registration, machines are stored in a `ReadonlyMap<string, DurableMachine>`. Use `typedMachines()` for type-safe property access:
 
 ```typescript
-import { typedMachines } from "@durable-xstate/worker";
+import { typedMachines } from "@durable-machines/worker";
 
 const definitions = {
   approvals: { machine: approvalMachine },
@@ -163,7 +163,7 @@ Default process metrics (CPU, memory, event loop) are also collected via `prom-c
 To create metrics independently (e.g., for testing or custom setups):
 
 ```typescript
-import { createWorkerMetrics } from "@durable-xstate/worker";
+import { createWorkerMetrics } from "@durable-machines/worker";
 
 const metrics = createWorkerMetrics();        // creates its own Registry
 const metrics = createWorkerMetrics(registry); // uses an existing Registry
@@ -174,7 +174,7 @@ const metrics = createWorkerMetrics(registry); // uses an existing Registry
 The PG backend accepts an optional Pino-compatible `Logger`:
 
 ```typescript
-import type { Logger } from "@durable-xstate/worker";
+import type { Logger } from "@durable-machines/worker";
 
 const logger: Logger = {
   info(obj, msg) { console.log(msg, obj); },

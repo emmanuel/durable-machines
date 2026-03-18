@@ -4,11 +4,11 @@ services:
     ports:
       - "5442:5432"
     environment:
-      POSTGRES_USER: durable_xstate
-      POSTGRES_PASSWORD: durable_xstate
-      POSTGRES_DB: durable_xstate_test
+      POSTGRES_USER: durable_machines
+      POSTGRES_PASSWORD: durable_machines
+      POSTGRES_DB: durable_machines_test
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U durable_xstate -d durable_xstate_test"]
+      test: ["CMD-SHELL", "pg_isready -U durable_machines -d durable_machines_test"]
       interval: 2s
       timeout: 5s
       retries: 10
@@ -19,7 +19,7 @@ services:
     build: .
     command: node examples/webhook-approval/dist/pg-worker.js
     environment:
-      DATABASE_URL: postgresql://durable_xstate:durable_xstate@postgres:5432/durable_xstate_test
+      DATABASE_URL: postgresql://durable_machines:durable_machines@postgres:5432/durable_machines_test
     depends_on:
       postgres:
         condition: service_healthy
@@ -30,7 +30,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      DATABASE_URL: postgresql://durable_xstate:durable_xstate@postgres:5432/durable_xstate_test
+      DATABASE_URL: postgresql://durable_machines:durable_machines@postgres:5432/durable_machines_test
       SLACK_SIGNING_SECRET: dummy
     depends_on:
       worker:

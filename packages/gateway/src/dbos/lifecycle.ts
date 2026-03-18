@@ -12,8 +12,8 @@ import type {
 } from "../lifecycle.js";
 import type { GatewayClient } from "../types.js";
 import type { StreamConsumerHandle } from "../streams/consumer.js";
-import { createAppContext } from "@durable-xstate/durable-machine";
-import type { AppContext } from "@durable-xstate/durable-machine";
+import { createAppContext } from "@durable-machines/machine";
+import type { AppContext } from "@durable-machines/machine";
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 

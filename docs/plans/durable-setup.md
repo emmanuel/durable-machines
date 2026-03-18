@@ -259,11 +259,11 @@ All phases implemented. Typecheck clean, all tests passing
 
 ```bash
 # Type check
-pnpm --filter @durable-xstate/durable-machine typecheck
+pnpm --filter @durable-machines/machine typecheck
 pnpm --filter gateway typecheck
 
 # Unit tests
-pnpm --filter @durable-xstate/durable-machine test
+pnpm --filter @durable-machines/machine test
 pnpm --filter gateway test
 
 # Manual: create a machine with durableSetup(), register with gateway,

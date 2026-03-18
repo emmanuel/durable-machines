@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { getAvailableEvents, buildLinks, toStateResponse } from "../../src/hateoas.js";
-import type { DurableMachine, DurableStateSnapshot } from "@durable-xstate/durable-machine";
+import type { DurableMachine, DurableStateSnapshot } from "@durable-machines/machine";
 
 // ── Mock Machine ──────────────────────────────────────────────────────────
 

@@ -24,10 +24,10 @@ describe("createImplementationRegistry", () => {
     expect(registry.delays.myDelay).toBe(1000);
   });
 
-  it("defaults omitted categories to empty objects", () => {
+  it("defaults omitted categories to empty objects (actors includes built-in http)", () => {
     const registry = createImplementationRegistry({ id: "empty" });
 
-    expect(registry.actors).toEqual({});
+    expect(registry.actors).toEqual({ http: expect.any(Object) });
     expect(registry.guards).toEqual({});
     expect(registry.actions).toEqual({});
     expect(registry.delays).toEqual({});

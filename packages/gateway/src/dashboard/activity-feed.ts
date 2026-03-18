@@ -4,7 +4,7 @@ import type {
   StepInfo,
   EffectStatus,
   SerializedStateNode,
-} from "@durable-xstate/durable-machine";
+} from "@durable-machines/machine";
 import type { StateValue } from "xstate";
 
 // ── Types ───────────────────────────────────────────────────────────────────

@@ -27,7 +27,7 @@
     "RejectApplication": {
       "invoke": {
         "src": "sendRejectionEmail",
-        "input": { "$ref": "context.applicant" },
+        "input": { "select": ["context", "applicant"] },
         "onDone": "End"
       }
     },

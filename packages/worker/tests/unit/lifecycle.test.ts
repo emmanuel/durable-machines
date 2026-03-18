@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { parseWorkerConfig, typedMachines } from "../../src/lifecycle.js";
-import type { DurableMachine } from "@durable-xstate/durable-machine";
+import type { DurableMachine } from "@durable-machines/machine";
 
 describe("parseWorkerConfig", () => {
   it("returns defaults when env is empty", () => {

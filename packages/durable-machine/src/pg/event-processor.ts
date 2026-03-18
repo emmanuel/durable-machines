@@ -6,13 +6,11 @@ import type {
   StateValue,
 } from "xstate";
 import type { DurableMachineOptions } from "../types.js";
-import { DurableMachineError } from "../types.js";
 import { isDurableState } from "../durable-state.js";
 import { handlePromptEntry, handlePromptExit } from "./prompt-lifecycle.js";
 import { collectAndResolveEffects, extractEmittedEffects } from "../effect-collector.js";
 import {
   getActiveInvocation,
-  extractActorImplementations,
   getSortedAfterDelays,
   buildAfterEvent,
   isReentryDelay,
@@ -30,21 +28,6 @@ export interface EventProcessorOptions {
   options: DurableMachineOptions;
   enableAnalytics?: boolean;
   instruments?: StoreInstruments;
-}
-
-
-// ─── Actor Execution Helper ─────────────────────────────────────────────────
-
-function resolveActorCreator(
-  impl: any,
-): (params: { input: unknown }) => Promise<unknown> {
-  if (typeof impl?.config === "function") return impl.config;
-  if (typeof impl === "function") return impl;
-  throw new DurableMachineError(
-    `Cannot resolve actor creator. The actor implementation must be created ` +
-      `with fromPromise(). Got: ${typeof impl}`,
-    "INTERNAL",
-  );
 }
 
 // ─── Fired Delays Helper ────────────────────────────────────────────────────
@@ -65,102 +48,6 @@ function computeFiredDelays(
     : [...currentFiredDelays, firedDelay];
 }
 
-// ─── Core: Execute Invocations Inline ───────────────────────────────────────
-
-async function executeInvocationsInline(
-  deps: EventProcessorOptions,
-  instanceId: string,
-  snapshot: AnyMachineSnapshot,
-  tenantId?: string,
-): Promise<[AnyMachineSnapshot, any[]]> {
-  const { store, machine } = deps;
-  const actorImpls = extractActorImplementations(machine);
-  let current = snapshot;
-  const allActions: any[] = [];
-
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
-    // Resolve transient transitions
-    const [resolved, transientActions] = resolveTransientTransitions(machine, current);
-    current = resolved;
-    allActions.push(...transientActions);
-    if (current.status === "done") break;
-
-    const invocation = getActiveInvocation(machine, current);
-    if (!invocation) break;
-
-    const stepKey = `invoke:${invocation.src}`;
-
-    // Check for cached result (crash recovery)
-    const cached = await store.getInvokeResult(instanceId, stepKey);
-    let output: unknown;
-    let error: unknown;
-
-    if (cached) {
-      output = cached.output;
-      error = cached.error;
-    } else {
-      const impl = actorImpls.get(invocation.src);
-      if (!impl) {
-        throw new DurableMachineError(
-          `No actor implementation found for "${invocation.src}". ` +
-            `Ensure it is registered in setup({ actors: { ... } }).`,
-          "INTERNAL",
-        );
-      }
-
-      const creator = resolveActorCreator(impl);
-      const startedAt = Date.now();
-      const invokeTimeoutMs = deps.options.invokeTimeoutMs ?? 30_000;
-
-      const result = await Promise.race([
-        creator({ input: invocation.input }).then(
-          (out) => ({ output: out, error: undefined }),
-          (err) => ({ output: undefined, error: err }),
-        ),
-        new Promise<{ output: undefined; error: Error }>((resolve) =>
-          setTimeout(
-            () => resolve({ output: undefined, error: new Error(`Invocation "${invocation.src}" timed out after ${invokeTimeoutMs}ms`) }),
-            invokeTimeoutMs,
-          ),
-        ),
-      ]);
-
-      output = result.output;
-      error = result.error;
-
-      await store.recordInvokeResult({
-        instanceId,
-        stepKey,
-        output,
-        error,
-        startedAt,
-        completedAt: Date.now(),
-        tenantId,
-      });
-    }
-
-    // Transition based on result
-    if (error != null) {
-      const [next, actions] = transition(machine, current, {
-        type: `xstate.error.actor.${invocation.id}`,
-        error,
-      } as AnyEventObject);
-      current = next;
-      allActions.push(...actions);
-    } else {
-      const [next, actions] = transition(machine, current, {
-        type: `xstate.done.actor.${invocation.id}`,
-        output,
-      } as AnyEventObject);
-      current = next;
-      allActions.push(...actions);
-    }
-  }
-
-  return [current, allActions];
-}
-
 // ─── Process Startup ────────────────────────────────────────────────────────
 
 export async function processStartup(
@@ -174,22 +61,22 @@ export async function processStartup(
   const now = Date.now();
 
   const [initialSnapshot, initialActions] = initialTransition(machine, input);
-  const [snapshot, invokeActions] = await executeInvocationsInline(
-    deps,
-    instanceId,
-    initialSnapshot,
-    tenantId,
-  );
-  const startupActions = [...initialActions, ...invokeActions];
 
-  // Compute wake_at + wake_event from after delays
-  const delays = getSortedAfterDelays(machine, snapshot);
+  // Resolve transient transitions
+  const [snapshot, transientActions] = resolveTransientTransitions(machine, initialSnapshot);
+  const startupActions = [...initialActions, ...transientActions];
+
+  // Check if initial state has an active invocation → park and queue
+  const invocation = snapshot.status !== "done" ? getActiveInvocation(machine, snapshot) : null;
+
+  // Compute wake_at + wake_event from after delays (only if not parking for invoke)
+  const delays = invocation ? [] : getSortedAfterDelays(machine, snapshot);
   const wakeAt = delays.length > 0 ? now + delays[0] : null;
   const wakeEvent = wakeAt != null ? buildAfterEvent(machine, snapshot, delays[0]) : null;
 
   const status = snapshot.status === "done" ? "done" : "running";
 
-  // Wrap creation + effect insert in a single transaction
+  // Wrap creation + effect insert + invoke queue in a single transaction
   await store.withTransaction(async (client) => {
     if (tenantId) {
       await client.query({
@@ -219,8 +106,24 @@ export async function processStartup(
       if (effects.length > 0) {
         const retryPolicy = options.effectRetryPolicy;
         const maxAttempts = retryPolicy?.maxAttempts ?? 3;
-        await store.insertEffects({ client, instanceId, stateValue: snapshot.value, effects, maxAttempts });
+        await store.insertEffects({ client, instanceId, machineName: machine.id, stateValue: snapshot.value, effects, maxAttempts });
       }
+    }
+
+    // Queue invoke task if initial state has an invocation
+    if (invocation) {
+      const retryPolicy = options.stepRetryPolicy;
+      const maxAttempts = retryPolicy?.maxAttempts ?? 3;
+      await store.queueInvokeTask({
+        client,
+        instanceId,
+        machineName: machine.id,
+        invokeId: invocation.id,
+        invokeSrc: invocation.src,
+        invokeInput: invocation.input,
+        stateValue: snapshot.value,
+        maxAttempts,
+      });
     }
   });
 
@@ -233,19 +136,21 @@ export async function processStartup(
     await store.appendTransition(instanceId, null, snapshot.value, null, now, snapshot.context as Record<string, unknown>, tenantId);
   }
 
-  // Prompt lifecycle: send prompt if in durable state
-  if (status === "running" && isDurableState(machine, snapshot)) {
-    await handlePromptEntry(store,instanceId, snapshot, channels);
+  // Prompt lifecycle: send prompt if in durable state (and not parked for invoke)
+  if (!invocation && status === "running" && isDurableState(machine, snapshot)) {
+    await handlePromptEntry(store, instanceId, snapshot, channels);
   }
-
 }
 
 // ─── Finalization Helper ────────────────────────────────────────────────────
 
 /**
  * Shared finalization logic: persist final state + cursor, append transition
- * log, handle prompt exit/entry, and enqueue effects.  Used by both the fast
- * path (no invocation) and the post-invocation Txn 2.
+ * log, handle prompt exit/entry, enqueue effects, and queue invoke tasks.
+ *
+ * If the new state has an active invocation, the invoke task is queued in the
+ * same transaction. If actions include `xstate.stopChild`, the corresponding
+ * invoke task is cancelled.
  */
 async function finalize(
   deps: EventProcessorOptions,
@@ -262,8 +167,11 @@ async function finalize(
   const { store, machine, options, enableAnalytics } = deps;
   const channels = options.channels ?? [];
 
-  // Compute wakeAt + wakeEvent
-  const nextDelays = getSortedAfterDelays(machine, current);
+  // Check if new state has an active invocation
+  const invocation = current.status !== "done" ? getActiveInvocation(machine, current) : null;
+
+  // Compute wakeAt + wakeEvent (skip if parking for invoke)
+  const nextDelays = invocation ? [] : getSortedAfterDelays(machine, current);
   const nextUnfired = nextDelays.filter((d) => !firedDelays.includes(d));
   let wakeAt: number | null = null;
   let wakeEvent: AnyEventObject | null = null;
@@ -282,6 +190,16 @@ async function finalize(
   const status = current.status === "done" ? "done" : "running";
   const stateChanged = !stateValueEquals(prevStateValue, current.value);
 
+  // Handle xstate.stopChild actions → cancel invoke tasks
+  for (const action of emittedActions) {
+    if (action.type === "xstate.stopChild") {
+      const invokeId = action.params?.id;
+      if (invokeId) {
+        await store.cancelInvokeTask(client, instanceId, invokeId);
+      }
+    }
+  }
+
   // Atomic: state change + cursor advance (+ transition log if applicable)
   if (enableAnalytics && stateChanged) {
     await store.finalizeWithTransition({
@@ -299,11 +217,27 @@ async function finalize(
     });
   }
 
+  // Queue invoke task if new state has an invocation
+  if (invocation) {
+    const retryPolicy = options.stepRetryPolicy;
+    const maxAttempts = retryPolicy?.maxAttempts ?? 3;
+    await store.queueInvokeTask({
+      client,
+      instanceId,
+      machineName: machine.id,
+      invokeId: invocation.id,
+      invokeSrc: invocation.src,
+      invokeInput: invocation.input,
+      stateValue: current.value,
+      maxAttempts,
+    });
+  }
+
   // Prompt lifecycle, effects
   const hasEmittedEffects = emittedActions.length > 0 && options.effectHandlers;
   if (stateChanged || hasEmittedEffects) {
     if (stateChanged) {
-      await handlePromptExit(store,instanceId, prevStateValue, current, channels, event);
+      await handlePromptExit(store, instanceId, prevStateValue, current, channels, event);
     }
 
     if (options.effectHandlers) {
@@ -315,58 +249,15 @@ async function finalize(
       if (effects.length > 0) {
         const retryPolicy = options.effectRetryPolicy;
         const maxAttempts = retryPolicy?.maxAttempts ?? 3;
-        await store.insertEffects({ client, instanceId, stateValue: current.value, effects, maxAttempts });
+        await store.insertEffects({ client, instanceId, machineName: machine.id, stateValue: current.value, effects, maxAttempts });
       }
     }
 
-    if (stateChanged && status === "running" && isDurableState(machine, current)) {
-      await handlePromptEntry(store,instanceId, current, channels);
+    // Only send prompt if not parked for invoke
+    if (!invocation && stateChanged && status === "running" && isDurableState(machine, current)) {
+      await handlePromptEntry(store, instanceId, current, channels);
     }
   }
-}
-
-// ─── Two-Phase Invocation ────────────────────────────────────────────────────
-
-/**
- * Executes invocations outside any lock, then re-locks and finalizes.
- * Returns `true` if the invocation was finalized (or the instance was cancelled).
- */
-async function executeAndFinalizeInvocation(
-  deps: EventProcessorOptions,
-  instanceId: string,
-  invocationSnapshot: AnyMachineSnapshot,
-  prevSnapshot: AnyMachineSnapshot,
-  prevStateValue: StateValue,
-  event: AnyEventObject,
-  eventSeq: number,
-  firedDelays: Array<string | number>,
-  preActions: any[] = [],
-  tenantId?: string,
-): Promise<boolean> {
-  const [postInvoke, invokeActions] = await executeInvocationsInline(deps, instanceId, invocationSnapshot, tenantId);
-  const allActions = [...preActions, ...invokeActions];
-
-  let processed = false;
-  await deps.store.withTransaction(async (client) => {
-    const row = await deps.store.lockAndGetInstance(client, instanceId);
-    if (!row || row.status === "cancelled") {
-      processed = row?.status === "cancelled";
-      return;
-    }
-    await client.query({
-      text: `SELECT set_config('app.tenant_id', $1, true)`,
-      values: [row.tenantId],
-    });
-    await finalize(
-      deps, client, instanceId,
-      prevSnapshot, prevStateValue,
-      postInvoke, event, eventSeq, firedDelays,
-      allActions,
-    );
-    processed = true;
-  });
-
-  return processed;
 }
 
 // ─── Batch Event Drain ───────────────────────────────────────────────────────
@@ -377,9 +268,10 @@ const BATCH_SIZE = 50;
  * Drains up to `limit` events for an instance in a single transaction.
  * Returns the number of events processed (0 if none available or row locked).
  *
- * When an invocation is encountered mid-batch, processing stops: the invoking
- * state is persisted (no cursor advance), the invocation runs outside the lock,
- * and a second transaction finalizes with cursor at the invocation event.
+ * Invoke-aware event loop: when the current state has an active invocation,
+ * only `xstate.done.actor.{id}` / `xstate.error.actor.{id}` events are
+ * processed. All other events are skipped (cursor does NOT advance) — they
+ * remain in event_log for processing after the invoke completes.
  */
 export async function processBatchFromLog(
   deps: EventProcessorOptions,
@@ -388,22 +280,7 @@ export async function processBatchFromLog(
 ): Promise<number> {
   const { store, machine } = deps;
 
-  let invocationSnapshot: AnyMachineSnapshot | null = null;
-  let prevSnapshot: AnyMachineSnapshot;
-  let prevStateValue: StateValue;
-  let tenantId: string | undefined;
-  let lastEvent: AnyEventObject;
-  let lastEventSeq = 0;
-  let firedDelays: Array<string | number> = [];
   let processedCount = 0;
-  let batchActions: any[] = [];
-
-  // Track state before invocation for mid-batch commit
-  let preInvokeState: AnyMachineSnapshot;
-  let preInvokeEvent: AnyEventObject;
-  let preInvokeSeq = 0;
-  let preInvokeFiredDelays: Array<string | number>;
-  let preInvokeActions: any[] = [];
 
   await store.withTransaction(async (client) => {
     const result = await store.lockAndPeekEvents(client, instanceId, limit);
@@ -413,29 +290,38 @@ export async function processBatchFromLog(
 
     const { row, events } = result;
 
-    tenantId = row.tenantId;
-
     // Set tenant GUC so all INSERTs in this transaction use the correct tenant_id DEFAULT
     await client.query({
       text: `SELECT set_config('app.tenant_id', $1, true)`,
       values: [row.tenantId],
     });
 
-    prevSnapshot = machine.resolveState({
+    const prevSnapshot = machine.resolveState({
       value: row.stateValue,
       context: row.context,
     });
-    prevStateValue = prevSnapshot.value;
+    const prevStateValue = prevSnapshot.value;
     let current = prevSnapshot;
-    firedDelays = row.firedDelays;
-    lastEvent = events[0].payload as AnyEventObject;
-
-    preInvokeState = current;
-    preInvokeEvent = lastEvent;
-    preInvokeFiredDelays = firedDelays;
+    let firedDelays: Array<string | number> = row.firedDelays;
+    let lastEvent: AnyEventObject = events[0].payload as AnyEventObject;
+    let lastEventSeq = 0;
+    const batchActions: any[] = [];
 
     for (const evt of events) {
       const event = evt.payload as AnyEventObject;
+
+      // Invoke-aware skipping: if current state has an active invocation,
+      // only process the matching done/error events
+      const invocation = getActiveInvocation(machine, current);
+      if (invocation) {
+        const doneType = `xstate.done.actor.${invocation.id}`;
+        const errorType = `xstate.error.actor.${invocation.id}`;
+        if (event.type !== doneType && event.type !== errorType) {
+          // Skip this event — don't advance cursor past it
+          continue;
+        }
+      }
+
       const [nextState, transitionActions] = transition(machine, current, event);
       const [resolved, transientActions] = resolveTransientTransitions(machine, nextState);
 
@@ -444,29 +330,19 @@ export async function processBatchFromLog(
       // Compute firedDelays for after events
       firedDelays = computeFiredDelays(machine, current, event, firedDelays);
 
-      // Check for invocation — stop batch here
-      if (resolved.status !== "done" && getActiveInvocation(machine, resolved)) {
-        invocationSnapshot = resolved;
-        lastEvent = event;
-        lastEventSeq = evt.seq;
-        break;
-      }
-
       current = resolved;
       lastEvent = event;
       lastEventSeq = evt.seq;
       processedCount++;
 
-      // Track for mid-batch commit if invocation comes next
-      preInvokeState = current;
-      preInvokeEvent = event;
-      preInvokeSeq = evt.seq;
-      preInvokeFiredDelays = firedDelays;
-      preInvokeActions = [...batchActions];
+      // If we landed in an invoke state, stop the batch here — finalize
+      // will queue the invoke task
+      if (current.status !== "done" && getActiveInvocation(machine, current)) {
+        break;
+      }
     }
 
-    if (processedCount > 0 && !invocationSnapshot) {
-      // All events processed without invocation — finalize
+    if (processedCount > 0) {
       await finalize(
         deps, client, instanceId,
         prevSnapshot, prevStateValue,
@@ -474,48 +350,8 @@ export async function processBatchFromLog(
         batchActions,
       );
       deps.instruments?.batchSize.record(processedCount);
-      return;
-    }
-
-    if (invocationSnapshot) {
-      if (processedCount > 0) {
-        // Commit pre-invocation events first: finalize state + advance cursor
-        await finalize(
-          deps, client, instanceId,
-          prevSnapshot, prevStateValue,
-          preInvokeState!, preInvokeEvent!, preInvokeSeq, preInvokeFiredDelays!,
-          preInvokeActions,
-        );
-        // Update prevSnapshot/prevStateValue for the invocation finalize
-        prevSnapshot = preInvokeState!;
-        prevStateValue = preInvokeState!.value;
-      } else {
-        // First event triggered the invocation — persist invoking state only
-        await store.updateInstanceSnapshot(
-          client, instanceId,
-          invocationSnapshot.value,
-          invocationSnapshot.context as Record<string, unknown>,
-        );
-      }
     }
   });
 
-  if (!invocationSnapshot) {
-    return processedCount;
-  }
-
-  // Two-phase: execute outside lock, then re-lock and finalize
-  // Pass only the actions from the invocation event (not pre-invoke actions already finalized)
-  const invocationActions = batchActions.slice(preInvokeActions.length);
-  if (await executeAndFinalizeInvocation(
-    deps, instanceId, invocationSnapshot,
-    prevSnapshot!, prevStateValue!,
-    lastEvent!, lastEventSeq, firedDelays,
-    invocationActions, tenantId,
-  )) {
-    processedCount++;
-  }
-
-  deps.instruments?.batchSize.record(processedCount);
   return processedCount;
 }

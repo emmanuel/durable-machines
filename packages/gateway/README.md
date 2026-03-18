@@ -1,4 +1,4 @@
-# @durable-xstate/gateway
+# @durable-machines/gateway
 
 Webhook gateway for routing external webhooks to durable XState machines. Receives HTTP webhooks from providers (Slack, Stripe, GitHub, Linear, Cal.com, Twilio, etc.), verifies signatures, routes to target workflow(s), and dispatches XState events.
 
@@ -7,7 +7,7 @@ Built on [Hono](https://hono.dev/) for the webhook HTTP layer and a plain `node:
 ## Install
 
 ```bash
-npm install @durable-xstate/gateway
+npm install @durable-machines/gateway
 ```
 
 ## Quick start (generic)
@@ -20,8 +20,8 @@ import {
   stripeSource,
   fieldRouter,
   directTransform,
-} from "@durable-xstate/gateway";
-import type { StripeWebhookEvent, GatewayClient } from "@durable-xstate/gateway";
+} from "@durable-machines/gateway";
+import type { StripeWebhookEvent, GatewayClient } from "@durable-machines/gateway";
 
 // Bring your own client that talks to your backend
 const client: GatewayClient = { send, sendBatch, getState };
@@ -50,7 +50,7 @@ import {
   parseDBOSGatewayConfig,
   createDBOSGatewayContext,
   startDBOSGateway,
-} from "@durable-xstate/gateway/dbos";
+} from "@durable-machines/gateway/dbos";
 
 const config = parseDBOSGatewayConfig();
 const ctx = await createDBOSGatewayContext(config, { bindings: [...] });
@@ -65,7 +65,7 @@ Requires `@dbos-inc/dbos-sdk` peer dependency. Reads `DBOS_DATABASE_URL` from th
 import {
   createPgGatewayContext,
   startPgGateway,
-} from "@durable-xstate/gateway/pg";
+} from "@durable-machines/gateway/pg";
 import { Pool } from "pg";
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -233,7 +233,7 @@ Default process metrics (CPU, memory, event loop) are also collected.
 Low-level helpers for building custom sources:
 
 ```typescript
-import { computeHmac, verifyHmac } from "@durable-xstate/gateway";
+import { computeHmac, verifyHmac } from "@durable-machines/gateway";
 
 const hex = computeHmac("sha256", secret, body);
 verifyHmac("sha256", secret, body, expectedHex, "my-provider");  // throws on mismatch

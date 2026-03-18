@@ -5,7 +5,7 @@ import type {
   FormField,
   AggregateStateDuration,
   TransitionCountRow,
-} from "@durable-xstate/durable-machine";
+} from "@durable-machines/machine";
 import type { GraphData } from "./graph.js";
 import type { ActivityEntry } from "./activity-feed.js";
 

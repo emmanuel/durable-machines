@@ -16,7 +16,7 @@ import type { ActionLinkPayload } from "./action-link-types.js";
  *
  * @example
  * ```ts
- * import { actionLinkSource } from "@durable-xstate/gateway";
+ * import { actionLinkSource } from "@durable-machines/gateway";
  *
  * const source = actionLinkSource(process.env.ACTION_LINK_SECRET!);
  * ```

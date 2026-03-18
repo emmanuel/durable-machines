@@ -9,86 +9,40 @@ import {
   Q_CREATE_INSTANCE, Q_GET_INSTANCE, Q_UPDATE_INSTANCE_STATUS,
   Q_UPDATE_INSTANCE_SNAPSHOT, Q_LOCK_AND_GET_INSTANCE,
   Q_APPEND_EVENT, Q_LOCK_AND_PEEK_EVENT, Q_LOCK_AND_PEEK_EVENTS,
-  Q_GET_INVOKE_RESULT, Q_RECORD_INVOKE_RESULT, Q_LIST_INVOKE_RESULTS,
+  Q_GET_STEP_CACHE, Q_SET_STEP_CACHE,
   Q_FINALIZE_INSTANCE, Q_FINALIZE_WITH_TRANSITION,
   Q_APPEND_TRANSITION, Q_GET_TRANSITIONS,
-  Q_CLAIM_PENDING_EFFECTS, Q_MARK_EFFECT_COMPLETED, Q_MARK_EFFECT_FAILED,
+  Q_CLAIM_PENDING_TASKS, Q_MARK_EFFECT_COMPLETED, Q_MARK_EFFECT_FAILED,
   Q_LIST_EFFECTS, Q_RESET_STALE_EFFECTS,
-  Q_LIST_INSTANCES, Q_LIST_INSTANCES_BY_MACHINE, Q_LIST_INSTANCES_BY_STATUS,
-  Q_LIST_INSTANCES_BY_MACHINE_AND_STATUS,
-  Q_GET_EVENT_LOG, Q_GET_EVENT_LOG_AFTER, Q_GET_EVENT_LOG_LIMIT,
-  Q_GET_EVENT_LOG_AFTER_LIMIT,
   Q_INSERT_EFFECTS,
+  Q_INSERT_INVOKE_TASK, Q_CHECK_INVOKE_EVENT_EXISTS,
+  Q_CANCEL_INVOKE_TASK, Q_CANCEL_INSTANCE_INVOKES,
+  Q_CHECK_TASK_STATUS, Q_APPEND_EVENT_WITH_KEY,
+  Q_GET_INVOKE_STEPS,
   Q_STATE_DURATIONS,
   Q_AGGREGATE_STATE_DURATIONS,
   Q_TRANSITION_COUNTS,
   Q_INSTANCE_SUMMARIES,
 } from "./queries.js";
 import { DurableMachineError } from "../types.js";
+import {
+  rowToMachine, rowToEffect, rowToTask, rowToEventLog,
+  pickListQuery, pickEventLogQuery,
+} from "./store-types.js";
 import type {
   PgStoreOptions, MachineRow, PgStore,
   CreateInstanceParams, FinalizeParams, TransitionData,
-  RecordInvokeResultParams, InsertEffectsParams,
-  EventLogEntry, EffectOutboxRow,
+  SetStepCacheParams, QueueInvokeTaskParams, InsertEffectsParams,
+  EventLogEntry, EffectOutboxRow, TaskOutboxRow,
   StateDurationRow, AggregateStateDuration, TransitionCountRow, InstanceSummaryRow,
 } from "./store-types.js";
 
 export type {
-  PgStoreOptions, MachineRow, EventLogEntry, EffectOutboxRow,
+  PgStoreOptions, MachineRow, EventLogEntry, EffectOutboxRow, TaskOutboxRow,
   CreateInstanceParams, FinalizeParams, TransitionData,
-  RecordInvokeResultParams, InsertEffectsParams, PgStore,
+  SetStepCacheParams, QueueInvokeTaskParams, InsertEffectsParams, PgStore,
   StateDurationRow, AggregateStateDuration, TransitionCountRow, InstanceSummaryRow,
 } from "./store-types.js";
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-/** Strip dangerous keys to prevent prototype pollution from deserialized JSON. */
-function sanitizeContext(obj: unknown): Record<string, unknown> {
-  if (typeof obj !== "object" || obj === null) return {};
-  const result: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(obj)) {
-    if (key === "__proto__" || key === "constructor" || key === "prototype") continue;
-    result[key] = value;
-  }
-  return result;
-}
-
-// ─── Row Mapping ────────────────────────────────────────────────────────────
-
-function rowToMachine(row: any): MachineRow {
-  return {
-    id: row.id,
-    tenantId: row.tenant_id,
-    machineName: row.machine_name,
-    stateValue: row.state_value as StateValue,
-    context: sanitizeContext(row.context),
-    status: row.status as InstanceStatus,
-    firedDelays: row.fired_delays as Array<string | number>,
-    wakeAt: row.wake_at != null ? Number(row.wake_at) : null,
-    wakeEvent: row.wake_event ?? null,
-    input: row.input as Record<string, unknown> | null,
-    eventCursor: Number(row.event_cursor),
-    createdAt: Number(row.created_at),
-    updatedAt: Number(row.updated_at),
-  };
-}
-
-function rowToEffect(row: any): EffectOutboxRow {
-  return {
-    id: row.id,
-    instanceId: row.instance_id,
-    tenantId: row.tenant_id,
-    stateValue: row.state_value as StateValue,
-    effectType: row.effect_type,
-    effectPayload: row.effect_payload as Record<string, unknown>,
-    status: row.status as EffectOutboxStatus,
-    attempts: Number(row.attempts),
-    maxAttempts: Number(row.max_attempts),
-    lastError: row.last_error ?? null,
-    createdAt: Number(row.created_at),
-    completedAt: row.completed_at != null ? Number(row.completed_at) : null,
-  };
-}
 
 // ─── Factory ────────────────────────────────────────────────────────────────
 
@@ -197,12 +151,7 @@ export function createStore(options: PgStoreOptions): PgStore {
     status?: string;
   }): Promise<MachineRow[]> {
     const t = qStart();
-    const m = filter?.machineName;
-    const s = filter?.status;
-    const [q, v] = m && s ? [Q_LIST_INSTANCES_BY_MACHINE_AND_STATUS, [m, s] as unknown[]]
-      : m ? [Q_LIST_INSTANCES_BY_MACHINE, [m] as unknown[]]
-      : s ? [Q_LIST_INSTANCES_BY_STATUS, [s] as unknown[]]
-      : [Q_LIST_INSTANCES, [] as unknown[]];
+    const [q, v] = pickListQuery(filter?.machineName, filter?.status);
     const result = await pool.query({ ...q, values: v });
     qEnd("dm_list_instances", t);
     return result.rows.map(rowToMachine);
@@ -290,67 +239,125 @@ export function createStore(options: PgStoreOptions): PgStore {
     opts?: { afterSeq?: number; limit?: number },
   ): Promise<EventLogEntry[]> {
     const t = qStart();
-    const a = opts?.afterSeq;
-    const l = opts?.limit;
-    const [q, v] = a !== undefined && l !== undefined
-      ? [Q_GET_EVENT_LOG_AFTER_LIMIT, [instanceId, a, l] as unknown[]]
-      : a !== undefined ? [Q_GET_EVENT_LOG_AFTER, [instanceId, a] as unknown[]]
-      : l !== undefined ? [Q_GET_EVENT_LOG_LIMIT, [instanceId, l] as unknown[]]
-      : [Q_GET_EVENT_LOG, [instanceId] as unknown[]];
+    const [q, v] = pickEventLogQuery(instanceId, opts?.afterSeq, opts?.limit);
     const result = await pool.query({ ...q, values: v });
     qEnd("dm_get_event_log", t);
-    return result.rows.map((r: any) => ({
-      seq: Number(r.seq),
-      topic: r.topic as string,
-      payload: r.payload,
-      source: r.source as string | null,
-      createdAt: Number(r.created_at),
-    }));
+    return result.rows.map(rowToEventLog);
   }
 
-  // ── Invoke Results ──────────────────────────────────────────────────────
+  // ── Task Queue (Invoke + Effect) ─────────────────────────────────────────
 
-  async function getInvokeResult(
+  async function queueInvokeTask(params: QueueInvokeTaskParams): Promise<void> {
+    const { client, instanceId, machineName, invokeId, invokeSrc, invokeInput, stateValue, maxAttempts = 3 } = params;
+    const t = qStart();
+    await client.query({
+      ...Q_INSERT_INVOKE_TASK,
+      values: [
+        instanceId,
+        JSON.stringify(stateValue),
+        maxAttempts,
+        Date.now(),
+        machineName,
+        invokeId,
+        invokeSrc,
+        invokeInput != null ? JSON.stringify(invokeInput) : null,
+      ],
+    });
+    qEnd(Q_INSERT_INVOKE_TASK.name, t);
+  }
+
+  async function checkInvokeEventExists(instanceId: string, idempotencyKey: string): Promise<boolean> {
+    const t = qStart();
+    const { rows } = await pool.query({ ...Q_CHECK_INVOKE_EVENT_EXISTS, values: [instanceId, idempotencyKey] });
+    qEnd(Q_CHECK_INVOKE_EVENT_EXISTS.name, t);
+    return rows.length > 0;
+  }
+
+  async function cancelInvokeTask(client: import("pg").PoolClient, instanceId: string, invokeId: string): Promise<void> {
+    const t = qStart();
+    await client.query({ ...Q_CANCEL_INVOKE_TASK, values: [instanceId, invokeId, Date.now()] });
+    qEnd(Q_CANCEL_INVOKE_TASK.name, t);
+  }
+
+  async function cancelInstanceInvokes(instanceId: string): Promise<void> {
+    const t = qStart();
+    await pool.query({ ...Q_CANCEL_INSTANCE_INVOKES, values: [instanceId, Date.now()] });
+    qEnd(Q_CANCEL_INSTANCE_INVOKES.name, t);
+  }
+
+  async function checkTaskStatus(taskId: string): Promise<EffectOutboxStatus | null> {
+    const t = qStart();
+    const { rows } = await pool.query({ ...Q_CHECK_TASK_STATUS, values: [taskId] });
+    qEnd(Q_CHECK_TASK_STATUS.name, t);
+    return rows.length > 0 ? rows[0].status as EffectOutboxStatus : null;
+  }
+
+  async function appendEventWithKey(
+    instanceId: string,
+    payload: unknown,
+    idempotencyKey: string,
+    topic = "event",
+    source?: string,
+  ): Promise<{ seq: number } | null> {
+    const json = JSON.stringify(payload);
+    if (Buffer.byteLength(json, "utf-8") > MAX_EVENT_PAYLOAD_BYTES) {
+      throw new DurableMachineError("Event payload exceeds 256 KB size limit", "INTERNAL");
+    }
+    const t = qStart();
+    const { rows } = await pool.query({
+      ...Q_APPEND_EVENT_WITH_KEY,
+      values: [instanceId, topic, json, source ?? null, idempotencyKey, Date.now()],
+    });
+    qEnd(Q_APPEND_EVENT_WITH_KEY.name, t);
+    // Returns null if the idempotency key already existed (ON CONFLICT DO NOTHING)
+    return rows.length > 0 ? { seq: Number(rows[0].seq) } : null;
+  }
+
+  async function getInvokeSteps(instanceId: string): Promise<StepInfo[]> {
+    const t = qStart();
+    const { rows } = await pool.query({ ...Q_GET_INVOKE_STEPS, values: [instanceId] });
+    qEnd(Q_GET_INVOKE_STEPS.name, t);
+    return rows.map((row: any): StepInfo => {
+      const payload = row.payload as Record<string, unknown>;
+      const eventType = payload.type as string;
+      const isError = eventType.startsWith("xstate.error.actor.");
+      const actorId = eventType.replace(/^xstate\.(done|error)\.actor\./, "");
+      return {
+        name: `invoke:${actorId}`,
+        output: isError ? undefined : payload.output,
+        error: isError ? payload.error : undefined,
+        completedAtEpochMs: Number(row.created_at),
+      };
+    });
+  }
+
+  // ── Step Cache (prompt-lifecycle) ────────────────────────────────────
+
+  async function getStepCache(
     instanceId: string,
     stepKey: string,
   ): Promise<{ output: unknown; error: unknown } | null> {
     const t = qStart();
-    const { rows } = await pool.query({ ...Q_GET_INVOKE_RESULT, values: [instanceId, stepKey] });
-    qEnd(Q_GET_INVOKE_RESULT.name, t);
+    const { rows } = await pool.query({ ...Q_GET_STEP_CACHE, values: [instanceId, stepKey] });
+    qEnd(Q_GET_STEP_CACHE.name, t);
     if (rows.length === 0) return null;
     return { output: rows[0].output, error: rows[0].error };
   }
 
-  async function recordInvokeResult(params: RecordInvokeResultParams): Promise<void> {
+  async function setStepCache(params: SetStepCacheParams): Promise<void> {
     const { instanceId, stepKey, output, error, startedAt, completedAt, tenantId } = params;
     const t = qStart();
     await withTransaction(async (client) => {
       if (tenantId) await client.query({ text: `SELECT set_config('app.tenant_id', $1, true)`, values: [tenantId] });
       await client.query({
-        ...Q_RECORD_INVOKE_RESULT,
+        ...Q_SET_STEP_CACHE,
         values: [instanceId, stepKey,
           output != null ? JSON.stringify(output) : null,
           error != null ? JSON.stringify(error) : null,
           startedAt ?? null, completedAt ?? null],
       });
     });
-    qEnd(Q_RECORD_INVOKE_RESULT.name, t);
-  }
-
-  async function listInvokeResults(instanceId: string): Promise<StepInfo[]> {
-    const t = qStart();
-    const { rows } = await pool.query({ ...Q_LIST_INVOKE_RESULTS, values: [instanceId] });
-    qEnd(Q_LIST_INVOKE_RESULTS.name, t);
-    return rows.map(
-      (row: any): StepInfo => ({
-        name: row.step_key,
-        output: row.output,
-        error: row.error,
-        startedAtEpochMs: row.started_at != null ? Number(row.started_at) : undefined,
-        completedAtEpochMs:
-          row.completed_at != null ? Number(row.completed_at) : undefined,
-      }),
-    );
+    qEnd(Q_SET_STEP_CACHE.name, t);
   }
 
   // ── CTE Finalize ───────────────────────────────────────────────────────
@@ -446,32 +453,34 @@ export function createStore(options: PgStoreOptions): PgStore {
   // ── Effect Outbox ───────────────────────────────────────────────────
 
   async function insertEffects(params: InsertEffectsParams): Promise<void> {
-    const { client, instanceId, stateValue, effects, maxAttempts = 3 } = params;
+    const { client, instanceId, machineName, stateValue, effects, maxAttempts = 3 } = params;
     if (effects.length === 0) return;
     const now = Date.now();
     const stateJson = JSON.stringify(stateValue);
 
     const instanceIds: string[] = [], stateValues: string[] = [], types: string[] = [];
     const payloads: string[] = [], maxAttemptsList: number[] = [], timestamps: number[] = [];
+    const taskKinds: string[] = [], machineNames: string[] = [];
     for (const { type, ...payload } of effects) {
       instanceIds.push(instanceId); stateValues.push(stateJson); types.push(type);
       payloads.push(JSON.stringify(payload)); maxAttemptsList.push(maxAttempts); timestamps.push(now);
+      taskKinds.push("effect"); machineNames.push(machineName ?? "");
     }
     const t = qStart();
     await client.query({
       ...Q_INSERT_EFFECTS,
-      values: [instanceIds, stateValues, types, payloads, maxAttemptsList, timestamps],
+      values: [instanceIds, stateValues, types, payloads, maxAttemptsList, timestamps, taskKinds, machineNames],
     });
     qEnd(Q_INSERT_EFFECTS.name, t);
     if (instr) for (const e of effects) instr.effectsEmittedTotal.add(1, { effect_type: e.type });
   }
 
-  async function claimPendingEffects(limit = 50): Promise<EffectOutboxRow[]> {
+  async function claimPendingTasks(limit = 50): Promise<TaskOutboxRow[]> {
     const t = qStart();
     const now = Date.now();
-    const { rows } = await pool.query({ ...Q_CLAIM_PENDING_EFFECTS, values: [now, limit] });
-    qEnd(Q_CLAIM_PENDING_EFFECTS.name, t);
-    return rows.map(rowToEffect);
+    const { rows } = await pool.query({ ...Q_CLAIM_PENDING_TASKS, values: [now, limit] });
+    qEnd(Q_CLAIM_PENDING_TASKS.name, t);
+    return rows.map(rowToTask);
   }
 
   async function markEffectCompleted(effectId: string): Promise<void> {
@@ -577,15 +586,21 @@ export function createStore(options: PgStoreOptions): PgStore {
     lockAndPeekEvent,
     lockAndPeekEvents,
     getEventLog,
-    getInvokeResult,
-    recordInvokeResult,
-    listInvokeResults,
+    getStepCache,
+    setStepCache,
+    queueInvokeTask,
+    claimPendingTasks,
+    checkInvokeEventExists,
+    cancelInvokeTask,
+    cancelInstanceInvokes,
+    checkTaskStatus,
+    appendEventWithKey,
+    getInvokeSteps,
     finalizeInstance,
     finalizeWithTransition,
     appendTransition,
     getTransitions,
     insertEffects,
-    claimPendingEffects,
     markEffectCompleted,
     markEffectFailed,
     listEffects,

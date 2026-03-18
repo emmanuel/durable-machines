@@ -1,4 +1,4 @@
-// NOTE: Parallel implementation in @durable-xstate/worker/src/admin.ts.
+// NOTE: Parallel implementation in @durable-machines/worker/src/admin.ts.
 // Keep both in sync if modifying.
 
 import { createServer } from "node:http";

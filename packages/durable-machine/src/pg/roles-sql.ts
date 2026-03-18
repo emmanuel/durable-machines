@@ -30,7 +30,7 @@ const RLS_TABLES = [
   "event_log",
   "transition_log",
   "effect_outbox",
-  "invoke_results",
+  "step_cache",
 ] as const;
 
 /**

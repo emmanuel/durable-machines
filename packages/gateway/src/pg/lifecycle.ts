@@ -17,9 +17,9 @@ import {
   sendMachineEvent,
   sendMachineEventBatch,
   getMachineState,
-} from "@durable-xstate/durable-machine/pg";
-import { createAppContext } from "@durable-xstate/durable-machine";
-import type { AppContext } from "@durable-xstate/durable-machine";
+} from "@durable-machines/machine/pg";
+import { createAppContext } from "@durable-machines/machine";
+import type { AppContext } from "@durable-machines/machine";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 

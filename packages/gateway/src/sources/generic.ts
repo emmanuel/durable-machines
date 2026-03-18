@@ -1,4 +1,4 @@
-import type { Logger } from "@durable-xstate/durable-machine";
+import type { Logger } from "@durable-machines/machine";
 import type { WebhookSource, RawRequest } from "../types.js";
 
 export interface GenericSourceOptions {
@@ -16,7 +16,7 @@ export function genericSource<TPayload = unknown>(opts?: GenericSourceOptions): 
   if (opts?.logger) {
     opts.logger.warn({}, msg);
   } else {
-    console.warn(`[durable-xstate] WARNING: ${msg}`);
+    console.warn(`[durable-machines] WARNING: ${msg}`);
   }
 
   return {

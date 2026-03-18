@@ -2,7 +2,7 @@
 
 ## Problem
 
-durable-xstate has no concept of tenancy. All machine instances, events, effects, and transitions are globally visible within a single database. There is no isolation between API consumers, no per-tenant JWT verification, and no row-level access control.
+durable-machines has no concept of tenancy. All machine instances, events, effects, and transitions are globally visible within a single database. There is no isolation between API consumers, no per-tenant JWT verification, and no row-level access control.
 
 ## Goals
 

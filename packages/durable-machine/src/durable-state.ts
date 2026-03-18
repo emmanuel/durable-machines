@@ -1,5 +1,6 @@
 import type { AnyStateMachine, AnyMachineSnapshot } from "xstate";
 import type { EffectConfig } from "./effects.js";
+import { compileInput } from "./definition/desugar-input.js";
 
 const META_KEY = "xstate-durable";
 
@@ -21,11 +22,15 @@ const META_KEY = "xstate-durable";
  * ```
  */
 export function durableState(options?: { effects?: EffectConfig[] }) {
+  const hasEffects = options?.effects && options.effects.length > 0;
   return {
     meta: {
       [META_KEY]: {
         durable: true,
-        ...(options?.effects ? { effects: options.effects } : {}),
+        ...(hasEffects ? {
+          effects: options!.effects,
+          compiledEffects: options!.effects!.map((e) => compileInput(e)),
+        } : {}),
       },
     },
   } as const;

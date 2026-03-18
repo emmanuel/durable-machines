@@ -20,7 +20,7 @@ instance — isolated, single-threaded, with built-in persistence and alarm sche
 
 ## Core Insight
 
-The pure XState utilities in `@durable-xstate/durable-machine` (`initialTransition`,
+The pure XState utilities in `@durable-machines/machine` (`initialTransition`,
 `transition`, `isDurableState`, `getActiveInvocation`, `getSortedAfterDelays`,
 `resolveTransientTransitions`, etc.) are runtime-agnostic. The event processor algorithm
 is the same everywhere — only the storage and concurrency model differ.
@@ -61,7 +61,7 @@ different types (`DurableObjectState`, not `Pool`), different test runner
 CF-specific code into the Node-based `durable-machine` package would force CF runtime
 dependencies on all users.
 
-The package imports from `@durable-xstate/durable-machine` for:
+The package imports from `@durable-machines/machine` for:
 - `durableState`, `prompt`, `validateMachineForDurability`, `walkStateNodes`
 - `isDurableState`, `getActiveInvocation`, `getSortedAfterDelays`, `buildAfterEvent`,
   `resolveTransientTransitions`, `extractActorImplementations`
@@ -321,8 +321,8 @@ export function createDurableObjectClass(
 
 ```ts
 // worker.ts
-import { DurableStateMachine } from "@durable-xstate/cloudflare";
-import { createDurableObjectClass } from "@durable-xstate/cloudflare";
+import { DurableStateMachine } from "@durable-machines/cloudflare";
+import { createDurableObjectClass } from "@durable-machines/cloudflare";
 import { orderMachine } from "./machines.js";
 
 export interface Env {
@@ -495,7 +495,7 @@ export default defineWorkersConfig({
 ```ts
 // tests/fixture.ts
 import { env } from "cloudflare:test";
-import type { BackendFixture } from "@durable-xstate/durable-machine/test-helpers";
+import type { BackendFixture } from "@durable-machines/machine/test-helpers";
 
 export function createCfFixture(): BackendFixture {
   return {
@@ -542,7 +542,7 @@ it("fires after delay via alarm", async () => {
 
 ### Test harness export
 
-`@durable-xstate/durable-machine` exports conformance test suites and fixtures via
+`@durable-machines/machine` exports conformance test suites and fixtures via
 new subpath exports:
 
 ```json
@@ -557,7 +557,7 @@ new subpath exports:
 }
 ```
 
-This lets `@durable-xstate/cloudflare` import `BackendFixture`, `waitForState`,
+This lets `@durable-machines/cloudflare` import `BackendFixture`, `waitForState`,
 `lifecycleConformance`, etc. without duplicating test code.
 
 ### Conformance suites
@@ -590,7 +590,7 @@ Plus CF-specific tests:
 | `tests/conformance.test.ts` | Runs all conformance suites with CF fixture |
 | `tests/alarm.test.ts` | CF-specific `setAlarm()` / `runDurableObjectAlarm()` tests |
 
-## Modified Files in `@durable-xstate/durable-machine`
+## Modified Files in `@durable-machines/machine`
 
 | File | Changes |
 |------|---------|
@@ -615,7 +615,7 @@ Plus CF-specific tests:
 
 ### Phase 3: Conformance Tests
 
-7. Add subpath exports to `@durable-xstate/durable-machine` for test helpers
+7. Add subpath exports to `@durable-machines/machine` for test helpers
 8. `wrangler.jsonc` with `new_sqlite_classes` migration
 9. `vitest.config.ts` with `@cloudflare/vitest-pool-workers`
 10. `tests/fixture.ts` — CF `BackendFixture` using `cloudflare:test` env bindings

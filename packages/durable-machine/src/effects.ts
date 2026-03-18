@@ -53,16 +53,37 @@ export function createEffectHandlerRegistry(
 /** @deprecated Use {@link createEffectHandlerRegistry}. */
 export const createEffectHandlers = createEffectHandlerRegistry;
 
+/** A compiled effect resolver function. */
+export type CompiledEffectResolver = (args: { context: Record<string, unknown>; event?: Record<string, unknown> }) => unknown;
+
 /**
- * Extracts the effects config array from a state node's metadata, if present.
+ * Extracts the raw effect configs from a state node's metadata, if present.
+ *
+ * Used by validation and serialization which need the original EffectConfig objects.
  *
  * @param stateNodeMeta - The `.meta` object from a state node
- * @returns The array of {@link EffectConfig} if present, or `null`
+ * @returns The array of raw EffectConfig objects if present, or `null`
  */
 export function getEffectsConfig(
   stateNodeMeta: Record<string, any> | undefined,
 ): EffectConfig[] | null {
   const effects = stateNodeMeta?.[META_KEY]?.effects;
   if (Array.isArray(effects) && effects.length > 0) return effects;
+  return null;
+}
+
+/**
+ * Extracts the compiled effect resolvers from a state node's metadata, if present.
+ *
+ * Used at runtime by `collectAndResolveEffects()` which needs compiled functions.
+ *
+ * @param stateNodeMeta - The `.meta` object from a state node
+ * @returns The array of compiled effect resolvers if present, or `null`
+ */
+export function getCompiledEffects(
+  stateNodeMeta: Record<string, any> | undefined,
+): CompiledEffectResolver[] | null {
+  const compiled = stateNodeMeta?.[META_KEY]?.compiledEffects;
+  if (Array.isArray(compiled) && compiled.length > 0) return compiled;
   return null;
 }

@@ -1,5 +1,5 @@
 {
-  "name": "@durable-xstate/durable-machine",
+  "name": "@durable-machines/machine",
   "version": "0.2.0",
   "description": "Durable XState v5 state machines with pluggable backends",
   "type": "module",
@@ -17,6 +17,10 @@
     "./pg": {
       "types": "./dist/pg/index.d.ts",
       "import": "./dist/pg/index.js"
+    },
+    "./pg/task-executor": {
+      "types": "./dist/pg/task-executor.d.ts",
+      "import": "./dist/pg/task-executor.js"
     },
     "./pg-native": {
       "types": "./dist/pg-native/index.d.ts",
@@ -50,12 +54,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/emmanuel/durable-xstate.git",
+    "url": "https://github.com/emmanuel/durable-machines.git",
     "directory": "packages/durable-machine"
   },
-  "homepage": "https://github.com/emmanuel/durable-xstate/tree/main/packages/durable-machine",
+  "homepage": "https://github.com/emmanuel/durable-machines/tree/main/packages/durable-machine",
   "bugs": {
-    "url": "https://github.com/emmanuel/durable-xstate/issues"
+    "url": "https://github.com/emmanuel/durable-machines/issues"
   },
   "author": "Emmanuel Gomez",
   "peerDependencies": {
@@ -85,7 +89,7 @@
     "xstate": "^5.19.0"
   },
   "dependencies": {
-    "@durable-xstate/expr": "workspace:*",
+    "@durable-machines/expr": "workspace:*",
     "@opentelemetry/api": "^1.9.0"
   }
 }

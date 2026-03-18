@@ -6,6 +6,8 @@ export interface PgConfig {
   useListenNotify?: boolean;
   maxConcurrency?: number;
   poolSize?: number;
+  /** Default timeout in ms for actor invocations executed by the task executor. @defaultValue `30000` */
+  invokeTimeoutMs?: number;
 }
 
 /**

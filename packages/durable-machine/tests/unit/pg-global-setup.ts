@@ -10,7 +10,7 @@ export async function setup() {
     DROP TABLE IF EXISTS effect_outbox CASCADE;
     DROP TABLE IF EXISTS transition_log CASCADE;
     DROP TABLE IF EXISTS event_log CASCADE;
-    DROP TABLE IF EXISTS invoke_results CASCADE;
+    DROP TABLE IF EXISTS step_cache CASCADE;
     DROP TABLE IF EXISTS machine_instances CASCADE;
     DROP TABLE IF EXISTS tenants CASCADE;
   `);

@@ -175,22 +175,22 @@ describe("compile — object", () => {
 describe("compile — fn (builtins)", () => {
   it("calls builtin with no args", () => {
     const builtins = createBuiltinRegistry({ fixed: () => "ok" });
-    expect(compile({ fn: "fixed" }, builtins)(emptyScope)).toBe("ok");
+    expect(compile({ fn: ["fixed"] }, builtins)(emptyScope)).toBe("ok");
   });
 
   it("calls builtin with args", () => {
     const builtins = createBuiltinRegistry({ sum: (a: unknown, b: unknown) => (a as number) + (b as number) });
-    expect(compile({ fn: "sum", args: [3, 4] }, builtins)(emptyScope)).toBe(7);
+    expect(compile({ fn: ["sum", 3, 4] }, builtins)(emptyScope)).toBe(7);
   });
 
   it("missing builtin returns undefined", () => {
-    expect(compile({ fn: "missing" })(emptyScope)).toBe(undefined);
+    expect(compile({ fn: ["missing"] })(emptyScope)).toBe(undefined);
   });
 
   it("impure builtins called fresh each time", () => {
     let counter = 0;
     const builtins = createBuiltinRegistry({ inc: () => ++counter });
-    const fn = compile({ fn: "inc" }, builtins);
+    const fn = compile({ fn: ["inc"] }, builtins);
     expect(fn(emptyScope)).toBe(1);
     expect(fn(emptyScope)).toBe(2);
   });

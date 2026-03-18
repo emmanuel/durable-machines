@@ -236,14 +236,13 @@ export function evaluate(
     }
 
     // fn — call a registered builtin
-    if ("fn" in op && typeof op.fn === "string") {
-      const fn = builtins?.[op.fn];
+    if ("fn" in op) {
+      const fnArgs = op.fn as [string, ...Expr[]];
+      const [name, ...argExprs] = fnArgs;
+      const fn = builtins?.[name];
       if (!fn) return undefined;
-      if ("args" in op && Array.isArray(op.args)) {
-        const args = (op.args as Expr[]).map((a) => evaluate(a, scope, builtins));
-        return fn(...args);
-      }
-      return fn();
+      const args = argExprs.map((a) => evaluate(a, scope, builtins));
+      return fn(...args);
     }
   }
 

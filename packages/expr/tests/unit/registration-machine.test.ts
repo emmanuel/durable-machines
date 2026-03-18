@@ -82,8 +82,8 @@ const satisfyAU = {
   let: {
     current: { select: ["context", "aus", { param: "auId" }] },
     score: { select: ["event", "score"] },
-    sessionId: { coalesce: [{ select: ["event", "sessionId"] }, { fn: "uuid" }] },
-    timestamp: { coalesce: [{ select: ["event", "timestamp"] }, { fn: "now" }] },
+    sessionId: { coalesce: [{ select: ["event", "sessionId"] }, { fn: ["uuid"] }] },
+    timestamp: { coalesce: [{ select: ["event", "timestamp"] }, { fn: ["now"] }] },
     auTitle: { coalesce: [
       { select: ["context", "metadata", "auTitles", { param: "auId" }] },
       { param: "auId" },
@@ -218,14 +218,14 @@ const handleSessionLaunch = {
 const satisfyBlock = {
   type: "enqueueActions" as const,
   let: {
-    timestamp: { fn: "now" },
+    timestamp: { fn: ["now"] },
     blockTitle: { coalesce: [
       { select: ["context", "metadata", "blockTitles", { param: "blockId" }] },
       { param: "blockId" },
     ]},
     sessionId: { coalesce: [
       { select: ["context", "lastSatisfyingSessionId"] },
-      { fn: "uuid" },
+      { fn: ["uuid"] },
     ]},
   },
   actions: [
@@ -258,10 +258,10 @@ const satisfyBlock = {
 const satisfyCourse = {
   type: "enqueueActions" as const,
   let: {
-    timestamp: { fn: "now" },
+    timestamp: { fn: ["now"] },
     sessionId: { coalesce: [
       { select: ["context", "lastSatisfyingSessionId"] },
-      { fn: "uuid" },
+      { fn: ["uuid"] },
     ]},
   },
   actions: [

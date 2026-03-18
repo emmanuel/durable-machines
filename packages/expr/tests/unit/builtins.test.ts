@@ -6,14 +6,14 @@ import { defaultBuiltins, createBuiltinRegistry } from "../../src/builtins.js";
 describe("evaluate — fn (builtins)", () => {
   it("uuid returns a UUID string", () => {
     const scope = createScope({ context: {} });
-    const result = evaluate({ fn: "uuid" }, scope, defaultBuiltins);
+    const result = evaluate({ fn: ["uuid"] }, scope, defaultBuiltins);
     expect(typeof result).toBe("string");
     expect(result).toMatch(/^[0-9a-f-]{36}$/);
   });
 
   it("now returns a timestamp number", () => {
     const scope = createScope({ context: {} });
-    const result = evaluate({ fn: "now" }, scope, defaultBuiltins);
+    const result = evaluate({ fn: ["now"] }, scope, defaultBuiltins);
     expect(typeof result).toBe("number");
     expect(result).toBeGreaterThan(0);
   });
@@ -23,7 +23,7 @@ describe("evaluate — fn (builtins)", () => {
     const builtins = createBuiltinRegistry({
       add3: (a: unknown, b: unknown, c: unknown) => (a as number) + (b as number) + (c as number),
     });
-    expect(evaluate({ fn: "add3", args: [1, 2, 3] }, scope, builtins)).toBe(6);
+    expect(evaluate({ fn: ["add3", 1, 2, 3] }, scope, builtins)).toBe(6);
   });
 
   it("fn with args: args are evaluated as expressions", () => {
@@ -32,7 +32,7 @@ describe("evaluate — fn (builtins)", () => {
       double: (n: unknown) => (n as number) * 2,
     });
     expect(evaluate(
-      { fn: "double", args: [{ select: ["context", "x"] }] },
+      { fn: ["double", { select: ["context", "x"] }] },
       scope,
       builtins,
     )).toBe(20);
@@ -60,7 +60,7 @@ describe("evaluate — fn (builtins)", () => {
 
   it("unknown builtin returns undefined", () => {
     const scope = createScope({ context: {} });
-    expect(evaluate({ fn: "unknown" }, scope, defaultBuiltins)).toBeUndefined();
+    expect(evaluate({ fn: ["unknown"] }, scope, defaultBuiltins)).toBeUndefined();
   });
 
   it("createBuiltinRegistry merges with defaults", () => {

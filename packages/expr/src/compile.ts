@@ -124,14 +124,13 @@ export function compile(expr: Expr, builtins?: BuiltinRegistry): CompiledExpr {
   }
 
   // fn — builtin call
-  if ("fn" in op && typeof op.fn === "string") {
-    const fn = builtins?.[op.fn];
+  if ("fn" in op) {
+    const fnArgs = op.fn as [string, ...Expr[]];
+    const [name, ...argExprs] = fnArgs;
+    const fn = builtins?.[name];
     if (!fn) return () => undefined;
-    if ("args" in op && Array.isArray(op.args)) {
-      const argFns = (op.args as Expr[]).map(a => compile(a, builtins));
-      return (s) => fn(...argFns.map(f => f(s)));
-    }
-    return () => fn();
+    const argFns = argExprs.map(a => compile(a, builtins));
+    return (s) => fn(...argFns.map(f => f(s)));
   }
 
   return () => expr;

@@ -3,7 +3,7 @@ import { compileGuard, compileAction } from "../../src/compile-actions.js";
 import { evaluateActions } from "../../src/actions.js";
 import { createScope } from "../../src/types.js";
 import { createBuiltinRegistry } from "../../src/builtins.js";
-import type { ActionDef, EnqueueActionsDef, Scope } from "../../src/types.js";
+import type { ActionDef, EnqueueActionsDef } from "../../src/types.js";
 
 // ─── compileGuard ────────────────────────────────────────────────────────────
 
@@ -97,7 +97,7 @@ describe("compileAction", () => {
   it("enqueueActions — let bindings + guarded blocks", () => {
     const action: EnqueueActionsDef = {
       type: "enqueueActions",
-      let: { ts: { fn: "now" } },
+      let: { ts: { fn: ["now"] } },
       actions: [
         { type: "assign", transforms: [{ path: ["updatedAt"], set: { ref: "ts" } }] },
         {

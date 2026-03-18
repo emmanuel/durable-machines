@@ -101,8 +101,8 @@ function buildSatisfyAUAction(): unknown {
     type: "enqueueActions",
     let: {
       ...computeNextFlagsLet(),
-      sessionId: { coalesce: [{ select: ["event", "sessionId"] }, { fn: "uuid" }] },
-      timestamp: { coalesce: [{ select: ["event", "timestamp"] }, { fn: "now" }] },
+      sessionId: { coalesce: [{ select: ["event", "sessionId"] }, { fn: ["uuid"] }] },
+      timestamp: { coalesce: [{ select: ["event", "timestamp"] }, { fn: ["now"] }] },
       auTitle: { coalesce: [{ select: ["context", "metadata", "auTitles", { param: "auId" }] }, { param: "auId" }] },
       method: methodCond(),
     },
@@ -131,8 +131,8 @@ function buildUpdateAUAction(): unknown {
     type: "enqueueActions",
     let: {
       ...computeNextFlagsLet(),
-      sessionId: { coalesce: [{ select: ["event", "sessionId"] }, { fn: "uuid" }] },
-      timestamp: { coalesce: [{ select: ["event", "timestamp"] }, { fn: "now" }] },
+      sessionId: { coalesce: [{ select: ["event", "sessionId"] }, { fn: ["uuid"] }] },
+      timestamp: { coalesce: [{ select: ["event", "timestamp"] }, { fn: ["now"] }] },
       auTitle: { coalesce: [{ select: ["context", "metadata", "auTitles", { param: "auId" }] }, { param: "auId" }] },
     },
     actions: [
@@ -158,8 +158,8 @@ function buildWaiveAUAction(): unknown {
   return {
     type: "enqueueActions",
     let: {
-      sessionId: { fn: "uuid" },
-      timestamp: { coalesce: [{ select: ["event", "timestamp"] }, { fn: "now" }] },
+      sessionId: { fn: ["uuid"] },
+      timestamp: { coalesce: [{ select: ["event", "timestamp"] }, { fn: ["now"] }] },
       reason: { coalesce: [{ select: ["event", "reason"] }, "Administrative"] },
       auTitle: { coalesce: [{ select: ["context", "metadata", "auTitles", { param: "auId" }] }, { param: "auId" }] },
     },
@@ -182,8 +182,8 @@ function buildSatisfyNotApplicableAUAction(): unknown {
   return {
     type: "enqueueActions",
     let: {
-      sessionId: { fn: "uuid" },
-      timestamp: { fn: "now" },
+      sessionId: { fn: ["uuid"] },
+      timestamp: { fn: ["now"] },
       auTitle: { coalesce: [{ select: ["context", "metadata", "auTitles", { param: "auId" }] }, { param: "auId" }] },
     },
     actions: [
@@ -311,9 +311,9 @@ function buildSatisfyBlockAction(): unknown {
   return {
     type: "enqueueActions",
     let: {
-      timestamp: { fn: "now" },
+      timestamp: { fn: ["now"] },
       blockTitle: { coalesce: [{ select: ["context", "metadata", "blockTitles", { param: "blockId" }] }, { param: "blockId" }] },
-      sessionId: { coalesce: [{ select: ["context", "lastSatisfyingSessionId"] }, { fn: "uuid" }] },
+      sessionId: { coalesce: [{ select: ["context", "lastSatisfyingSessionId"] }, { fn: ["uuid"] }] },
     },
     actions: [
       { guard: { not: { in: [{ param: "blockId" }, { select: ["context", "satisfiedBlocks"] }] } }, actions: [
@@ -336,8 +336,8 @@ function buildSatisfyCourseAction(): unknown {
   return {
     type: "enqueueActions",
     let: {
-      timestamp: { fn: "now" },
-      sessionId: { coalesce: [{ select: ["context", "lastSatisfyingSessionId"] }, { fn: "uuid" }] },
+      timestamp: { fn: ["now"] },
+      sessionId: { coalesce: [{ select: ["context", "lastSatisfyingSessionId"] }, { fn: ["uuid"] }] },
     },
     actions: [
       { type: "assign", transforms: [

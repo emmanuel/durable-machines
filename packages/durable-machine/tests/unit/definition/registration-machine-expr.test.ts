@@ -54,8 +54,8 @@ describe("registration machine via expr definitions", () => {
         satisfyAU: {
           type: "enqueueActions",
           let: {
-            sessionId: { coalesce: [{ select: ["event", "sessionId"] }, { fn: "uuid" }] },
-            timestamp: { coalesce: [{ select: ["event", "timestamp"] }, { fn: "now" }] },
+            sessionId: { coalesce: [{ select: ["event", "sessionId"] }, { fn: ["uuid"] }] },
+            timestamp: { coalesce: [{ select: ["event", "timestamp"] }, { fn: ["now"] }] },
           },
           actions: [
             {

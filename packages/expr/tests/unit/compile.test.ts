@@ -364,6 +364,87 @@ describe("compile — mapVals", () => {
   });
 });
 
+describe("compile — filterKeys", () => {
+  it("keeps entries matching predicate", () => {
+    const scope = createScope({ context: { scores: { math: 80, english: 50, science: 90 } } });
+    expect(compile({ filterKeys: [{ select: ["context", "scores"] }, "v", { gte: [{ ref: "v" }, 80] }] })(scope)).toEqual({ math: 80, science: 90 });
+  });
+  it("transducer form", () => {
+    const scope = createScope({ context: {} });
+    scope.bindings.$ = { a: 1, b: 2, c: 3 };
+    expect(compile({ filterKeys: ["v", { gt: [{ ref: "v" }, 1] }] })(scope)).toEqual({ b: 2, c: 3 });
+  });
+  it("returns {} for non-object", () => {
+    expect(compile({ filterKeys: [42, "v", true] })(emptyScope)).toEqual({});
+  });
+});
+
+describe("compile — deepSelect", () => {
+  it("finds matching nodes recursively", () => {
+    const scope = createScope({ context: { data: { a: 1, b: { c: 2, d: { e: 2 } } } } });
+    expect(compile({ deepSelect: [{ select: ["context", "data"] }, "node", { eq: [{ ref: "node" }, 2] }] })(scope)).toEqual([2, 2]);
+  });
+  it("transducer form", () => {
+    const scope = createScope({ context: {} });
+    scope.bindings.$ = { x: 5, y: { z: 5 } };
+    expect(compile({ deepSelect: ["node", { eq: [{ ref: "node" }, 5] }] })(scope)).toEqual([5, 5]);
+  });
+  it("returns [] when nothing matches", () => {
+    expect(compile({ deepSelect: [{ object: { a: 1 } }, "n", { eq: [{ ref: "n" }, 99] }] })(emptyScope)).toEqual([]);
+  });
+});
+
+describe("compile — pick", () => {
+  it("extracts subset of keys", () => {
+    const scope = createScope({ context: { obj: { a: 1, b: 2, c: 3 } } });
+    expect(compile({ pick: [{ select: ["context", "obj"] }, ["a", "c"]] })(scope)).toEqual({ a: 1, c: 3 });
+  });
+  it("ignores missing keys", () => {
+    expect(compile({ pick: [{ object: { x: 1 } }, ["x", "y"]] })(emptyScope)).toEqual({ x: 1 });
+  });
+  it("returns {} for non-object", () => {
+    expect(compile({ pick: [42, ["a"]] })(emptyScope)).toEqual({});
+  });
+});
+
+describe("compile — prepend", () => {
+  it("inserts at beginning", () => {
+    const scope = createScope({ context: { items: [2, 3] } });
+    expect(compile({ prepend: [{ select: ["context", "items"] }, 1] })(scope)).toEqual([1, 2, 3]);
+  });
+  it("wraps non-array", () => {
+    expect(compile({ prepend: [42, "first"] })(emptyScope)).toEqual(["first"]);
+  });
+});
+
+describe("compile — multiSelect", () => {
+  it("evaluates multiple expressions into array", () => {
+    const scope = createScope({ context: { a: 1 } });
+    expect(compile({ multiSelect: [{ select: ["context", "a"] }, 42, true] })(scope)).toEqual([1, 42, true]);
+  });
+  it("empty returns []", () => {
+    expect(compile({ multiSelect: [] })(emptyScope)).toEqual([]);
+  });
+});
+
+describe("compile — condPath", () => {
+  it("evaluates matching branch with $ bound", () => {
+    const scope = createScope({ context: { val: 5 } });
+    expect(compile({ condPath: [
+      { select: ["context", "val"] },
+      [{ gt: [{ ref: "$" }, 10] }, "big"],
+      [{ gt: [{ ref: "$" }, 3] }, "medium"],
+      [true, "small"],
+    ] })(scope)).toBe("medium");
+  });
+  it("returns undefined when no match", () => {
+    expect(compile({ condPath: [42, [{ gt: [{ ref: "$" }, 100] }, "big"]] })(emptyScope)).toBeUndefined();
+  });
+  it("transforms input in result", () => {
+    expect(compile({ condPath: [5, [{ gt: [{ ref: "$" }, 0] }, { mul: [{ ref: "$" }, 3] }]] })(emptyScope)).toBe(15);
+  });
+});
+
 describe("compile — equivalence with evaluate", () => {
   const testCases: [string, Expr, Scope][] = [
     ["nested select + eq", { eq: [{ select: ["context", "x"] }, 5] }, createScope({ context: { x: 5 } })],

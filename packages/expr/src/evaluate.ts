@@ -1,5 +1,9 @@
 import type { Expr, Scope, BuiltinRegistry, Path, PathNavigator } from "./types.js";
 import { matchesWhere } from "./where.js";
+import {
+  evaluateIteration, evaluateReduce, evaluateMapVals,
+  evaluateFilterKeys, evaluateDeepSelect, evaluatePipe,
+} from "./eval-collection-ops.js";
 
 // ─── Path navigation ─────────────────────────────────────────────────────────
 
@@ -198,16 +202,43 @@ export function evaluate(expr: Expr, scope: Scope, builtins?: BuiltinRegistry): 
     return result;
   }
 
-  // Iteration operators
-  if ("filter" in op) return evaluateIteration("filter", op.filter as unknown[], scope, builtins);
-  if ("map" in op) return evaluateIteration("map", op.map as unknown[], scope, builtins);
-  if ("every" in op) return evaluateIteration("every", op.every as unknown[], scope, builtins);
-  if ("some" in op) return evaluateIteration("some", op.some as unknown[], scope, builtins);
-  if ("reduce" in op) return evaluateReduce(op.reduce as unknown[], scope, builtins);
-  if ("mapVals" in op) return evaluateMapVals(op.mapVals as unknown[], scope, builtins);
+  // Iteration operators (delegated to eval-collection-ops)
+  if ("filter" in op) return evaluateIteration("filter", op.filter as unknown[], scope, evaluate, builtins);
+  if ("map" in op) return evaluateIteration("map", op.map as unknown[], scope, evaluate, builtins);
+  if ("every" in op) return evaluateIteration("every", op.every as unknown[], scope, evaluate, builtins);
+  if ("some" in op) return evaluateIteration("some", op.some as unknown[], scope, evaluate, builtins);
+  if ("reduce" in op) return evaluateReduce(op.reduce as unknown[], scope, evaluate, builtins);
+  if ("mapVals" in op) return evaluateMapVals(op.mapVals as unknown[], scope, evaluate, builtins);
+  if ("filterKeys" in op) return evaluateFilterKeys(op.filterKeys as unknown[], scope, evaluate, builtins);
+  if ("deepSelect" in op) return evaluateDeepSelect(op.deepSelect as unknown[], scope, evaluate, builtins);
+  if ("pipe" in op) return evaluatePipe(op.pipe as Expr[], scope, evaluate, builtins);
 
-  // pipe — sequential composition with $ binding
-  if ("pipe" in op) return evaluatePipe(op.pipe as Expr[], scope, builtins);
+  // Simple operators
+  if ("pick" in op) {
+    const [objExpr, keysExpr] = op.pick as [Expr, Expr];
+    const obj = ev(objExpr); const keys = ev(keysExpr);
+    if (obj === null || typeof obj !== "object" || Array.isArray(obj) || !Array.isArray(keys)) return {};
+    const r: Record<string, unknown> = {};
+    for (const k of keys as string[]) { if (k in (obj as Record<string, unknown>)) r[k] = (obj as Record<string, unknown>)[k]; }
+    return r;
+  }
+  if ("prepend" in op) {
+    const [arrExpr, valExpr] = op.prepend as [Expr, Expr];
+    const arr = ev(arrExpr); const val = ev(valExpr);
+    return Array.isArray(arr) ? [val, ...arr] : [val];
+  }
+  if ("multiSelect" in op) return (op.multiSelect as Expr[]).map(ev);
+
+  // condPath — bind input as $, evaluate guard/result pairs
+  if ("condPath" in op) {
+    const args = op.condPath as unknown[];
+    const input = ev(args[0] as Expr);
+    const inner: Scope = { ...scope, bindings: { ...scope.bindings, $: input } };
+    for (const [guard, value] of args.slice(1) as [Expr, Expr][]) {
+      if (evaluate(guard, inner, builtins)) return evaluate(value, inner, builtins);
+    }
+    return undefined;
+  }
 
   // fn — call a registered builtin
   if ("fn" in op) {
@@ -217,140 +248,4 @@ export function evaluate(expr: Expr, scope: Scope, builtins?: BuiltinRegistry): 
   }
 
   return expr;
-}
-
-// ─── Iteration helpers ────────────────────────────────────────────────────────
-
-type IterOp = "filter" | "map" | "every" | "some";
-
-function parseDualArity(
-  args: unknown[],
-  scope: Scope,
-  builtins?: BuiltinRegistry,
-): { arr: unknown; bindName: string; body: Expr } {
-  if (args.length === 3 && typeof args[1] === "string") {
-    return {
-      arr: evaluate(args[0] as Expr, scope, builtins),
-      bindName: args[1],
-      body: args[2] as Expr,
-    };
-  }
-  return {
-    arr: scope.bindings.$,
-    bindName: args[0] as string,
-    body: args[1] as Expr,
-  };
-}
-
-function evaluateIteration(
-  kind: IterOp,
-  args: unknown[],
-  scope: Scope,
-  builtins?: BuiltinRegistry,
-): unknown {
-  const { arr, bindName, body } = parseDualArity(args, scope, builtins);
-
-  if (!Array.isArray(arr)) {
-    return kind === "every" ? false : kind === "some" ? false : [];
-  }
-
-  const makeInner = (item: unknown, i: number): Scope => ({
-    ...scope, bindings: { ...scope.bindings, [bindName]: item, $index: i },
-  });
-
-  switch (kind) {
-    case "filter":
-      return arr.filter((item, i) => Boolean(evaluate(body, makeInner(item, i), builtins)));
-    case "map":
-      return arr.map((item, i) => evaluate(body, makeInner(item, i), builtins));
-    case "every":
-      return arr.every((item, i) => Boolean(evaluate(body, makeInner(item, i), builtins)));
-    case "some":
-      return arr.some((item, i) => Boolean(evaluate(body, makeInner(item, i), builtins)));
-  }
-}
-
-function evaluateReduce(args: unknown[], scope: Scope, builtins?: BuiltinRegistry): unknown {
-  let arr: unknown;
-  let accName: string;
-  let itemName: string;
-  let body: Expr;
-  let hasInit: boolean;
-  let init: Expr | undefined;
-
-  if (typeof args[0] === "string") {
-    // Transducer: ["acc", "item", body] or ["acc", "item", body, init]
-    arr = scope.bindings.$;
-    accName = args[0] as string;
-    itemName = args[1] as string;
-    body = args[2] as Expr;
-    hasInit = args.length >= 4;
-    init = hasInit ? (args[3] as Expr) : undefined;
-  } else {
-    // Eager: [arr, "acc", "item", body] or [arr, "acc", "item", body, init]
-    arr = evaluate(args[0] as Expr, scope, builtins);
-    accName = args[1] as string;
-    itemName = args[2] as string;
-    body = args[3] as Expr;
-    hasInit = args.length >= 5;
-    init = hasInit ? (args[4] as Expr) : undefined;
-  }
-
-  if (!Array.isArray(arr)) {
-    return hasInit ? evaluate(init!, scope, builtins) : undefined;
-  }
-  const a = arr as unknown[];
-  if (a.length === 0) {
-    return hasInit ? evaluate(init!, scope, builtins) : undefined;
-  }
-
-  let acc: unknown;
-  let startIdx: number;
-  if (hasInit) {
-    acc = evaluate(init!, scope, builtins);
-    startIdx = 0;
-  } else {
-    acc = a[0];
-    startIdx = 1;
-  }
-
-  for (let i = startIdx; i < a.length; i++) {
-    const inner: Scope = { ...scope, bindings: {
-      ...scope.bindings, [accName]: acc, [itemName]: a[i], $index: i,
-    }};
-    acc = evaluate(body, inner, builtins);
-  }
-  return acc;
-}
-
-function evaluateMapVals(args: unknown[], scope: Scope, builtins?: BuiltinRegistry): unknown {
-  let obj: unknown;
-  let bindName: string;
-  let body: Expr;
-  if (args.length === 3 && typeof args[1] === "string") {
-    obj = evaluate(args[0] as Expr, scope, builtins);
-    bindName = args[1];
-    body = args[2] as Expr;
-  } else {
-    obj = scope.bindings.$;
-    bindName = args[0] as string;
-    body = args[1] as Expr;
-  }
-  if (obj === null || typeof obj !== "object" || Array.isArray(obj)) return {};
-  const result: Record<string, unknown> = {};
-  for (const [key, val] of Object.entries(obj as Record<string, unknown>)) {
-    const inner: Scope = { ...scope, bindings: { ...scope.bindings, [bindName]: val, $key: key } };
-    result[key] = evaluate(body, inner, builtins);
-  }
-  return result;
-}
-
-function evaluatePipe(steps: Expr[], scope: Scope, builtins?: BuiltinRegistry): unknown {
-  if (steps.length === 0) return undefined;
-  let current = evaluate(steps[0], scope, builtins);
-  for (let i = 1; i < steps.length; i++) {
-    const inner: Scope = { ...scope, bindings: { ...scope.bindings, $: current } };
-    current = evaluate(steps[i], inner, builtins);
-  }
-  return current;
 }

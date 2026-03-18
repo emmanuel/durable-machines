@@ -1,5 +1,8 @@
 import type { Expr, Scope, BuiltinRegistry, Path, PathNavigator, CompiledExpr } from "./types.js";
 import { rewriteWhereStrings } from "./where.js";
+import {
+  compileIteration, compileReduce, compileDeepSelect, compileCondPath,
+} from "./compile-collection-ops.js";
 
 /**
  * Compile an expression tree into a closure.
@@ -107,9 +110,8 @@ export function compile(expr: Expr, builtins?: BuiltinRegistry): CompiledExpr {
     const [ca, ci] = compilePair(op.at as [Expr, Expr], builtins);
     return (s) => {
       const arr = ca(s);
-      const idx = ci(s) as number;
       if (!Array.isArray(arr)) return undefined;
-      return (arr as unknown[]).at(idx);
+      return (arr as unknown[]).at(ci(s) as number);
     };
   }
 
@@ -128,13 +130,15 @@ export function compile(expr: Expr, builtins?: BuiltinRegistry): CompiledExpr {
     };
   }
 
-  // Iteration operators — filter, map, every, some, reduce
-  if ("filter" in op) return compileIteration("filter", op.filter as unknown[], builtins);
-  if ("map" in op) return compileIteration("map", op.map as unknown[], builtins);
-  if ("every" in op) return compileIteration("every", op.every as unknown[], builtins);
-  if ("some" in op) return compileIteration("some", op.some as unknown[], builtins);
-  if ("reduce" in op) return compileReduce(op.reduce as unknown[], builtins);
-  if ("mapVals" in op) return compileIteration("mapVals", op.mapVals as unknown[], builtins);
+  // Iteration operators (delegated to compile-collection-ops)
+  if ("filter" in op) return compileIteration("filter", op.filter as unknown[], compile, builtins);
+  if ("map" in op) return compileIteration("map", op.map as unknown[], compile, builtins);
+  if ("every" in op) return compileIteration("every", op.every as unknown[], compile, builtins);
+  if ("some" in op) return compileIteration("some", op.some as unknown[], compile, builtins);
+  if ("reduce" in op) return compileReduce(op.reduce as unknown[], compile, builtins);
+  if ("mapVals" in op) return compileIteration("mapVals", op.mapVals as unknown[], compile, builtins);
+  if ("filterKeys" in op) return compileIteration("filterKeys", op.filterKeys as unknown[], compile, builtins);
+  if ("deepSelect" in op) return compileDeepSelect(op.deepSelect as unknown[], compile, builtins);
 
   // pipe — sequential composition with $ binding
   if ("pipe" in op) {
@@ -150,6 +154,12 @@ export function compile(expr: Expr, builtins?: BuiltinRegistry): CompiledExpr {
     };
   }
 
+  // Simple operators
+  if ("pick" in op) { const [ca, ck] = compilePair(op.pick as [Expr, Expr], builtins); return (s) => { const o = ca(s); const k = ck(s); if (o === null || typeof o !== "object" || Array.isArray(o) || !Array.isArray(k)) return {}; const r: Record<string, unknown> = {}; for (const key of k as string[]) { if (key in (o as Record<string, unknown>)) r[key] = (o as Record<string, unknown>)[key]; } return r; }; }
+  if ("prepend" in op) { const [ca, cv] = compilePair(op.prepend as [Expr, Expr], builtins); return (s) => { const a = ca(s); const v = cv(s); return Array.isArray(a) ? [v, ...a] : [v]; }; }
+  if ("multiSelect" in op) { const fns = (op.multiSelect as Expr[]).map(e => compile(e, builtins)); return (s) => fns.map(f => f(s)); }
+  if ("condPath" in op) return compileCondPath(op.condPath as unknown[], compile, builtins);
+
   // fn — builtin call
   if ("fn" in op) {
     const fnArgs = op.fn as [string, ...Expr[]];
@@ -161,68 +171,6 @@ export function compile(expr: Expr, builtins?: BuiltinRegistry): CompiledExpr {
   }
 
   return () => expr;
-}
-
-// ─── Iteration compilation helpers ────────────────────────────────────────────
-
-type IterOp = "filter" | "map" | "every" | "some" | "mapVals";
-
-function compileIteration(kind: IterOp, args: unknown[], builtins?: BuiltinRegistry): CompiledExpr {
-  const isEager = args.length === 3 && typeof args[1] === "string";
-  const cArr = isEager ? compile(args[0] as Expr, builtins) : undefined;
-  const bindName = isEager ? (args[1] as string) : (args[0] as string);
-  const cBody = compile((isEager ? args[2] : args[1]) as Expr, builtins);
-  if (kind === "mapVals") {
-    return (s) => {
-      const o = isEager ? cArr!(s) : s.bindings.$;
-      if (o === null || typeof o !== "object" || Array.isArray(o)) return {};
-      const r: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(o as Record<string, unknown>))
-        r[k] = cBody({ ...s, bindings: { ...s.bindings, [bindName]: v, $key: k } });
-      return r;
-    };
-  }
-  const nonArrayVal = kind === "every" ? false : kind === "some" ? false : [];
-  return (s) => {
-    const arr = isEager ? cArr!(s) : s.bindings.$;
-    if (!Array.isArray(arr)) return nonArrayVal;
-    const a = arr as unknown[];
-    const makeInner = (item: unknown, i: number): Scope => ({
-      ...s, bindings: { ...s.bindings, [bindName]: item, $index: i },
-    });
-    switch (kind) {
-      case "filter": return a.filter((item, i) => Boolean(cBody(makeInner(item, i))));
-      case "map": return a.map((item, i) => cBody(makeInner(item, i)));
-      case "every": return a.every((item, i) => Boolean(cBody(makeInner(item, i))));
-      case "some": return a.some((item, i) => Boolean(cBody(makeInner(item, i))));
-    }
-  };
-}
-
-function compileReduce(args: unknown[], builtins?: BuiltinRegistry): CompiledExpr {
-  const isTransducer = typeof args[0] === "string";
-  const cArr = isTransducer ? undefined : compile(args[0] as Expr, builtins);
-  const accName = isTransducer ? (args[0] as string) : (args[1] as string);
-  const itemName = isTransducer ? (args[1] as string) : (args[2] as string);
-  const cBody = compile((isTransducer ? args[2] : args[3]) as Expr, builtins);
-  const hasInit = isTransducer ? args.length >= 4 : args.length >= 5;
-  const cInit = hasInit ? compile((isTransducer ? args[3] : args[4]) as Expr, builtins) : undefined;
-
-  return (s) => {
-    const arr = isTransducer ? s.bindings.$ : cArr!(s);
-    if (!Array.isArray(arr)) return hasInit ? cInit!(s) : undefined;
-    const a = arr as unknown[];
-    if (a.length === 0) return hasInit ? cInit!(s) : undefined;
-    let acc: unknown;
-    let startIdx: number;
-    if (hasInit) { acc = cInit!(s); startIdx = 0; }
-    else { acc = a[0]; startIdx = 1; }
-    for (let i = startIdx; i < a.length; i++) {
-      const inner: Scope = { ...s, bindings: { ...s.bindings, [accName]: acc, [itemName]: a[i], $index: i } };
-      acc = cBody(inner);
-    }
-    return acc;
-  };
 }
 
 // ─── Path compilation ─────────────────────────────────────────────────────────

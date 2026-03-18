@@ -645,3 +645,210 @@ describe("evaluate — mapVals (transducer)", () => {
     )).toEqual({ x: 11, y: 12 });
   });
 });
+
+describe("evaluate — filterKeys", () => {
+  it("keeps entries matching predicate", () => {
+    const scope = createScope({ context: { scores: { math: 80, english: 50, science: 90 } } });
+    expect(evaluate(
+      { filterKeys: [{ select: ["context", "scores"] }, "v", { gte: [{ ref: "v" }, 80] }] },
+      scope,
+    )).toEqual({ math: 80, science: 90 });
+  });
+  it("$key binding available", () => {
+    const scope = createScope({ context: { items: { a: 1, b: 2, c: 3 } } });
+    expect(evaluate(
+      { filterKeys: [{ select: ["context", "items"] }, "v", { eq: [{ ref: "$key" }, "b"] }] },
+      scope,
+    )).toEqual({ b: 2 });
+  });
+  it("returns {} for non-object", () => {
+    const scope = createScope({ context: { val: 42 } });
+    expect(evaluate(
+      { filterKeys: [{ select: ["context", "val"] }, "v", true] },
+      scope,
+    )).toEqual({});
+  });
+  it("returns {} for array input", () => {
+    const scope = createScope({ context: { items: [1, 2] } });
+    expect(evaluate(
+      { filterKeys: [{ select: ["context", "items"] }, "v", true] },
+      scope,
+    )).toEqual({});
+  });
+});
+
+describe("evaluate — filterKeys (transducer)", () => {
+  it("reads $ as object", () => {
+    const scope = createScope({ context: {} });
+    scope.bindings.$ = { x: 1, y: 2, z: 3 };
+    expect(evaluate(
+      { filterKeys: ["v", { gt: [{ ref: "v" }, 1] }] },
+      scope,
+    )).toEqual({ y: 2, z: 3 });
+  });
+});
+
+describe("evaluate — deepSelect", () => {
+  it("finds all matching nodes recursively", () => {
+    const scope = createScope({
+      context: {
+        tree: {
+          name: "root",
+          children: [
+            { name: "a", children: [{ name: "a1" }] },
+            { name: "b" },
+          ],
+        },
+      },
+    });
+    const result = evaluate(
+      { deepSelect: [{ select: ["context", "tree"] }, "node",
+        { in: [{ select: ["node", "name"] }, ["a", "a1"]] }
+      ] },
+      scope,
+    ) as unknown[];
+    // Should find objects with name "a" and "a1"
+    const names = result.map((n: any) => n.name);
+    expect(names).toContain("a");
+    expect(names).toContain("a1");
+    expect(names).not.toContain("root");
+    expect(names).not.toContain("b");
+  });
+  it("returns [] when nothing matches", () => {
+    const scope = createScope({ context: { data: { a: 1, b: 2 } } });
+    expect(evaluate(
+      { deepSelect: [{ select: ["context", "data"] }, "node", { eq: [{ ref: "node" }, 999] }] },
+      scope,
+    )).toEqual([]);
+  });
+  it("finds primitive values in nested structures", () => {
+    const scope = createScope({ context: { data: { a: 1, b: { c: 2, d: { e: 3 } } } } });
+    const result = evaluate(
+      { deepSelect: [{ select: ["context", "data"] }, "node", { eq: [{ ref: "node" }, 2] }] },
+      scope,
+    );
+    expect(result).toEqual([2]);
+  });
+});
+
+describe("evaluate — deepSelect (transducer)", () => {
+  it("reads $ as source", () => {
+    const scope = createScope({ context: {} });
+    scope.bindings.$ = { a: 1, b: { c: 2 } };
+    expect(evaluate(
+      { deepSelect: ["node", { eq: [{ ref: "node" }, 2] }] },
+      scope,
+    )).toEqual([2]);
+  });
+});
+
+describe("evaluate — pick", () => {
+  it("extracts subset of keys", () => {
+    const scope = createScope({ context: { user: { name: "Alice", age: 30, email: "a@b.c" } } });
+    expect(evaluate(
+      { pick: [{ select: ["context", "user"] }, ["name", "email"]] },
+      scope,
+    )).toEqual({ name: "Alice", email: "a@b.c" });
+  });
+  it("ignores missing keys", () => {
+    const scope = createScope({ context: { obj: { a: 1, b: 2 } } });
+    expect(evaluate(
+      { pick: [{ select: ["context", "obj"] }, ["a", "missing"]] },
+      scope,
+    )).toEqual({ a: 1 });
+  });
+  it("returns {} for non-object", () => {
+    const scope = createScope({ context: {} });
+    expect(evaluate({ pick: [42, ["a"]] }, scope)).toEqual({});
+  });
+  it("returns {} for non-array keys", () => {
+    const scope = createScope({ context: { obj: { a: 1 } } });
+    expect(evaluate({ pick: [{ select: ["context", "obj"] }, "not-array"] }, scope)).toEqual({});
+  });
+});
+
+describe("evaluate — prepend", () => {
+  it("inserts value at beginning", () => {
+    const scope = createScope({ context: { items: [2, 3] } });
+    expect(evaluate(
+      { prepend: [{ select: ["context", "items"] }, 1] },
+      scope,
+    )).toEqual([1, 2, 3]);
+  });
+  it("wraps non-array in array with value", () => {
+    const scope = createScope({ context: {} });
+    expect(evaluate({ prepend: [42, "first"] }, scope)).toEqual(["first"]);
+  });
+  it("prepend to empty array", () => {
+    const scope = createScope({ context: { items: [] } });
+    expect(evaluate(
+      { prepend: [{ select: ["context", "items"] }, "x"] },
+      scope,
+    )).toEqual(["x"]);
+  });
+});
+
+describe("evaluate — multiSelect", () => {
+  it("evaluates multiple expressions into array", () => {
+    const scope = createScope({ context: { a: 1, b: 2 } });
+    expect(evaluate(
+      { multiSelect: [{ select: ["context", "a"] }, { select: ["context", "b"] }, 42] },
+      scope,
+    )).toEqual([1, 2, 42]);
+  });
+  it("empty multiSelect returns empty array", () => {
+    const scope = createScope({ context: {} });
+    expect(evaluate({ multiSelect: [] }, scope)).toEqual([]);
+  });
+  it("single expression", () => {
+    const scope = createScope({ context: {} });
+    expect(evaluate({ multiSelect: [true] }, scope)).toEqual([true]);
+  });
+});
+
+describe("evaluate — condPath", () => {
+  it("evaluates matching branch with $ bound to input", () => {
+    const scope = createScope({ context: { val: 5 } });
+    expect(evaluate(
+      { condPath: [
+        { select: ["context", "val"] },
+        [{ gt: [{ ref: "$" }, 10] }, "big"],
+        [{ gt: [{ ref: "$" }, 3] }, "medium"],
+        [true, "small"],
+      ] },
+      scope,
+    )).toBe("medium");
+  });
+  it("returns undefined when no branch matches", () => {
+    const scope = createScope({ context: {} });
+    expect(evaluate(
+      { condPath: [42, [{ gt: [{ ref: "$" }, 100] }, "big"]] },
+      scope,
+    )).toBeUndefined();
+  });
+  it("transforms input in result expression", () => {
+    const scope = createScope({ context: { n: 3 } });
+    expect(evaluate(
+      { condPath: [
+        { select: ["context", "n"] },
+        [{ gt: [{ ref: "$" }, 0] }, { mul: [{ ref: "$" }, 2] }],
+        [true, 0],
+      ] },
+      scope,
+    )).toBe(6);
+  });
+  it("works in pipe", () => {
+    const scope = createScope({ context: { nums: [1, 15, 3, 25] } });
+    expect(evaluate(
+      { pipe: [
+        { select: ["context", "nums"] },
+        { map: ["n", { condPath: [
+          { ref: "n" },
+          [{ gt: [{ ref: "$" }, 10] }, "big"],
+          [true, "small"],
+        ]}] },
+      ] },
+      scope,
+    )).toEqual(["small", "big", "small", "big"]);
+  });
+});

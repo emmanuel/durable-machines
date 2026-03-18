@@ -5,7 +5,7 @@ import type { DurableMachineOptions, ChannelAdapter, PromptConfig, TransitionRec
 import { DurableMachineError } from "../types.js";
 import { isDurableState } from "../durable-state.js";
 import { getPromptConfig } from "../prompt.js";
-import { collectAndResolveEffects } from "../effect-collector.js";
+import { collectAndResolveEffects, extractEmittedEffects } from "../effect-collector.js";
 import type { ResolvedEffect } from "../effects.js";
 import {
   getActiveInvocation,
@@ -63,8 +63,9 @@ export function createMachineLoop(
   return async function machineLoop(
     input: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
-    const [initialSnapshot] = initialTransition(machine, input);
+    const [initialSnapshot, initialActions] = initialTransition(machine, input);
     let snapshot: AnyMachineSnapshot = initialSnapshot;
+    let pendingActions: any[] = [...initialActions];
 
     await DBOS.setEvent("xstate.state", serializeSnapshot(snapshot));
 
@@ -102,10 +103,13 @@ export function createMachineLoop(
       prevSnap: AnyMachineSnapshot,
       nextSnap: AnyMachineSnapshot,
       event: AnyEventObject,
+      emittedActions: any[] = [],
     ): Promise<void> {
       if (!effectWorkflow) return;
 
-      const { effects } = collectAndResolveEffects(machine, prevSnap, nextSnap, event);
+      const { effects: metaEffects } = collectAndResolveEffects(machine, prevSnap, nextSnap, event);
+      const emittedEffects = extractEmittedEffects(emittedActions);
+      const effects = [...metaEffects, ...emittedEffects];
       if (effects.length === 0) return;
 
       // Start child workflow — parent does NOT await getResult()
@@ -117,7 +121,8 @@ export function createMachineLoop(
     // Dispatch effects for initial state entry
     {
       const emptyPrev = { _nodes: [] } as unknown as AnyMachineSnapshot;
-      await dispatchEffects(emptyPrev, snapshot, { type: "xstate.init" } as AnyEventObject);
+      await dispatchEffects(emptyPrev, snapshot, { type: "xstate.init" } as AnyEventObject, pendingActions);
+      pendingActions = [];
     }
 
     while (snapshot.status !== "done") {
@@ -125,7 +130,11 @@ export function createMachineLoop(
       let lastEventType: string | null = null;
 
       // 1. Resolve transient transitions (always/eventless)
-      snapshot = resolveTransientTransitions(machine, snapshot);
+      {
+        const [resolved, transientActions] = resolveTransientTransitions(machine, snapshot);
+        snapshot = resolved;
+        pendingActions.push(...transientActions);
+      }
       if (snapshot.status === "done") break;
 
       // Track transient state changes (accumulated in-memory, flushed at boundary)
@@ -142,11 +151,14 @@ export function createMachineLoop(
         // Persist before invocation (crash recovery needs pre-invocation state)
         await persistSnapshot();
         const preInvokeSnapshot = snapshot;
-        snapshot = await executeInvocation(machine, snapshot, invocation, actorImpls, options);
+        const [invokeResult, invokeActions] = await executeInvocation(machine, snapshot, invocation, actorImpls, options);
+        snapshot = invokeResult;
+        pendingActions.push(...invokeActions);
         // Persist after invocation returns
         if (!stateValueEquals(snapshot.value, prevStateValue)) {
           await recordTransition(prevStateValue, snapshot.value, `xstate.done.actor.${invocation.id}`);
-          await dispatchEffects(preInvokeSnapshot, snapshot, { type: `xstate.done.actor.${invocation.id}` } as AnyEventObject);
+          await dispatchEffects(preInvokeSnapshot, snapshot, { type: `xstate.done.actor.${invocation.id}` } as AnyEventObject, pendingActions);
+          pendingActions = [];
           firedDelays = new Set<number>();
           prevStateValue = snapshot.value;
         }
@@ -187,6 +199,7 @@ export function createMachineLoop(
         }
         snapshot = result.snapshot;
         lastEventType = result.eventType;
+        pendingActions.push(...result.actions);
 
         // Resolve prompt after transition (if state changed and prompt was sent)
         if (promptHandles && !stateValueEquals(prevValue, snapshot.value)) {
@@ -212,7 +225,8 @@ export function createMachineLoop(
           const waitEvent = result.firedDelay !== null
             ? buildAfterEvent(machine, prevSnap, result.firedDelay) as AnyEventObject
             : { type: "xstate.resolved" } as AnyEventObject;
-          await dispatchEffects(prevSnap, snapshot, waitEvent);
+          await dispatchEffects(prevSnap, snapshot, waitEvent, pendingActions);
+          pendingActions = [];
         }
       } else {
         throw new DurableMachineError(
@@ -248,7 +262,7 @@ async function executeInvocation(
   invocation: { id: string; src: string; input: unknown },
   actorImpls: Map<string, any>,
   options: DurableMachineOptions,
-): Promise<AnyMachineSnapshot> {
+): Promise<[AnyMachineSnapshot, any[]]> {
   const impl = actorImpls.get(invocation.src);
   if (!impl) {
     throw new DurableMachineError(
@@ -273,17 +287,17 @@ async function executeInvocation(
       },
     );
 
-    const [next] = transition(machine, snapshot, {
+    const [next, actions] = transition(machine, snapshot, {
       type: `xstate.done.actor.${invocation.id}`,
       output,
     } as AnyEventObject);
-    return next;
+    return [next, actions];
   } catch (error) {
-    const [next] = transition(machine, snapshot, {
+    const [next, actions] = transition(machine, snapshot, {
       type: `xstate.error.actor.${invocation.id}`,
       error,
     } as AnyEventObject);
-    return next;
+    return [next, actions];
   }
 }
 
@@ -293,6 +307,8 @@ interface WaitResult {
   firedDelay: number | null;
   /** The event type that triggered the transition, or null if no event. */
   eventType: string | null;
+  /** Executable actions produced by the transition. */
+  actions: any[];
 }
 
 /**
@@ -344,19 +360,19 @@ async function waitForEventOrTimeout(
 
   if (event !== null) {
     // External event arrived before timeout
-    const [next] = transition(machine, snapshot, event);
-    return { snapshot: next, firedDelay: null, eventType: event.type };
+    const [next, actions] = transition(machine, snapshot, event);
+    return { snapshot: next, firedDelay: null, eventType: event.type, actions };
   }
 
   if (hasAfter) {
     // Timeout expired — fire the next after event
     const afterEvent = buildAfterEvent(machine, snapshot, delays[0]);
-    const [next] = transition(machine, snapshot, afterEvent as AnyEventObject);
-    return { snapshot: next, firedDelay: delays[0], eventType: (afterEvent as AnyEventObject).type };
+    const [next, actions] = transition(machine, snapshot, afterEvent as AnyEventObject);
+    return { snapshot: next, firedDelay: delays[0], eventType: (afterEvent as AnyEventObject).type, actions };
   }
 
   // No event, no timeout — return same snapshot (loop re-enters)
-  return { snapshot, firedDelay: null, eventType: null };
+  return { snapshot, firedDelay: null, eventType: null, actions: [] };
 }
 
 /**

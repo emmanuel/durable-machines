@@ -172,36 +172,41 @@ export function buildAfterEvent(
  *
  * Guards a max iteration count to prevent infinite loops from misconfigured
  * always transitions.
+ *
+ * Returns a tuple of `[snapshot, actions]` where actions is the accumulated
+ * array of executable actions from all inner transitions.
  */
 export function resolveTransientTransitions(
   machine: AnyStateMachine,
   snapshot: AnyMachineSnapshot,
   maxIterations = 100,
-): AnyMachineSnapshot {
+): [AnyMachineSnapshot, any[]] {
   let current = snapshot;
+  const allActions: any[] = [];
 
   for (let i = 0; i < maxIterations; i++) {
     // Check if any active node has `always` transitions
     const hasAlways = current._nodes.some(
       (node: any) => (node.always?.length ?? 0) > 0,
     );
-    if (!hasAlways) return current;
+    if (!hasAlways) return [current, allActions];
 
     // Send a synthetic eventless transition to trigger `always`
     // In XState v5, always transitions are evaluated on entry automatically
     // by the transition function. We trigger re-evaluation by sending
     // an event that won't match any `on` handler — the always transitions
     // will fire if their guards pass.
-    const [next] = transition(machine, current, {
+    const [next, actions] = transition(machine, current, {
       type: "xstate.__internal.resolve",
     } as any);
 
     // If state didn't change, we've stabilized
-    if (stateValueEquals(current.value, next.value)) return current;
+    if (stateValueEquals(current.value, next.value)) return [current, allActions];
+    allActions.push(...actions);
     current = next;
   }
 
-  return current;
+  return [current, allActions];
 }
 
 /**

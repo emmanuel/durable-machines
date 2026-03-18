@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createMachine, initialTransition, transition } from "xstate";
 import { durableState } from "../../src/durable-state.js";
-import { collectAndResolveEffects } from "../../src/effect-collector.js";
+import { collectAndResolveEffects, extractEmittedEffects } from "../../src/effect-collector.js";
 
 describe("collectAndResolveEffects()", () => {
   const machine = createMachine({
@@ -105,5 +105,71 @@ describe("collectAndResolveEffects()", () => {
     const { effects } = collectAndResolveEffects(machine, snapshot, next, { type: "GO" });
     // Only processing effects, not idle effects
     expect(effects.every((e) => e.type !== "webhook")).toBe(true);
+  });
+});
+
+describe("extractEmittedEffects()", () => {
+  it("extracts xstate.emit actions as ResolvedEffects", () => {
+    const actions = [
+      {
+        type: "xstate.emit",
+        params: {
+          event: { type: "EMIT_SATISFIED_AU", auId: "au-1", score: 100 },
+        },
+      },
+      {
+        type: "xstate.emit",
+        params: {
+          event: { type: "EMIT_LOG", message: "hello" },
+        },
+      },
+    ];
+
+    const effects = extractEmittedEffects(actions);
+    expect(effects).toHaveLength(2);
+    expect(effects[0]).toEqual({ type: "EMIT_SATISFIED_AU", auId: "au-1", score: 100 });
+    expect(effects[1]).toEqual({ type: "EMIT_LOG", message: "hello" });
+  });
+
+  it("ignores non-emit actions", () => {
+    const actions = [
+      { type: "xstate.assign", params: { context: {} } },
+      { type: "xstate.raise", params: { event: { type: "NEXT" } } },
+      {
+        type: "xstate.emit",
+        params: {
+          event: { type: "EMIT_EFFECT", data: "value" },
+        },
+      },
+    ];
+
+    const effects = extractEmittedEffects(actions);
+    expect(effects).toHaveLength(1);
+    expect(effects[0].type).toBe("EMIT_EFFECT");
+  });
+
+  it("returns empty array when no emit actions present", () => {
+    const actions = [
+      { type: "xstate.assign", params: { context: {} } },
+    ];
+
+    const effects = extractEmittedEffects(actions);
+    expect(effects).toHaveLength(0);
+  });
+
+  it("returns empty array for empty actions array", () => {
+    const effects = extractEmittedEffects([]);
+    expect(effects).toHaveLength(0);
+  });
+
+  it("skips emit actions with missing or invalid event", () => {
+    const actions = [
+      { type: "xstate.emit", params: {} },
+      { type: "xstate.emit", params: { event: { noType: true } } },
+      { type: "xstate.emit" },
+    ];
+
+    const effects = extractEmittedEffects(actions as any);
+    expect(effects).toHaveLength(0);
   });
 });

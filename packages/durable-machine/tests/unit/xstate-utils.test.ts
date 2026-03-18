@@ -281,7 +281,7 @@ describe("resolveTransientTransitions()", () => {
     expect(snapshot.value).toBe("review");
 
     // State has always transitions, but guard fails — should stay
-    const resolved = resolveTransientTransitions(
+    const [resolved] = resolveTransientTransitions(
       conditionalResolveMachine,
       snapshot,
     );
@@ -295,7 +295,7 @@ describe("resolveTransientTransitions()", () => {
     // XState auto-resolved the always transition during initialTransition
     expect(snapshot.value).toBe("approved");
 
-    const resolved = resolveTransientTransitions(
+    const [resolved] = resolveTransientTransitions(
       conditionalResolveMachine,
       snapshot,
     );
@@ -307,7 +307,7 @@ describe("resolveTransientTransitions()", () => {
       orderId: "1",
       total: 50,
     });
-    const resolved = resolveTransientTransitions(orderMachine, snapshot);
+    const [resolved] = resolveTransientTransitions(orderMachine, snapshot);
     expect(resolved.value).toBe("pending");
   });
 });

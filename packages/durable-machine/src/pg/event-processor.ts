@@ -9,7 +9,7 @@ import type { DurableMachineOptions } from "../types.js";
 import { DurableMachineError } from "../types.js";
 import { isDurableState } from "../durable-state.js";
 import { handlePromptEntry, handlePromptExit } from "./prompt-lifecycle.js";
-import { collectAndResolveEffects } from "../effect-collector.js";
+import { collectAndResolveEffects, extractEmittedEffects } from "../effect-collector.js";
 import {
   getActiveInvocation,
   extractActorImplementations,
@@ -72,15 +72,18 @@ async function executeInvocationsInline(
   instanceId: string,
   snapshot: AnyMachineSnapshot,
   tenantId?: string,
-): Promise<AnyMachineSnapshot> {
+): Promise<[AnyMachineSnapshot, any[]]> {
   const { store, machine } = deps;
   const actorImpls = extractActorImplementations(machine);
   let current = snapshot;
+  const allActions: any[] = [];
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
     // Resolve transient transitions
-    current = resolveTransientTransitions(machine, current);
+    const [resolved, transientActions] = resolveTransientTransitions(machine, current);
+    current = resolved;
+    allActions.push(...transientActions);
     if (current.status === "done") break;
 
     const invocation = getActiveInvocation(machine, current);
@@ -139,21 +142,23 @@ async function executeInvocationsInline(
 
     // Transition based on result
     if (error != null) {
-      const [next] = transition(machine, current, {
+      const [next, actions] = transition(machine, current, {
         type: `xstate.error.actor.${invocation.id}`,
         error,
       } as AnyEventObject);
       current = next;
+      allActions.push(...actions);
     } else {
-      const [next] = transition(machine, current, {
+      const [next, actions] = transition(machine, current, {
         type: `xstate.done.actor.${invocation.id}`,
         output,
       } as AnyEventObject);
       current = next;
+      allActions.push(...actions);
     }
   }
 
-  return current;
+  return [current, allActions];
 }
 
 // ─── Process Startup ────────────────────────────────────────────────────────
@@ -168,13 +173,14 @@ export async function processStartup(
   const channels = options.channels ?? [];
   const now = Date.now();
 
-  const [initialSnapshot] = initialTransition(machine, input);
-  let snapshot = await executeInvocationsInline(
+  const [initialSnapshot, initialActions] = initialTransition(machine, input);
+  const [snapshot, invokeActions] = await executeInvocationsInline(
     deps,
     instanceId,
     initialSnapshot,
     tenantId,
   );
+  const startupActions = [...initialActions, ...invokeActions];
 
   // Compute wake_at + wake_event from after delays
   const delays = getSortedAfterDelays(machine, snapshot);
@@ -205,9 +211,11 @@ export async function processStartup(
 
     if (options.effectHandlers) {
       const emptyPrev = { _nodes: [] } as unknown as AnyMachineSnapshot;
-      const { effects } = collectAndResolveEffects(
+      const { effects: metaEffects } = collectAndResolveEffects(
         machine, emptyPrev, snapshot, { type: "xstate.init" } as AnyEventObject,
       );
+      const emittedEffects = extractEmittedEffects(startupActions);
+      const effects = [...metaEffects, ...emittedEffects];
       if (effects.length > 0) {
         const retryPolicy = options.effectRetryPolicy;
         const maxAttempts = retryPolicy?.maxAttempts ?? 3;
@@ -249,6 +257,7 @@ async function finalize(
   event: AnyEventObject,
   eventSeq: number,
   firedDelays: Array<string | number>,
+  emittedActions: any[] = [],
 ): Promise<void> {
   const { store, machine, options, enableAnalytics } = deps;
   const channels = options.channels ?? [];
@@ -291,13 +300,18 @@ async function finalize(
   }
 
   // Prompt lifecycle, effects
-  if (stateChanged) {
-    await handlePromptExit(store,instanceId, prevStateValue, current, channels, event);
+  const hasEmittedEffects = emittedActions.length > 0 && options.effectHandlers;
+  if (stateChanged || hasEmittedEffects) {
+    if (stateChanged) {
+      await handlePromptExit(store,instanceId, prevStateValue, current, channels, event);
+    }
 
     if (options.effectHandlers) {
-      const { effects } = collectAndResolveEffects(
-        machine, prevSnapshot, current, event,
-      );
+      const { effects: metaEffects } = stateChanged
+        ? collectAndResolveEffects(machine, prevSnapshot, current, event)
+        : { effects: [] };
+      const emittedEffects = extractEmittedEffects(emittedActions);
+      const effects = [...metaEffects, ...emittedEffects];
       if (effects.length > 0) {
         const retryPolicy = options.effectRetryPolicy;
         const maxAttempts = retryPolicy?.maxAttempts ?? 3;
@@ -305,7 +319,7 @@ async function finalize(
       }
     }
 
-    if (status === "running" && isDurableState(machine, current)) {
+    if (stateChanged && status === "running" && isDurableState(machine, current)) {
       await handlePromptEntry(store,instanceId, current, channels);
     }
   }
@@ -326,9 +340,11 @@ async function executeAndFinalizeInvocation(
   event: AnyEventObject,
   eventSeq: number,
   firedDelays: Array<string | number>,
+  preActions: any[] = [],
   tenantId?: string,
 ): Promise<boolean> {
-  const postInvoke = await executeInvocationsInline(deps, instanceId, invocationSnapshot, tenantId);
+  const [postInvoke, invokeActions] = await executeInvocationsInline(deps, instanceId, invocationSnapshot, tenantId);
+  const allActions = [...preActions, ...invokeActions];
 
   let processed = false;
   await deps.store.withTransaction(async (client) => {
@@ -345,6 +361,7 @@ async function executeAndFinalizeInvocation(
       deps, client, instanceId,
       prevSnapshot, prevStateValue,
       postInvoke, event, eventSeq, firedDelays,
+      allActions,
     );
     processed = true;
   });
@@ -379,12 +396,14 @@ export async function processBatchFromLog(
   let lastEventSeq = 0;
   let firedDelays: Array<string | number> = [];
   let processedCount = 0;
+  let batchActions: any[] = [];
 
   // Track state before invocation for mid-batch commit
   let preInvokeState: AnyMachineSnapshot;
   let preInvokeEvent: AnyEventObject;
   let preInvokeSeq = 0;
   let preInvokeFiredDelays: Array<string | number>;
+  let preInvokeActions: any[] = [];
 
   await store.withTransaction(async (client) => {
     const result = await store.lockAndPeekEvents(client, instanceId, limit);
@@ -417,8 +436,10 @@ export async function processBatchFromLog(
 
     for (const evt of events) {
       const event = evt.payload as AnyEventObject;
-      const [nextState] = transition(machine, current, event);
-      const resolved = resolveTransientTransitions(machine, nextState);
+      const [nextState, transitionActions] = transition(machine, current, event);
+      const [resolved, transientActions] = resolveTransientTransitions(machine, nextState);
+
+      batchActions.push(...transitionActions, ...transientActions);
 
       // Compute firedDelays for after events
       firedDelays = computeFiredDelays(machine, current, event, firedDelays);
@@ -441,6 +462,7 @@ export async function processBatchFromLog(
       preInvokeEvent = event;
       preInvokeSeq = evt.seq;
       preInvokeFiredDelays = firedDelays;
+      preInvokeActions = [...batchActions];
     }
 
     if (processedCount > 0 && !invocationSnapshot) {
@@ -449,6 +471,7 @@ export async function processBatchFromLog(
         deps, client, instanceId,
         prevSnapshot, prevStateValue,
         current, lastEvent, lastEventSeq, firedDelays,
+        batchActions,
       );
       deps.instruments?.batchSize.record(processedCount);
       return;
@@ -461,6 +484,7 @@ export async function processBatchFromLog(
           deps, client, instanceId,
           prevSnapshot, prevStateValue,
           preInvokeState!, preInvokeEvent!, preInvokeSeq, preInvokeFiredDelays!,
+          preInvokeActions,
         );
         // Update prevSnapshot/prevStateValue for the invocation finalize
         prevSnapshot = preInvokeState!;
@@ -481,11 +505,13 @@ export async function processBatchFromLog(
   }
 
   // Two-phase: execute outside lock, then re-lock and finalize
+  // Pass only the actions from the invocation event (not pre-invoke actions already finalized)
+  const invocationActions = batchActions.slice(preInvokeActions.length);
   if (await executeAndFinalizeInvocation(
     deps, instanceId, invocationSnapshot,
     prevSnapshot!, prevStateValue!,
     lastEvent!, lastEventSeq, firedDelays,
-    tenantId,
+    invocationActions, tenantId,
   )) {
     processedCount++;
   }

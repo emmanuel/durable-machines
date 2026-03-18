@@ -310,6 +310,50 @@ export function evaluate(
       });
     }
 
+    // every — dual arity: [arr, "name", body] or ["name", body]
+    if ("every" in op) {
+      const args = op.every as unknown[];
+      let arr: unknown;
+      let bindName: string;
+      let body: Expr;
+      if (args.length === 3 && typeof args[1] === "string") {
+        arr = evaluate(args[0] as Expr, scope, builtins);
+        bindName = args[1];
+        body = args[2] as Expr;
+      } else {
+        arr = scope.bindings.$;
+        bindName = args[0] as string;
+        body = args[1] as Expr;
+      }
+      if (!Array.isArray(arr)) return false;
+      return arr.every((item, i) => {
+        const inner: Scope = { ...scope, bindings: { ...scope.bindings, [bindName]: item, $index: i } };
+        return Boolean(evaluate(body, inner, builtins));
+      });
+    }
+
+    // some — dual arity: [arr, "name", body] or ["name", body]
+    if ("some" in op) {
+      const args = op.some as unknown[];
+      let arr: unknown;
+      let bindName: string;
+      let body: Expr;
+      if (args.length === 3 && typeof args[1] === "string") {
+        arr = evaluate(args[0] as Expr, scope, builtins);
+        bindName = args[1];
+        body = args[2] as Expr;
+      } else {
+        arr = scope.bindings.$;
+        bindName = args[0] as string;
+        body = args[1] as Expr;
+      }
+      if (!Array.isArray(arr)) return false;
+      return arr.some((item, i) => {
+        const inner: Scope = { ...scope, bindings: { ...scope.bindings, [bindName]: item, $index: i } };
+        return Boolean(evaluate(body, inner, builtins));
+      });
+    }
+
     // fn — call a registered builtin
     if ("fn" in op) {
       const fnArgs = op.fn as [string, ...Expr[]];

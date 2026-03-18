@@ -376,3 +376,87 @@ describe("evaluate — map (transducer)", () => {
     )).toEqual([10, 20, 30]);
   });
 });
+
+describe("evaluate — every", () => {
+  const iterScope = createScope({ context: { nums: [1, 2, 3, 4, 5] } });
+
+  it("true when all match", () => {
+    expect(evaluate(
+      { every: [{ select: ["context", "nums"] }, "n", { gt: [{ ref: "n" }, 0] }] },
+      iterScope,
+    )).toBe(true);
+  });
+  it("false when one fails", () => {
+    expect(evaluate(
+      { every: [{ select: ["context", "nums"] }, "n", { gt: [{ ref: "n" }, 3] }] },
+      iterScope,
+    )).toBe(false);
+  });
+  it("true for empty array", () => {
+    const scope = createScope({ context: { items: [] } });
+    expect(evaluate(
+      { every: [{ select: ["context", "items"] }, "n", { ref: "n" }] },
+      scope,
+    )).toBe(true);
+  });
+  it("false for non-array", () => {
+    const scope = createScope({ context: { val: 42 } });
+    expect(evaluate(
+      { every: [{ select: ["context", "val"] }, "n", { ref: "n" }] },
+      scope,
+    )).toBe(false);
+  });
+});
+
+describe("evaluate — every (transducer)", () => {
+  it("reads $ as collection", () => {
+    const scope = createScope({ context: {} });
+    scope.bindings.$ = [2, 4, 6];
+    expect(evaluate(
+      { every: ["n", { eq: [{ div: [{ ref: "n" }, 2] }, { div: [{ ref: "n" }, 2] }] }] },
+      scope,
+    )).toBe(true);
+  });
+});
+
+describe("evaluate — some", () => {
+  const iterScope = createScope({ context: { nums: [1, 2, 3, 4, 5] } });
+
+  it("true when at least one matches", () => {
+    expect(evaluate(
+      { some: [{ select: ["context", "nums"] }, "n", { gt: [{ ref: "n" }, 4] }] },
+      iterScope,
+    )).toBe(true);
+  });
+  it("false when none match", () => {
+    expect(evaluate(
+      { some: [{ select: ["context", "nums"] }, "n", { gt: [{ ref: "n" }, 10] }] },
+      iterScope,
+    )).toBe(false);
+  });
+  it("false for empty array", () => {
+    const scope = createScope({ context: { items: [] } });
+    expect(evaluate(
+      { some: [{ select: ["context", "items"] }, "n", { ref: "n" }] },
+      scope,
+    )).toBe(false);
+  });
+  it("false for non-array", () => {
+    const scope = createScope({ context: { val: 42 } });
+    expect(evaluate(
+      { some: [{ select: ["context", "val"] }, "n", { ref: "n" }] },
+      scope,
+    )).toBe(false);
+  });
+});
+
+describe("evaluate — some (transducer)", () => {
+  it("reads $ as collection", () => {
+    const scope = createScope({ context: {} });
+    scope.bindings.$ = [1, 3, 5];
+    expect(evaluate(
+      { some: ["n", { gt: [{ ref: "n" }, 4] }] },
+      scope,
+    )).toBe(true);
+  });
+});

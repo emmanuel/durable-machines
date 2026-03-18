@@ -244,6 +244,38 @@ describe("compile — map", () => {
   });
 });
 
+describe("compile — every", () => {
+  it("true when all match", () => {
+    const scope = createScope({ context: { nums: [1, 2, 3] } });
+    expect(compile({ every: [{ select: ["context", "nums"] }, "n", { gt: [{ ref: "n" }, 0] }] })(scope)).toBe(true);
+  });
+  it("false when one fails", () => {
+    const scope = createScope({ context: { nums: [1, 2, 3] } });
+    expect(compile({ every: [{ select: ["context", "nums"] }, "n", { gt: [{ ref: "n" }, 2] }] })(scope)).toBe(false);
+  });
+  it("transducer form", () => {
+    const scope = createScope({ context: {} });
+    scope.bindings.$ = [2, 4, 6];
+    expect(compile({ every: ["n", { gt: [{ ref: "n" }, 0] }] })(scope)).toBe(true);
+  });
+});
+
+describe("compile — some", () => {
+  it("true when one matches", () => {
+    const scope = createScope({ context: { nums: [1, 2, 3] } });
+    expect(compile({ some: [{ select: ["context", "nums"] }, "n", { gt: [{ ref: "n" }, 2] }] })(scope)).toBe(true);
+  });
+  it("false when none match", () => {
+    const scope = createScope({ context: { nums: [1, 2, 3] } });
+    expect(compile({ some: [{ select: ["context", "nums"] }, "n", { gt: [{ ref: "n" }, 5] }] })(scope)).toBe(false);
+  });
+  it("transducer form", () => {
+    const scope = createScope({ context: {} });
+    scope.bindings.$ = [1, 3, 5];
+    expect(compile({ some: ["n", { gt: [{ ref: "n" }, 4] }] })(scope)).toBe(true);
+  });
+});
+
 describe("compile — fn (builtins)", () => {
   it("calls builtin with no args", () => {
     const builtins = createBuiltinRegistry({ fixed: () => "ok" });

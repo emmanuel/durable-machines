@@ -1,0 +1,60 @@
+{
+  "id": "timer",
+  "initial": "stopped",
+  "context": { "seconds": 0 },
+  "guards": {
+    "hasTime": { "gt": [{ "select": ["context", "seconds"] }, 0] },
+    "isZero": { "eq": [{ "select": ["context", "seconds"] }, 0] }
+  },
+  "actions": {
+    "addMinute": {
+      "type": "assign",
+      "transforms": [
+        { "path": ["context", "seconds"], "set": { "add": [{ "select": ["context", "seconds"] }, 60] } }
+      ]
+    },
+    "addSecond": {
+      "type": "assign",
+      "transforms": [
+        { "path": ["context", "seconds"], "set": { "add": [{ "select": ["context", "seconds"] }, 1] } }
+      ]
+    },
+    "tick": {
+      "type": "assign",
+      "transforms": [
+        { "path": ["context", "seconds"], "set": { "sub": [{ "select": ["context", "seconds"] }, 1] } }
+      ]
+    },
+    "resetSeconds": {
+      "type": "assign",
+      "transforms": [
+        { "path": ["context", "seconds"], "set": 0 }
+      ]
+    }
+  },
+  "states": {
+    "stopped": {
+      "durable": true,
+      "on": {
+        "start": { "guard": "hasTime", "target": "running" },
+        "minute": { "actions": "addMinute" },
+        "second": { "actions": "addSecond" }
+      }
+    },
+    "running": {
+      "always": { "guard": "isZero", "target": "stopped" },
+      "after": {
+        "1000": {
+          "target": "running",
+          "actions": "tick"
+        }
+      },
+      "on": {
+        "stop": "stopped"
+      }
+    }
+  },
+  "on": {
+    "reset": { "guard": "hasTime", "actions": "resetSeconds" }
+  }
+}

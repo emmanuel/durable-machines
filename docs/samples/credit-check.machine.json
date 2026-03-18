@@ -1,0 +1,60 @@
+{
+  "id": "customercreditcheck",
+  "initial": "CheckCredit",
+  "context": {
+    "customer": null,
+    "creditCheck": null
+  },
+  "guards": {
+    "isApproved": { "eq": [{ "select": ["context", "creditCheck", "decision"] }, "Approved"] },
+    "isDenied": { "eq": [{ "select": ["context", "creditCheck", "decision"] }, "Denied"] }
+  },
+  "actions": {
+    "storeCreditResult": {
+      "type": "assign",
+      "transforms": [
+        { "path": ["context", "creditCheck"], "set": { "select": ["event", "output"] } }
+      ]
+    }
+  },
+  "states": {
+    "CheckCredit": {
+      "invoke": {
+        "src": "callCreditCheckMicroservice",
+        "input": { "$ref": "context.customer" },
+        "onDone": {
+          "target": "EvaluateDecision",
+          "actions": "storeCreditResult"
+        }
+      },
+      "after": {
+        "900000": { "target": "Timeout" }
+      }
+    },
+    "EvaluateDecision": {
+      "always": [
+        { "guard": "isApproved", "target": "StartApplication" },
+        { "guard": "isDenied", "target": "RejectApplication" },
+        { "target": "RejectApplication" }
+      ]
+    },
+    "StartApplication": {
+      "invoke": {
+        "src": "startApplicationWorkflow",
+        "input": { "$ref": "context.customer" },
+        "onDone": "End"
+      }
+    },
+    "RejectApplication": {
+      "invoke": {
+        "src": "sendRejectionEmail",
+        "input": { "$ref": "context.customer" },
+        "onDone": "End"
+      }
+    },
+    "End": { "type": "final" },
+    "Timeout": {
+      "durable": true
+    }
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "id": "todos",
+  "context": {
+    "todo": "",
+    "todos": [
+      { "id": "1", "title": "Learn state machines", "completed": false }
+    ],
+    "filter": "all"
+  },
+  "on": {
+    "newTodo.change": {
+      "actions": "__assign: todo = event.value"
+    },
+    "newTodo.commit": {
+      "guard": "__closure: event.value.trim().length > 0",
+      "actions": "__assign: todo = ''; todos = [...todos, { id: Math.random().toString(36).substring(7), title: event.value, completed: false }]"
+    },
+    "todo.commit": {
+      "actions": "__assign: todos = !event.todo.title.trim().length ? todos.filter(t => t.id !== event.todo.id) : todos.map(t => t.id === event.todo.id ? event.todo : t)"
+    },
+    "todo.delete": {
+      "actions": "__assign: todos = todos.filter(t => t.id !== event.id)"
+    },
+    "filter.change": {
+      "actions": "__assign: filter = event.filter"
+    },
+    "todo.mark": {
+      "actions": "__assign: todos = todos.map(t => t.id === event.id ? { ...t, completed: event.mark === 'completed' } : t)"
+    },
+    "todo.markAll": {
+      "actions": "__assign: todos = todos.map(t => ({ ...t, completed: event.mark === 'completed' }))"
+    },
+    "todos.clearCompleted": {
+      "actions": "__assign: todos = todos.filter(t => !t.completed)"
+    }
+  }
+}

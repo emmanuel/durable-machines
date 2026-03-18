@@ -1,0 +1,94 @@
+{
+  "id": "booklending",
+  "initial": "BookLendingRequest",
+  "context": {
+    "book": null,
+    "lender": null
+  },
+  "states": {
+    "BookLendingRequest": {
+      "on": {
+        "bookLendingRequest": {
+          "target": "GetBookStatus",
+          "actions": "__assign: book = { ...event.book, status: 'unknown' }"
+        }
+      }
+    },
+    "GetBookStatus": {
+      "invoke": {
+        "src": "getStatusForBook",
+        "input": "__closure: { bookid: context.book.id }",
+        "onDone": {
+          "target": "BookStatusDecision",
+          "actions": "__assign: book.status = event.output.status"
+        }
+      }
+    },
+    "BookStatusDecision": {
+      "always": [
+        {
+          "guard": "__closure: context.book.status === 'onloan'",
+          "target": "ReportStatusToLender"
+        },
+        {
+          "guard": "__closure: context.book.status === 'available'",
+          "target": "CheckOutBook"
+        },
+        { "target": "End" }
+      ]
+    },
+    "ReportStatusToLender": {
+      "invoke": {
+        "src": "sendStatusToLender",
+        "input": "__closure: { bookid: context.book.id, message: `Book ${context.book.title} is already on loan` }",
+        "onDone": "WaitForLenderResponse"
+      }
+    },
+    "WaitForLenderResponse": {
+      "on": {
+        "holdBook": "RequestHold",
+        "declineBookhold": "CancelRequest"
+      }
+    },
+    "RequestHold": {
+      "invoke": {
+        "src": "requestHoldForLender",
+        "input": "__closure: { bookid: context.book.id, lender: context.lender }",
+        "onDone": "SleepTwoWeeks"
+      }
+    },
+    "CancelRequest": {
+      "invoke": {
+        "src": "cancelHoldRequest",
+        "input": "__closure: { bookid: context.book.id, lender: context.lender }",
+        "onDone": "End"
+      }
+    },
+    "SleepTwoWeeks": {
+      "after": {
+        "1209600000": "GetBookStatus"
+      }
+    },
+    "CheckOutBook": {
+      "initial": "CheckingOut",
+      "states": {
+        "CheckingOut": {
+          "invoke": {
+            "src": "checkOutBookWithId",
+            "input": "__closure: { bookid: context.book.id }",
+            "onDone": "NotifyingLender"
+          }
+        },
+        "NotifyingLender": {
+          "invoke": {
+            "src": "notifyLenderForCheckout",
+            "input": "__closure: { bookid: context.book.id, lender: context.lender }",
+            "onDone": "Done"
+          }
+        },
+        "Done": { "type": "final" }
+      }
+    },
+    "End": { "type": "final" }
+  }
+}

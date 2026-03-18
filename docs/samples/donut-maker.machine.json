@@ -1,0 +1,66 @@
+{
+  "id": "donut",
+  "initial": "ingredients",
+  "states": {
+    "ingredients": {
+      "durable": true,
+      "on": { "NEXT": { "target": "directions" } }
+    },
+    "directions": {
+      "type": "compound",
+      "initial": "makeDough",
+      "states": {
+        "makeDough": {
+          "durable": true,
+          "on": { "NEXT": { "target": "mix" } }
+        },
+        "mix": {
+          "type": "parallel",
+          "states": {
+            "mixDry": {
+              "initial": "mixing",
+              "states": {
+                "mixing": {
+                  "durable": true,
+                  "on": { "MIXED_DRY": { "target": "mixed" } }
+                },
+                "mixed": { "type": "final" }
+              }
+            },
+            "mixWet": {
+              "initial": "mixing",
+              "states": {
+                "mixing": {
+                  "durable": true,
+                  "on": { "MIXED_WET": { "target": "mixed" } }
+                },
+                "mixed": { "type": "final" }
+              }
+            }
+          }
+        },
+        "allMixed": { "type": "final" }
+      }
+    },
+    "fry": {
+      "durable": true,
+      "on": { "NEXT": { "target": "flip" } }
+    },
+    "flip": {
+      "durable": true,
+      "on": { "NEXT": { "target": "dry" } }
+    },
+    "dry": {
+      "durable": true,
+      "on": { "NEXT": { "target": "glaze" } }
+    },
+    "glaze": {
+      "durable": true,
+      "on": { "NEXT": { "target": "serve" } }
+    },
+    "serve": {
+      "durable": true,
+      "on": { "ANOTHER_DONUT": { "target": "ingredients" } }
+    }
+  }
+}

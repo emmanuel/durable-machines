@@ -1,0 +1,104 @@
+{
+  "id": "ticTacToe",
+  "initial": "playing",
+  "context": {
+    "board": [null, null, null, null, null, null, null, null, null],
+    "moves": 0,
+    "player": "x",
+    "winner": null
+  },
+  "guards": {
+    "checkWin": {
+      "some": [
+        [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]],
+        "line",
+        { "or": [
+          { "every": [{ "ref": "line" }, "i", { "eq": [{ "at": [{ "select": ["context", "board"] }, { "ref": "i" }] }, "x"] }] },
+          { "every": [{ "ref": "line" }, "i", { "eq": [{ "at": [{ "select": ["context", "board"] }, { "ref": "i" }] }, "o"] }] }
+        ]}
+      ]
+    },
+    "checkDraw": { "eq": [{ "select": ["context", "moves"] }, 9] },
+    "isValidMove": { "isNull": { "at": [{ "select": ["context", "board"] }, { "select": ["event", "value"] }] } }
+  },
+  "actions": {
+    "updateBoard": {
+      "type": "assign",
+      "transforms": [
+        {
+          "path": ["context", "board"],
+          "set": {
+            "map": [
+              { "select": ["context", "board"] }, "cell",
+              { "if": [
+                { "eq": [{ "ref": "$index" }, { "select": ["event", "value"] }] },
+                { "select": ["context", "player"] },
+                { "ref": "cell" }
+              ]}
+            ]
+          }
+        },
+        {
+          "path": ["context", "moves"],
+          "set": { "add": [{ "select": ["context", "moves"] }, 1] }
+        },
+        {
+          "path": ["context", "player"],
+          "set": { "if": [{ "eq": [{ "select": ["context", "player"] }, "x"] }, "o", "x"] }
+        }
+      ]
+    },
+    "setWinner": {
+      "type": "assign",
+      "transforms": [
+        {
+          "path": ["context", "winner"],
+          "set": { "if": [{ "eq": [{ "select": ["context", "player"] }, "x"] }, "o", "x"] }
+        }
+      ]
+    },
+    "resetGame": {
+      "type": "assign",
+      "transforms": [
+        { "path": ["context", "board"], "set": [null, null, null, null, null, null, null, null, null] },
+        { "path": ["context", "moves"], "set": 0 },
+        { "path": ["context", "player"], "set": "x" },
+        { "path": ["context", "winner"], "set": null }
+      ]
+    }
+  },
+  "states": {
+    "playing": {
+      "durable": true,
+      "always": [
+        { "target": "gameOver.winner", "guard": "checkWin" },
+        { "target": "gameOver.draw", "guard": "checkDraw" }
+      ],
+      "on": {
+        "PLAY": {
+          "target": "playing",
+          "guard": "isValidMove",
+          "actions": "updateBoard"
+        }
+      }
+    },
+    "gameOver": {
+      "initial": "winner",
+      "states": {
+        "winner": {
+          "tags": ["winner"],
+          "entry": "setWinner"
+        },
+        "draw": {
+          "tags": ["draw"]
+        }
+      },
+      "on": {
+        "RESET": {
+          "target": "playing",
+          "actions": "resetGame"
+        }
+      }
+    }
+  }
+}

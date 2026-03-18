@@ -1,0 +1,18 @@
+{
+  "id": "toggle",
+  "initial": "inactive",
+  "states": {
+    "inactive": {
+      "durable": true,
+      "on": {
+        "toggle": { "target": "active" }
+      }
+    },
+    "active": {
+      "durable": true,
+      "on": {
+        "toggle": { "target": "inactive" }
+      }
+    }
+  }
+}

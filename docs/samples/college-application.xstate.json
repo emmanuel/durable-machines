@@ -1,0 +1,39 @@
+{
+  "id": "finalizeCollegeApplication",
+  "initial": "FinalizeApplication",
+  "context": {
+    "applicantId": null,
+    "applicationSubmitted": false,
+    "satScoresReceived": false,
+    "recommendationLetterReceived": false
+  },
+  "states": {
+    "FinalizeApplication": {
+      "on": {
+        "ApplicationSubmitted": {
+          "actions": "__assign: applicationSubmitted = true"
+        },
+        "SATScoresReceived": {
+          "actions": "__assign: satScoresReceived = true"
+        },
+        "RecommendationLetterReceived": {
+          "actions": "__assign: recommendationLetterReceived = true"
+        }
+      },
+      "always": {
+        "guard": "__closure: context.applicationSubmitted && context.satScoresReceived && context.recommendationLetterReceived",
+        "target": "FinalizingApplication"
+      }
+    },
+    "FinalizingApplication": {
+      "invoke": {
+        "src": "finalizeApplicationFunction",
+        "input": "__closure: { applicantId: context.applicantId }",
+        "onDone": "Finalized"
+      }
+    },
+    "Finalized": {
+      "type": "final"
+    }
+  }
+}

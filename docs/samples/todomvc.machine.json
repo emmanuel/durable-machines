@@ -1,0 +1,148 @@
+{
+  "id": "todos",
+  "initial": "active",
+  "context": {
+    "todo": "",
+    "todos": [
+      { "id": "1", "title": "Learn state machines", "completed": false }
+    ],
+    "filter": "all"
+  },
+  "guards": {
+    "newTodoNotEmpty": { "gt": [{ "len": { "select": ["event", "value"] } }, 0] }
+  },
+  "actions": {
+    "setTodoInput": {
+      "type": "assign",
+      "transforms": [
+        { "path": ["context", "todo"], "set": { "select": ["event", "value"] } }
+      ]
+    },
+    "commitNewTodo": {
+      "type": "assign",
+      "transforms": [
+        { "path": ["context", "todo"], "set": "" },
+        {
+          "path": ["context", "todos"],
+          "append": {
+            "object": {
+              "id": { "fn": ["uuid"] },
+              "title": { "select": ["event", "value"] },
+              "completed": false
+            }
+          }
+        }
+      ]
+    },
+    "commitTodo": {
+      "type": "assign",
+      "transforms": [
+        {
+          "path": ["context", "todos"],
+          "set": {
+            "if": [
+              { "gt": [{ "len": { "select": ["event", "todo", "title"] } }, 0] },
+              {
+                "map": [
+                  { "select": ["context", "todos"] }, "t",
+                  { "if": [
+                    { "eq": [{ "select": ["t", "id"] }, { "select": ["event", "todo", "id"] }] },
+                    { "select": ["event", "todo"] },
+                    { "ref": "t" }
+                  ]}
+                ]
+              },
+              {
+                "filter": [
+                  { "select": ["context", "todos"] }, "t",
+                  { "neq": [{ "select": ["t", "id"] }, { "select": ["event", "todo", "id"] }] }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "deleteTodo": {
+      "type": "assign",
+      "transforms": [
+        {
+          "path": ["context", "todos"],
+          "set": {
+            "filter": [
+              { "select": ["context", "todos"] }, "t",
+              { "neq": [{ "select": ["t", "id"] }, { "select": ["event", "id"] }] }
+            ]
+          }
+        }
+      ]
+    },
+    "setFilter": {
+      "type": "assign",
+      "transforms": [
+        { "path": ["context", "filter"], "set": { "select": ["event", "filter"] } }
+      ]
+    },
+    "markTodo": {
+      "type": "assign",
+      "transforms": [
+        {
+          "path": ["context", "todos"],
+          "set": {
+            "map": [
+              { "select": ["context", "todos"] }, "t",
+              { "if": [
+                { "eq": [{ "select": ["t", "id"] }, { "select": ["event", "id"] }] },
+                { "merge": [{ "ref": "t" }, { "object": { "completed": { "eq": [{ "select": ["event", "mark"] }, "completed"] } } }] },
+                { "ref": "t" }
+              ]}
+            ]
+          }
+        }
+      ]
+    },
+    "markAllTodos": {
+      "type": "assign",
+      "transforms": [
+        {
+          "path": ["context", "todos"],
+          "set": {
+            "map": [
+              { "select": ["context", "todos"] }, "t",
+              { "merge": [{ "ref": "t" }, { "object": { "completed": { "eq": [{ "select": ["event", "mark"] }, "completed"] } } }] }
+            ]
+          }
+        }
+      ]
+    },
+    "clearCompleted": {
+      "type": "assign",
+      "transforms": [
+        {
+          "path": ["context", "todos"],
+          "set": {
+            "filter": [
+              { "select": ["context", "todos"] }, "t",
+              { "not": { "select": ["t", "completed"] } }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "states": {
+    "active": {
+      "durable": true,
+      "on": {
+        "newTodo.change": { "actions": "setTodoInput" },
+        "newTodo.commit": { "guard": "newTodoNotEmpty", "actions": "commitNewTodo" },
+        "todo.commit": { "actions": "commitTodo" },
+        "todo.delete": { "actions": "deleteTodo" },
+        "filter.change": { "actions": "setFilter" },
+        "todo.mark": { "actions": "markTodo" },
+        "todo.markAll": { "actions": "markAllTodos" },
+        "todos.clearCompleted": { "actions": "clearCompleted" }
+      }
+    }
+  }
+}

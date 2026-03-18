@@ -1,0 +1,31 @@
+{
+  "id": "checkInbox",
+  "initial": "Idle",
+  "context": { "messages": [] },
+  "invoke": {
+    "src": "__closure: fromCallback — sends 'reminder' every 2000ms"
+  },
+  "states": {
+    "Idle": {
+      "on": {
+        "reminder": "CheckInbox"
+      }
+    },
+    "CheckInbox": {
+      "invoke": {
+        "src": "__closure: fromPromise — checks inbox, returns Message[]",
+        "onDone": {
+          "target": "SendTextForHighPriority",
+          "actions": "__assign: messages = event.output"
+        }
+      }
+    },
+    "SendTextForHighPriority": {
+      "invoke": {
+        "src": "__closure: fromPromise — sends texts for messages",
+        "input": "__closure: ({ context }) => ({ messages: context.messages })",
+        "onDone": { "target": "Idle" }
+      }
+    }
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "id": "applicantrequest",
+  "initial": "CheckApplication",
+  "context": {
+    "applicant": null
+  },
+  "guards": {
+    "isOver18": { "gte": [{ "select": ["context", "applicant", "age"] }, 18] }
+  },
+  "states": {
+    "CheckApplication": {
+      "durable": true,
+      "on": {
+        "Submit": [
+          { "target": "StartApplication", "guard": "isOver18" },
+          { "target": "RejectApplication" }
+        ]
+      }
+    },
+    "StartApplication": {
+      "invoke": {
+        "src": "startApplicationWorkflow",
+        "onDone": "End",
+        "onError": "RejectApplication"
+      }
+    },
+    "RejectApplication": {
+      "invoke": {
+        "src": "sendRejectionEmail",
+        "input": { "$ref": "context.applicant" },
+        "onDone": "End"
+      }
+    },
+    "End": {
+      "type": "final"
+    }
+  }
+}

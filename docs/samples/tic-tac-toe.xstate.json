@@ -1,0 +1,43 @@
+{
+  "id": "ticTacToe",
+  "initial": "playing",
+  "context": {
+    "board": [null, null, null, null, null, null, null, null, null],
+    "moves": 0,
+    "player": "x",
+    "winner": null
+  },
+  "states": {
+    "playing": {
+      "always": [
+        { "target": "gameOver.winner", "guard": "__closure: checkWin(board)" },
+        { "target": "gameOver.draw", "guard": "__closure: moves === 9" }
+      ],
+      "on": {
+        "PLAY": {
+          "target": "playing",
+          "guard": "__closure: board[event.value] === null",
+          "actions": "__assign: board = [...board]; board[event.value] = player; moves += 1; player = player === 'x' ? 'o' : 'x'"
+        }
+      }
+    },
+    "gameOver": {
+      "initial": "winner",
+      "states": {
+        "winner": {
+          "tags": ["winner"],
+          "entry": "__assign: winner = player === 'x' ? 'o' : 'x'"
+        },
+        "draw": {
+          "tags": ["draw"]
+        }
+      },
+      "on": {
+        "RESET": {
+          "target": "playing",
+          "actions": "__assign: board = Array(9).fill(null); moves = 0; player = 'x'; winner = null"
+        }
+      }
+    }
+  }
+}

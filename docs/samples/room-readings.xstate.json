@@ -1,0 +1,34 @@
+{
+  "id": "roomreadings",
+  "initial": "ConsumeReading",
+  "context": {
+    "temperature": null,
+    "humidity": null
+  },
+  "states": {
+    "ConsumeReading": {
+      "entry": "__assign: temperature = null, humidity = null",
+      "on": {
+        "TemperatureEvent": {
+          "actions": "__assign: temperature = event.temperature"
+        },
+        "HumidityEvent": {
+          "actions": "__assign: humidity = event.humidity"
+        }
+      },
+      "after": {
+        "PT1H": {
+          "guard": "__closure: context.temperature !== null && context.humidity !== null",
+          "target": "GenerateReport"
+        }
+      }
+    },
+    "GenerateReport": {
+      "invoke": {
+        "src": "produceReport",
+        "input": "__closure: { temperature: context.temperature, humidity: context.humidity }",
+        "onDone": "ConsumeReading"
+      }
+    }
+  }
+}

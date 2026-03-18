@@ -1,0 +1,193 @@
+{
+  "id": "triviaMachine",
+  "initial": "homepage",
+  "context": {
+    "homePageCharacters": [],
+    "hasLoaded": false,
+    "currentCharacter": null,
+    "randomCharacters": [],
+    "isClueOpened": false,
+    "points": 0,
+    "question": 0,
+    "lifes": 3
+  },
+  "guards": {
+    "isAnswerCorrect": {
+      "eq": [
+        { "select": ["event", "answer"] },
+        { "select": ["context", "currentCharacter", "id"] }
+      ]
+    },
+    "hasLostGame": { "lte": [{ "select": ["context", "lifes"] }, 0] },
+    "hasWonGame": { "gte": [{ "select": ["context", "points"] }, 100] }
+  },
+  "actions": {
+    "storeHomePageCharacters": {
+      "type": "assign",
+      "transforms": [
+        { "path": ["context", "homePageCharacters"], "set": { "select": ["event", "output"] } },
+        { "path": ["context", "hasLoaded"], "set": true }
+      ]
+    },
+    "resetTriviaData": {
+      "type": "assign",
+      "transforms": [
+        { "path": ["context", "currentCharacter"], "set": null },
+        { "path": ["context", "randomCharacters"], "set": [] },
+        { "path": ["context", "points"], "set": 0 },
+        { "path": ["context", "question"], "set": 0 },
+        { "path": ["context", "lifes"], "set": 3 }
+      ]
+    },
+    "setNotLoaded": {
+      "type": "assign",
+      "transforms": [
+        { "path": ["context", "hasLoaded"], "set": false }
+      ]
+    },
+    "storeCurrentCharacter": {
+      "type": "assign",
+      "transforms": [
+        { "path": ["context", "currentCharacter"], "set": { "select": ["event", "output"] } }
+      ]
+    },
+    "storeRandomCharacters": {
+      "type": "assign",
+      "transforms": [
+        { "path": ["context", "randomCharacters"], "set": { "select": ["event", "output"] } },
+        { "path": ["context", "question"], "set": { "add": [{ "select": ["context", "question"] }, 1] } },
+        { "path": ["context", "hasLoaded"], "set": true }
+      ]
+    },
+    "toggleClue": {
+      "type": "assign",
+      "transforms": [
+        { "path": ["context", "isClueOpened"], "set": { "not": { "select": ["context", "isClueOpened"] } } }
+      ]
+    },
+    "addPoints": {
+      "type": "assign",
+      "transforms": [
+        { "path": ["context", "points"], "set": { "add": [{ "select": ["context", "points"] }, 10] } }
+      ]
+    },
+    "loseLife": {
+      "type": "assign",
+      "transforms": [
+        { "path": ["context", "lifes"], "set": { "sub": [{ "select": ["context", "lifes"] }, 1] } }
+      ]
+    }
+  },
+  "states": {
+    "homepage": {
+      "initial": "loadingData",
+      "states": {
+        "loadingData": {
+          "invoke": {
+            "src": "loadHomePageCharacters",
+            "onDone": {
+              "actions": "storeHomePageCharacters",
+              "target": "dataLoaded"
+            }
+          }
+        },
+        "dataLoaded": {
+          "durable": true,
+          "on": {
+            "user.play": { "target": "#instructionModal" }
+          }
+        }
+      }
+    },
+    "instructionModal": {
+      "id": "instructionModal",
+      "durable": true,
+      "on": {
+        "user.close": { "target": "homepage.dataLoaded" },
+        "user.reject": { "target": "homepage.dataLoaded" },
+        "user.accept": {
+          "target": "startTrivia",
+          "actions": "setNotLoaded"
+        }
+      }
+    },
+    "startTrivia": {
+      "initial": "loadQuestionData",
+      "id": "startTrivia",
+      "entry": "resetTriviaData",
+      "states": {
+        "loadQuestionData": {
+          "id": "loadQuestionData",
+          "initial": "loadCharacter",
+          "entry": "setNotLoaded",
+          "states": {
+            "loadCharacter": {
+              "invoke": {
+                "src": "loadSingleCharacter",
+                "onDone": {
+                  "actions": "storeCurrentCharacter",
+                  "target": "loadRandomCharacters"
+                }
+              }
+            },
+            "loadRandomCharacters": {
+              "invoke": {
+                "src": "loadRandomCharacters",
+                "onDone": {
+                  "actions": "storeRandomCharacters",
+                  "target": "#questionReady"
+                }
+              }
+            }
+          }
+        },
+        "questionReady": {
+          "id": "questionReady",
+          "initial": "questionStart",
+          "on": {
+            "user.toggleClue": { "actions": "toggleClue" }
+          },
+          "states": {
+            "questionStart": {
+              "durable": true,
+              "on": {
+                "user.selectAnswer": [
+                  { "target": "correctAnswer", "guard": "isAnswerCorrect" },
+                  { "target": "incorrectAnswer" }
+                ]
+              }
+            },
+            "correctAnswer": {
+              "entry": "addPoints",
+              "always": [
+                { "guard": "hasLostGame", "target": "lostGame" },
+                { "guard": "hasWonGame", "target": "wonGame" }
+              ],
+              "on": {
+                "user.nextQuestion": { "target": "#loadQuestionData" }
+              }
+            },
+            "incorrectAnswer": {
+              "entry": "loseLife",
+              "always": [
+                { "guard": "hasLostGame", "target": "lostGame" },
+                { "guard": "hasWonGame", "target": "wonGame" }
+              ],
+              "on": {
+                "user.nextQuestion": { "target": "#loadQuestionData" }
+              }
+            },
+            "lostGame": {
+              "durable": true,
+              "on": { "user.playAgain": { "target": "#startTrivia" } }
+            },
+            "wonGame": {
+              "durable": true,
+              "on": { "user.playAgain": { "target": "#startTrivia" } }
+            }
+          }
+        }
+      }
+    }
+  }
+}

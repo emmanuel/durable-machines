@@ -1,0 +1,31 @@
+{
+  "id": "fillglassofwater",
+  "initial": "CheckIfFull",
+  "context": {
+    "counts": { "current": 0, "max": 5 }
+  },
+  "states": {
+    "CheckIfFull": {
+      "always": [
+        {
+          "target": "AddWater",
+          "guard": "__closure: context.counts.current < context.counts.max"
+        },
+        {
+          "target": "GlassFull"
+        }
+      ]
+    },
+    "AddWater": {
+      "after": {
+        "500": {
+          "actions": "__assign: counts.current = context.counts.current + 1",
+          "target": "CheckIfFull"
+        }
+      }
+    },
+    "GlassFull": {
+      "type": "final"
+    }
+  }
+}

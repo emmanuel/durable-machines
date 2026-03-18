@@ -1,0 +1,125 @@
+{
+  "id": "booklending",
+  "initial": "BookLendingRequest",
+  "context": {
+    "book": null,
+    "lender": null
+  },
+  "guards": {
+    "isOnLoan": { "eq": [{ "select": ["context", "book", "status"] }, "onloan"] },
+    "isAvailable": { "eq": [{ "select": ["context", "book", "status"] }, "available"] }
+  },
+  "actions": {
+    "storeBookRequest": {
+      "type": "assign",
+      "transforms": [
+        {
+          "path": ["context", "book"],
+          "set": {
+            "object": {
+              "title": { "select": ["event", "book", "title"] },
+              "id": { "select": ["event", "book", "id"] },
+              "status": "unknown"
+            }
+          }
+        },
+        {
+          "path": ["context", "lender"],
+          "set": { "select": ["event", "lender"] }
+        }
+      ]
+    },
+    "updateBookStatus": {
+      "type": "assign",
+      "transforms": [
+        {
+          "path": ["context", "book", "status"],
+          "set": { "select": ["event", "output", "status"] }
+        }
+      ]
+    }
+  },
+  "states": {
+    "BookLendingRequest": {
+      "durable": true,
+      "on": {
+        "bookLendingRequest": {
+          "target": "GetBookStatus",
+          "actions": "storeBookRequest"
+        }
+      }
+    },
+    "GetBookStatus": {
+      "invoke": {
+        "src": "getStatusForBook",
+        "input": { "$ref": "context.book.id" },
+        "onDone": {
+          "target": "BookStatusDecision",
+          "actions": "updateBookStatus"
+        }
+      }
+    },
+    "BookStatusDecision": {
+      "always": [
+        { "guard": "isOnLoan", "target": "ReportStatusToLender" },
+        { "guard": "isAvailable", "target": "CheckOutBook" },
+        { "target": "End" }
+      ]
+    },
+    "ReportStatusToLender": {
+      "invoke": {
+        "src": "sendStatusToLender",
+        "input": { "$ref": "context.book" },
+        "onDone": "WaitForLenderResponse"
+      }
+    },
+    "WaitForLenderResponse": {
+      "durable": true,
+      "on": {
+        "holdBook": { "target": "RequestHold" },
+        "declineBookhold": { "target": "CancelRequest" }
+      }
+    },
+    "RequestHold": {
+      "invoke": {
+        "src": "requestHoldForLender",
+        "input": { "$ref": "context.book" },
+        "onDone": "SleepTwoWeeks"
+      }
+    },
+    "CancelRequest": {
+      "invoke": {
+        "src": "cancelHoldRequest",
+        "input": { "$ref": "context.book" },
+        "onDone": "End"
+      }
+    },
+    "SleepTwoWeeks": {
+      "after": {
+        "1209600000": { "target": "GetBookStatus" }
+      }
+    },
+    "CheckOutBook": {
+      "type": "compound",
+      "initial": "CheckingOut",
+      "states": {
+        "CheckingOut": {
+          "invoke": {
+            "src": "checkOutBook",
+            "input": { "$ref": "context.book.id" },
+            "onDone": "NotifyingLender"
+          }
+        },
+        "NotifyingLender": {
+          "invoke": {
+            "src": "notifyLenderForCheckout",
+            "input": { "$ref": "context.book" },
+            "onDone": "Done"
+          }
+        },
+        "Done": { "type": "final" }
+      }
+    },
+    "End": { "type": "final" }
+  }
+}

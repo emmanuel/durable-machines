@@ -1,0 +1,42 @@
+{
+  "id": "timer",
+  "initial": "stopped",
+  "context": { "seconds": 0 },
+  "states": {
+    "stopped": {
+      "on": {
+        "start": {
+          "guard": "__closure: context.seconds > 0",
+          "target": "running"
+        },
+        "minute": {
+          "actions": "__assign: seconds = context.seconds + 60"
+        },
+        "second": {
+          "actions": "__assign: seconds = context.seconds + 1"
+        }
+      }
+    },
+    "running": {
+      "invoke": {
+        "src": "__closure: fromCallback — sends TICK every 1000ms"
+      },
+      "on": {
+        "stop": "stopped",
+        "TICK": {
+          "actions": "__assign: seconds = context.seconds - 1"
+        }
+      },
+      "always": {
+        "guard": "__closure: context.seconds === 0",
+        "target": "stopped"
+      }
+    }
+  },
+  "on": {
+    "reset": {
+      "guard": "__closure: context.seconds > 0",
+      "actions": "__assign: seconds = 0"
+    }
+  }
+}

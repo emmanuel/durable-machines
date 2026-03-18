@@ -1,0 +1,28 @@
+{
+  "id": "counter",
+  "initial": "active",
+  "context": { "count": 0 },
+  "actions": {
+    "incrementCount": {
+      "type": "assign",
+      "transforms": [
+        { "path": ["context", "count"], "set": { "add": [{ "select": ["context", "count"] }, 1] } }
+      ]
+    },
+    "decrementCount": {
+      "type": "assign",
+      "transforms": [
+        { "path": ["context", "count"], "set": { "sub": [{ "select": ["context", "count"] }, 1] } }
+      ]
+    }
+  },
+  "states": {
+    "active": {
+      "durable": true,
+      "on": {
+        "increment": { "actions": "incrementCount" },
+        "decrement": { "actions": "decrementCount" }
+      }
+    }
+  }
+}

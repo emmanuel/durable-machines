@@ -1,0 +1,39 @@
+{
+  "id": "applicantrequest",
+  "initial": "CheckApplication",
+  "context": {
+    "applicant": null
+  },
+  "states": {
+    "CheckApplication": {
+      "on": {
+        "Submit": [
+          {
+            "target": "StartApplication",
+            "guard": "__closure: context.applicant.age >= 18"
+          },
+          {
+            "target": "RejectApplication"
+          }
+        ]
+      }
+    },
+    "StartApplication": {
+      "invoke": {
+        "src": "startApplicationWorkflowId",
+        "onDone": "End",
+        "onError": "RejectApplication"
+      }
+    },
+    "RejectApplication": {
+      "invoke": {
+        "src": "sendRejectionEmailFunction",
+        "input": "__closure: { applicant: context.applicant }",
+        "onDone": "End"
+      }
+    },
+    "End": {
+      "type": "final"
+    }
+  }
+}

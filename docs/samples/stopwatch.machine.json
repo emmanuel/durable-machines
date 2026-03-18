@@ -1,0 +1,44 @@
+{
+  "id": "stopwatch",
+  "initial": "stopped",
+  "context": { "elapsed": 0 },
+  "actions": {
+    "tick": {
+      "type": "assign",
+      "transforms": [
+        { "path": ["context", "elapsed"], "set": { "add": [{ "select": ["context", "elapsed"] }, 1] } }
+      ]
+    },
+    "resetElapsed": {
+      "type": "assign",
+      "transforms": [
+        { "path": ["context", "elapsed"], "set": 0 }
+      ]
+    }
+  },
+  "states": {
+    "stopped": {
+      "durable": true,
+      "on": {
+        "start": "running"
+      }
+    },
+    "running": {
+      "after": {
+        "10": {
+          "target": "running",
+          "actions": "tick"
+        }
+      },
+      "on": {
+        "stop": "stopped"
+      }
+    }
+  },
+  "on": {
+    "reset": {
+      "actions": "resetElapsed",
+      "target": ".stopped"
+    }
+  }
+}

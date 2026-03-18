@@ -1,0 +1,12 @@
+{
+  "id": "counter",
+  "context": { "count": 0 },
+  "on": {
+    "increment": {
+      "actions": "__assign: count = context.count + 1"
+    },
+    "decrement": {
+      "actions": "__assign: count = context.count - 1"
+    }
+  }
+}

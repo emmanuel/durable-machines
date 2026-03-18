@@ -1,0 +1,48 @@
+{
+  "id": "handleCarAuctionBid",
+  "initial": "StoreCarAuctionBid",
+  "context": { "bids": [] },
+  "actions": {
+    "appendBid": {
+      "type": "assign",
+      "transforms": [
+        {
+          "path": ["context", "bids"],
+          "append": {
+            "object": {
+              "carid": { "select": ["event", "bid", "carid"] },
+              "amount": { "select": ["event", "bid", "amount"] },
+              "bidder": { "select": ["event", "bid", "bidder"] }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "states": {
+    "StoreCarAuctionBid": {
+      "durable": true,
+      "on": {
+        "CarBidEvent": { "actions": "appendBid" }
+      },
+      "after": {
+        "3000": { "target": "BiddingEnded" }
+      }
+    },
+    "BiddingEnded": {
+      "type": "final",
+      "output": {
+        "winningBid": {
+          "reduce": [
+            { "select": ["context", "bids"] }, "best", "bid",
+            { "if": [
+              { "gt": [{ "select": ["bid", "amount"] }, { "select": ["best", "amount"] }] },
+              { "ref": "bid" },
+              { "ref": "best" }
+            ]}
+          ]
+        }
+      }
+    }
+  }
+}

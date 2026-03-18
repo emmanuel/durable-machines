@@ -1,0 +1,37 @@
+{
+  "id": "eventbasedswitchstate",
+  "initial": "CheckVisaStatus",
+  "states": {
+    "CheckVisaStatus": {
+      "durable": true,
+      "on": {
+        "visaApprovedEvent": { "target": "HandleApprovedVisa" },
+        "visaRejectedEvent": { "target": "HandleRejectedVisa" }
+      },
+      "after": {
+        "1000": { "target": "HandleNoVisaDecision" }
+      }
+    },
+    "HandleApprovedVisa": {
+      "invoke": {
+        "src": "handleApprovedVisa",
+        "onDone": "End"
+      }
+    },
+    "HandleRejectedVisa": {
+      "invoke": {
+        "src": "handleRejectedVisa",
+        "onDone": "End"
+      }
+    },
+    "HandleNoVisaDecision": {
+      "invoke": {
+        "src": "handleNoVisaDecision",
+        "onDone": "End"
+      }
+    },
+    "End": {
+      "type": "final"
+    }
+  }
+}

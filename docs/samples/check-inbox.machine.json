@@ -1,0 +1,37 @@
+{
+  "id": "checkInbox",
+  "initial": "Idle",
+  "context": { "messages": [] },
+  "actions": {
+    "storeMessages": {
+      "type": "assign",
+      "transforms": [
+        { "path": ["context", "messages"], "set": { "select": ["event", "output"] } }
+      ]
+    }
+  },
+  "states": {
+    "Idle": {
+      "durable": true,
+      "after": {
+        "2000": "CheckInbox"
+      }
+    },
+    "CheckInbox": {
+      "invoke": {
+        "src": "checkInboxFunction",
+        "onDone": {
+          "target": "SendTextForHighPriority",
+          "actions": "storeMessages"
+        }
+      }
+    },
+    "SendTextForHighPriority": {
+      "invoke": {
+        "src": "sendTextsFunction",
+        "input": { "object": { "messages": { "select": ["context", "messages"] } } },
+        "onDone": "Idle"
+      }
+    }
+  }
+}

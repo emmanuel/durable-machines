@@ -1,0 +1,21 @@
+{
+  "id": "handleCarAuctionBid",
+  "initial": "StoreCarAuctionBid",
+  "context": { "bids": [] },
+  "states": {
+    "StoreCarAuctionBid": {
+      "on": {
+        "CarBidEvent": {
+          "actions": "__assign: bids = [...context.bids, event.bid]"
+        }
+      },
+      "after": {
+        "BiddingDelay": "BiddingEnded"
+      }
+    },
+    "BiddingEnded": {
+      "type": "final",
+      "output": "__closure: { winningBid: context.bids.reduce((prev, cur) => prev.amount > cur.amount ? prev : cur) }"
+    }
+  }
+}

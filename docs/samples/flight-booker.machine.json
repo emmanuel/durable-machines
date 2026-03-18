@@ -1,0 +1,74 @@
+{
+  "id": "flightBookerMachine",
+  "initial": "scheduling",
+  "context": {
+    "departDate": null,
+    "returnDate": null,
+    "today": null
+  },
+  "guards": {
+    "isValidDepartDate": { "gte": [{ "select": ["context", "departDate"] }, { "select": ["context", "today"] }] },
+    "isValidReturnDate": {
+      "and": [
+        { "gte": [{ "select": ["context", "departDate"] }, { "select": ["context", "today"] }] },
+        { "gt": [{ "select": ["context", "returnDate"] }, { "select": ["context", "departDate"] }] }
+      ]
+    }
+  },
+  "actions": {
+    "setDepartDate": {
+      "type": "assign",
+      "transforms": [
+        { "path": ["context", "departDate"], "set": { "select": ["event", "value"] } }
+      ]
+    },
+    "setReturnDate": {
+      "type": "assign",
+      "transforms": [
+        { "path": ["context", "returnDate"], "set": { "select": ["event", "value"] } }
+      ]
+    }
+  },
+  "states": {
+    "scheduling": {
+      "type": "compound",
+      "initial": "oneWay",
+      "on": {
+        "CHANGE_DEPART_DATE": { "actions": "setDepartDate" }
+      },
+      "states": {
+        "oneWay": {
+          "durable": true,
+          "on": {
+            "CHANGE_TRIP_TYPE": { "target": "roundTrip" },
+            "BOOK_DEPART": {
+              "target": "booking",
+              "guard": "isValidDepartDate"
+            }
+          }
+        },
+        "roundTrip": {
+          "durable": true,
+          "on": {
+            "CHANGE_TRIP_TYPE": { "target": "oneWay" },
+            "CHANGE_RETURN_DATE": { "actions": "setReturnDate" },
+            "BOOK_RETURN": {
+              "target": "booking",
+              "guard": "isValidReturnDate"
+            }
+          }
+        }
+      }
+    },
+    "booking": {
+      "invoke": {
+        "src": "bookFlight",
+        "onDone": "booked",
+        "onError": "scheduling"
+      }
+    },
+    "booked": {
+      "type": "final"
+    }
+  }
+}

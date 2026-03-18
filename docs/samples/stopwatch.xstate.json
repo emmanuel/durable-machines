@@ -1,0 +1,29 @@
+{
+  "id": "stopwatch",
+  "initial": "stopped",
+  "context": { "elapsed": 0 },
+  "states": {
+    "stopped": {
+      "on": {
+        "start": "running"
+      }
+    },
+    "running": {
+      "invoke": {
+        "src": "__closure: fromCallback — sends TICK every 10ms"
+      },
+      "on": {
+        "TICK": {
+          "actions": "__assign: elapsed = context.elapsed + 1"
+        },
+        "stop": "stopped"
+      }
+    }
+  },
+  "on": {
+    "reset": {
+      "actions": "__assign: elapsed = 0",
+      "target": ".stopped"
+    }
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "id": "order",
+  "initial": "StartNewOrder",
+  "states": {
+    "StartNewOrder": {
+      "durable": true,
+      "on": {
+        "OrderCreatedEvent": { "target": "WaitForOrderConfirmation" }
+      },
+      "after": {
+        "2592000000": { "target": "CancelOrder" }
+      }
+    },
+    "WaitForOrderConfirmation": {
+      "durable": true,
+      "on": {
+        "OrderConfirmedEvent": { "target": "WaitOrderShipped" }
+      },
+      "after": {
+        "2592000000": { "target": "CancelOrder" }
+      }
+    },
+    "WaitOrderShipped": {
+      "durable": true,
+      "on": {
+        "ShipmentSentEvent": { "target": "OrderFinished" }
+      },
+      "after": {
+        "2592000000": { "target": "CancelOrder" }
+      }
+    },
+    "OrderFinished": {
+      "type": "final",
+      "effects": [{ "type": "ORDER_FINISHED" }]
+    },
+    "CancelOrder": {
+      "invoke": {
+        "src": "cancelOrder",
+        "onDone": "OrderCancelled"
+      }
+    },
+    "OrderCancelled": {
+      "type": "final",
+      "effects": [{ "type": "ORDER_CANCELLED" }]
+    }
+  }
+}

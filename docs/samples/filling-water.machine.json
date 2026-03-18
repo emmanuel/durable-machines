@@ -1,0 +1,40 @@
+{
+  "id": "fillglassofwater",
+  "initial": "CheckIfFull",
+  "context": {
+    "counts": { "current": 0, "max": 5 }
+  },
+  "guards": {
+    "isNotFull": { "lt": [{ "select": ["context", "counts", "current"] }, { "select": ["context", "counts", "max"] }] }
+  },
+  "actions": {
+    "addOneUnit": {
+      "type": "assign",
+      "transforms": [
+        {
+          "path": ["context", "counts", "current"],
+          "set": { "add": [{ "select": ["context", "counts", "current"] }, 1] }
+        }
+      ]
+    }
+  },
+  "states": {
+    "CheckIfFull": {
+      "always": [
+        { "target": "AddWater", "guard": "isNotFull" },
+        { "target": "GlassFull" }
+      ]
+    },
+    "AddWater": {
+      "after": {
+        "500": {
+          "target": "CheckIfFull",
+          "actions": "addOneUnit"
+        }
+      }
+    },
+    "GlassFull": {
+      "type": "final"
+    }
+  }
+}

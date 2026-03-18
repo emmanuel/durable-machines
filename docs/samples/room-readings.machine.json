@@ -1,0 +1,62 @@
+{
+  "id": "roomreadings",
+  "initial": "ConsumeReading",
+  "context": {
+    "temperature": null,
+    "humidity": null
+  },
+  "guards": {
+    "bothReadingsReceived": {
+      "and": [
+        { "not": { "isNull": { "select": ["context", "temperature"] } } },
+        { "not": { "isNull": { "select": ["context", "humidity"] } } }
+      ]
+    }
+  },
+  "actions": {
+    "resetReadings": {
+      "type": "assign",
+      "transforms": [
+        { "path": ["context", "temperature"], "set": null },
+        { "path": ["context", "humidity"], "set": null }
+      ]
+    },
+    "storeTemperature": {
+      "type": "assign",
+      "transforms": [
+        { "path": ["context", "temperature"], "set": { "select": ["event", "temperature"] } }
+      ]
+    },
+    "storeHumidity": {
+      "type": "assign",
+      "transforms": [
+        { "path": ["context", "humidity"], "set": { "select": ["event", "humidity"] } }
+      ]
+    }
+  },
+  "states": {
+    "ConsumeReading": {
+      "durable": true,
+      "on": {
+        "TemperatureEvent": { "actions": "storeTemperature" },
+        "HumidityEvent": { "actions": "storeHumidity" }
+      },
+      "after": {
+        "3600000": {
+          "guard": "bothReadingsReceived",
+          "target": "GenerateReport"
+        }
+      }
+    },
+    "GenerateReport": {
+      "invoke": {
+        "src": "produceReport",
+        "input": { "$ref": "context" },
+        "onDone": {
+          "target": "ConsumeReading",
+          "actions": "resetReadings"
+        }
+      }
+    }
+  }
+}

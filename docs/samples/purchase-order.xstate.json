@@ -1,0 +1,47 @@
+{
+  "id": "order",
+  "initial": "StartNewOrder",
+  "after": {
+    "PT30D": { "target": ".CancelOrder" }
+  },
+  "states": {
+    "StartNewOrder": {
+      "on": {
+        "OrderCreatedEvent": {
+          "actions": ["logNewOrderCreated"],
+          "target": "WaitForOrderConfirmation"
+        }
+      }
+    },
+    "WaitForOrderConfirmation": {
+      "on": {
+        "OrderConfirmedEvent": {
+          "actions": ["logOrderConfirmed"],
+          "target": "WaitOrderShipped"
+        }
+      }
+    },
+    "WaitOrderShipped": {
+      "on": {
+        "ShipmentSentEvent": {
+          "actions": ["logOrderShipped"],
+          "target": "OrderFinished"
+        }
+      }
+    },
+    "OrderFinished": {
+      "type": "final",
+      "entry": ["logOrderFinished"]
+    },
+    "CancelOrder": {
+      "invoke": {
+        "src": "CancelOrder",
+        "onDone": "OrderCancelled"
+      }
+    },
+    "OrderCancelled": {
+      "type": "final",
+      "entry": ["logOrderCancelled"]
+    }
+  }
+}

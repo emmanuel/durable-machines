@@ -1,0 +1,52 @@
+{
+  "id": "customercreditcheck",
+  "initial": "CheckCredit",
+  "context": {
+    "customer": null,
+    "creditCheck": null
+  },
+  "states": {
+    "CheckCredit": {
+      "invoke": {
+        "src": "callCreditCheckMicroservice",
+        "input": "__closure: { customer: context.customer }",
+        "onDone": {
+          "target": "EvaluateDecision",
+          "actions": "__assign: creditCheck = event.output"
+        }
+      },
+      "after": {
+        "PT15M": "Timeout"
+      }
+    },
+    "EvaluateDecision": {
+      "always": [
+        {
+          "guard": "__closure: context.creditCheck?.decision === 'Approved'",
+          "target": "StartApplication"
+        },
+        {
+          "guard": "__closure: context.creditCheck?.decision === 'Denied'",
+          "target": "RejectApplication"
+        },
+        { "target": "RejectApplication" }
+      ]
+    },
+    "StartApplication": {
+      "invoke": {
+        "src": "startApplicationWorkflowId",
+        "input": "__closure: { customer: context.customer }",
+        "onDone": "End"
+      }
+    },
+    "RejectApplication": {
+      "invoke": {
+        "src": "sendRejectionEmailFunction",
+        "input": "__closure: { applicant: context.customer }",
+        "onDone": "End"
+      }
+    },
+    "End": { "type": "final" },
+    "Timeout": {}
+  }
+}

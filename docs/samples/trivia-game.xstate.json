@@ -1,0 +1,123 @@
+{
+  "id": "triviaMachine",
+  "initial": "homepage",
+  "context": {
+    "homePageCharacters": [],
+    "hasLoaded": false,
+    "currentCharacter": null,
+    "randomCharacters": [],
+    "isClueOpened": false,
+    "points": 0,
+    "question": 0,
+    "lifes": 3
+  },
+  "states": {
+    "homepage": {
+      "initial": "loadingData",
+      "states": {
+        "loadingData": {
+          "invoke": {
+            "src": "__closure: fromPromise(() => RickCharacters.getCharacters(Math.floor(Math.random() * 34)))",
+            "onDone": {
+              "actions": "__assign: homePageCharacters = event.output; hasLoaded = true",
+              "target": "dataLoaded"
+            }
+          }
+        },
+        "dataLoaded": {
+          "on": {
+            "user.play": { "target": "#instructionModal" }
+          }
+        }
+      }
+    },
+    "instructionModal": {
+      "id": "instructionModal",
+      "on": {
+        "user.close": { "target": "homepage.dataLoaded" },
+        "user.reject": { "target": "homepage.dataLoaded" },
+        "user.accept": {
+          "target": "startTrivia",
+          "actions": "__assign: hasLoaded = false"
+        }
+      }
+    },
+    "startTrivia": {
+      "initial": "loadQuestionData",
+      "id": "startTrivia",
+      "entry": ["__closure: goToTriviaPage()", "__assign: currentCharacter = null; randomCharacters = []; points = 0; question = 0; lifes = 3"],
+      "states": {
+        "loadQuestionData": {
+          "id": "loadQuestionData",
+          "initial": "loadCharacter",
+          "entry": "__assign: hasLoaded = false",
+          "states": {
+            "loadCharacter": {
+              "invoke": {
+                "src": "__closure: fromPromise(() => RickCharacters.getCharacter(getRandomNumber()))",
+                "onDone": {
+                  "actions": "__assign: currentCharacter = event.output",
+                  "target": "loadRandomCharacters"
+                }
+              }
+            },
+            "loadRandomCharacters": {
+              "invoke": {
+                "src": "__closure: fromPromise(() => RickCharacters.getRandomCharacters())",
+                "onDone": {
+                  "actions": "__assign: randomCharacters = event.output; question += 1; hasLoaded = true",
+                  "target": "#questionReady"
+                }
+              }
+            }
+          }
+        },
+        "questionReady": {
+          "id": "questionReady",
+          "initial": "questionStart",
+          "on": {
+            "user.toggleClue": {
+              "actions": "__assign: isClueOpened = !isClueOpened"
+            }
+          },
+          "states": {
+            "questionStart": {
+              "on": {
+                "user.selectAnswer": [
+                  { "target": "correctAnswer", "guard": "__closure: event.answer === currentCharacter.id" },
+                  { "target": "incorrectAnswer", "guard": "__closure: event.answer !== currentCharacter.id" }
+                ]
+              }
+            },
+            "correctAnswer": {
+              "entry": "__assign: points += 10",
+              "always": [
+                { "guard": "__closure: lifes <= 0", "target": "lostGame" },
+                { "guard": "__closure: points >= 100", "target": "wonGame" }
+              ],
+              "on": {
+                "user.nextQuestion": { "target": "#loadQuestionData" }
+              }
+            },
+            "incorrectAnswer": {
+              "entry": "__assign: lifes -= 1",
+              "always": [
+                { "guard": "__closure: lifes <= 0", "target": "lostGame" },
+                { "guard": "__closure: points >= 100", "target": "wonGame" }
+              ],
+              "on": {
+                "user.nextQuestion": { "target": "#loadQuestionData" }
+              }
+            },
+            "lostGame": {
+              "on": { "user.playAgain": { "target": "#startTrivia" } }
+            },
+            "wonGame": {
+              "on": { "user.playAgain": { "target": "#startTrivia" } }
+            }
+          }
+        }
+      }
+    }
+  }
+}

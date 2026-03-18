@@ -1,0 +1,63 @@
+{
+  "id": "finalizeCollegeApplication",
+  "initial": "FinalizeApplication",
+  "context": {
+    "applicantId": null,
+    "applicationSubmitted": false,
+    "satScoresReceived": false,
+    "recommendationLetterReceived": false
+  },
+  "guards": {
+    "allPrerequisitesMet": {
+      "and": [
+        { "select": ["context", "applicationSubmitted"] },
+        { "select": ["context", "satScoresReceived"] },
+        { "select": ["context", "recommendationLetterReceived"] }
+      ]
+    }
+  },
+  "actions": {
+    "markApplicationSubmitted": {
+      "type": "assign",
+      "transforms": [
+        { "path": ["context", "applicationSubmitted"], "set": true }
+      ]
+    },
+    "markSATScoresReceived": {
+      "type": "assign",
+      "transforms": [
+        { "path": ["context", "satScoresReceived"], "set": true }
+      ]
+    },
+    "markRecommendationReceived": {
+      "type": "assign",
+      "transforms": [
+        { "path": ["context", "recommendationLetterReceived"], "set": true }
+      ]
+    }
+  },
+  "states": {
+    "FinalizeApplication": {
+      "durable": true,
+      "on": {
+        "ApplicationSubmitted": { "actions": "markApplicationSubmitted" },
+        "SATScoresReceived": { "actions": "markSATScoresReceived" },
+        "RecommendationLetterReceived": { "actions": "markRecommendationReceived" }
+      },
+      "always": {
+        "guard": "allPrerequisitesMet",
+        "target": "FinalizingApplication"
+      }
+    },
+    "FinalizingApplication": {
+      "invoke": {
+        "src": "finalizeApplication",
+        "input": { "$ref": "context.applicantId" },
+        "onDone": "Finalized"
+      }
+    },
+    "Finalized": {
+      "type": "final"
+    }
+  }
+}

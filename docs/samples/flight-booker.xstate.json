@@ -1,0 +1,51 @@
+{
+  "id": "flightBookerMachine",
+  "initial": "scheduling",
+  "context": {
+    "departDate": "2026-03-17",
+    "returnDate": "2026-03-18"
+  },
+  "states": {
+    "scheduling": {
+      "initial": "oneWay",
+      "on": {
+        "CHANGE_DEPART_DATE": {
+          "actions": "__assign: departDate = event.value"
+        }
+      },
+      "states": {
+        "oneWay": {
+          "on": {
+            "CHANGE_TRIP_TYPE": { "target": "roundTrip" },
+            "BOOK_DEPART": {
+              "target": "#flightBookerMachine.booking",
+              "guard": "__closure: context.departDate >= TODAY"
+            }
+          }
+        },
+        "roundTrip": {
+          "on": {
+            "CHANGE_TRIP_TYPE": { "target": "oneWay" },
+            "CHANGE_RETURN_DATE": {
+              "actions": "__assign: returnDate = event.value"
+            },
+            "BOOK_RETURN": {
+              "target": "#flightBookerMachine.booking",
+              "guard": "__closure: context.departDate >= TODAY && context.returnDate > context.departDate"
+            }
+          }
+        }
+      }
+    },
+    "booking": {
+      "invoke": {
+        "src": "Booker",
+        "onDone": "booked",
+        "onError": "scheduling"
+      }
+    },
+    "booked": {
+      "type": "final"
+    }
+  }
+}

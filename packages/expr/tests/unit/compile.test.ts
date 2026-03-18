@@ -200,6 +200,20 @@ describe("compile — len", () => {
   });
 });
 
+describe("compile — at", () => {
+  it("positive index", () => {
+    const scope = createScope({ context: { items: ["a", "b", "c"] } });
+    expect(compile({ at: [{ select: ["context", "items"] }, 1] })(scope)).toBe("b");
+  });
+  it("negative index", () => {
+    const scope = createScope({ context: { items: ["a", "b", "c"] } });
+    expect(compile({ at: [{ select: ["context", "items"] }, -1] })(scope)).toBe("c");
+  });
+  it("non-array returns undefined", () => {
+    expect(compile({ at: ["not-array", 0] })(emptyScope)).toBeUndefined();
+  });
+});
+
 describe("compile — fn (builtins)", () => {
   it("calls builtin with no args", () => {
     const builtins = createBuiltinRegistry({ fixed: () => "ok" });

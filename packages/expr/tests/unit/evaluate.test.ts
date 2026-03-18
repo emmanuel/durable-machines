@@ -271,3 +271,26 @@ describe("evaluate — len", () => {
     expect(evaluate({ len: 42 }, scope)).toBe(0);
   });
 });
+
+describe("evaluate — at", () => {
+  it("positive index", () => {
+    const scope = createScope({ context: { items: ["a", "b", "c"] } });
+    expect(evaluate({ at: [{ select: ["context", "items"] }, 1] }, scope)).toBe("b");
+  });
+  it("negative index (-1 = last)", () => {
+    const scope = createScope({ context: { items: ["a", "b", "c"] } });
+    expect(evaluate({ at: [{ select: ["context", "items"] }, -1] }, scope)).toBe("c");
+  });
+  it("out of bounds returns undefined", () => {
+    const scope = createScope({ context: { items: ["a", "b"] } });
+    expect(evaluate({ at: [{ select: ["context", "items"] }, 10] }, scope)).toBeUndefined();
+  });
+  it("non-array returns undefined", () => {
+    const scope = createScope({ context: { val: 42 } });
+    expect(evaluate({ at: [{ select: ["context", "val"] }, 0] }, scope)).toBeUndefined();
+  });
+  it("index from expression", () => {
+    const scope = createScope({ context: { items: ["x", "y", "z"], idx: 2 } });
+    expect(evaluate({ at: [{ select: ["context", "items"] }, { select: ["context", "idx"] }] }, scope)).toBe("z");
+  });
+});

@@ -276,6 +276,31 @@ describe("compile — some", () => {
   });
 });
 
+describe("compile — reduce", () => {
+  it("eager with init — sums", () => {
+    const scope = createScope({ context: { nums: [1, 2, 3] } });
+    expect(compile({ reduce: [{ select: ["context", "nums"] }, "acc", "n", { add: [{ ref: "acc" }, { ref: "n" }] }, 0] })(scope)).toBe(6);
+  });
+  it("eager without init — first as seed", () => {
+    const scope = createScope({ context: { nums: [10, 20, 30] } });
+    expect(compile({ reduce: [{ select: ["context", "nums"] }, "acc", "n", { add: [{ ref: "acc" }, { ref: "n" }] }] })(scope)).toBe(60);
+  });
+  it("transducer with init", () => {
+    const scope = createScope({ context: {} });
+    scope.bindings.$ = [1, 2, 3];
+    expect(compile({ reduce: ["acc", "n", { add: [{ ref: "acc" }, { ref: "n" }] }, 0] })(scope)).toBe(6);
+  });
+  it("transducer without init", () => {
+    const scope = createScope({ context: {} });
+    scope.bindings.$ = [5, 10];
+    expect(compile({ reduce: ["acc", "n", { add: [{ ref: "acc" }, { ref: "n" }] }] })(scope)).toBe(15);
+  });
+  it("empty with init returns init", () => {
+    const scope = createScope({ context: { items: [] } });
+    expect(compile({ reduce: [{ select: ["context", "items"] }, "acc", "n", { ref: "acc" }, 99] })(scope)).toBe(99);
+  });
+});
+
 describe("compile — fn (builtins)", () => {
   it("calls builtin with no args", () => {
     const builtins = createBuiltinRegistry({ fixed: () => "ok" });

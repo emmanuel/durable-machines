@@ -460,3 +460,80 @@ describe("evaluate — some (transducer)", () => {
     )).toBe(true);
   });
 });
+
+describe("evaluate — reduce (eager with init)", () => {
+  const iterScope = createScope({ context: { nums: [1, 2, 3, 4, 5] } });
+
+  it("sums numbers", () => {
+    expect(evaluate(
+      { reduce: [{ select: ["context", "nums"] }, "acc", "n",
+        { add: [{ ref: "acc" }, { ref: "n" }] }, 0] },
+      iterScope,
+    )).toBe(15);
+  });
+  it("returns init for empty array", () => {
+    const scope = createScope({ context: { items: [] } });
+    expect(evaluate({ reduce: [{ select: ["context", "items"] }, "acc", "n", { ref: "acc" }, 42] }, scope)).toBe(42);
+  });
+  it("returns init for non-array", () => {
+    const scope = createScope({ context: { val: "hello" } });
+    expect(evaluate({ reduce: [{ select: ["context", "val"] }, "acc", "n", { ref: "acc" }, 42] }, scope)).toBe(42);
+  });
+});
+
+describe("evaluate — reduce (eager without init)", () => {
+  it("finds max bid (first element as seed)", () => {
+    const bidsScope = createScope({
+      context: {
+        bids: [
+          { amount: 100, bidder: "A" },
+          { amount: 250, bidder: "B" },
+          { amount: 150, bidder: "C" },
+        ],
+      },
+    });
+    expect(evaluate(
+      { reduce: [{ select: ["context", "bids"] }, "best", "b",
+        { if: [
+          { gt: [{ select: ["b", "amount"] }, { select: ["best", "amount"] }] },
+          { ref: "b" },
+          { ref: "best" },
+        ]}
+      ] },
+      bidsScope,
+    )).toEqual({ amount: 250, bidder: "B" });
+  });
+  it("single-element array returns that element", () => {
+    const scope = createScope({ context: {} });
+    expect(evaluate(
+      { reduce: [[42], "acc", "n", { add: [{ ref: "acc" }, { ref: "n" }] }] },
+      scope,
+    )).toBe(42);
+  });
+  it("empty array returns undefined", () => {
+    const scope = createScope({ context: {} });
+    expect(evaluate(
+      { reduce: [[], "acc", "n", { add: [{ ref: "acc" }, { ref: "n" }] }] },
+      scope,
+    )).toBeUndefined();
+  });
+});
+
+describe("evaluate — reduce (transducer)", () => {
+  it("reads $ as collection with init", () => {
+    const scope = createScope({ context: {} });
+    scope.bindings.$ = [1, 2, 3, 4, 5];
+    expect(evaluate(
+      { reduce: ["acc", "n", { add: [{ ref: "acc" }, { ref: "n" }] }, 0] },
+      scope,
+    )).toBe(15);
+  });
+  it("transducer without init", () => {
+    const scope = createScope({ context: {} });
+    scope.bindings.$ = [1, 2, 3];
+    expect(evaluate(
+      { reduce: ["acc", "n", { add: [{ ref: "acc" }, { ref: "n" }] }] },
+      scope,
+    )).toBe(6);
+  });
+});

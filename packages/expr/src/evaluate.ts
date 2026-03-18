@@ -266,93 +266,12 @@ export function evaluate(
       return result;
     }
 
-    // filter — dual arity: [arr, "name", body] or ["name", body]
-    if ("filter" in op) {
-      const args = op.filter as unknown[];
-      let arr: unknown;
-      let bindName: string;
-      let body: Expr;
-      if (args.length === 3 && typeof args[1] === "string") {
-        arr = evaluate(args[0] as Expr, scope, builtins);
-        bindName = args[1];
-        body = args[2] as Expr;
-      } else {
-        arr = scope.bindings.$;
-        bindName = args[0] as string;
-        body = args[1] as Expr;
-      }
-      if (!Array.isArray(arr)) return [];
-      return arr.filter((item, i) => {
-        const inner: Scope = { ...scope, bindings: { ...scope.bindings, [bindName]: item, $index: i } };
-        return Boolean(evaluate(body, inner, builtins));
-      });
-    }
-
-    // map — dual arity: [arr, "name", body] or ["name", body]
-    if ("map" in op) {
-      const args = op.map as unknown[];
-      let arr: unknown;
-      let bindName: string;
-      let body: Expr;
-      if (args.length === 3 && typeof args[1] === "string") {
-        arr = evaluate(args[0] as Expr, scope, builtins);
-        bindName = args[1];
-        body = args[2] as Expr;
-      } else {
-        arr = scope.bindings.$;
-        bindName = args[0] as string;
-        body = args[1] as Expr;
-      }
-      if (!Array.isArray(arr)) return [];
-      return arr.map((item, i) => {
-        const inner: Scope = { ...scope, bindings: { ...scope.bindings, [bindName]: item, $index: i } };
-        return evaluate(body, inner, builtins);
-      });
-    }
-
-    // every — dual arity: [arr, "name", body] or ["name", body]
-    if ("every" in op) {
-      const args = op.every as unknown[];
-      let arr: unknown;
-      let bindName: string;
-      let body: Expr;
-      if (args.length === 3 && typeof args[1] === "string") {
-        arr = evaluate(args[0] as Expr, scope, builtins);
-        bindName = args[1];
-        body = args[2] as Expr;
-      } else {
-        arr = scope.bindings.$;
-        bindName = args[0] as string;
-        body = args[1] as Expr;
-      }
-      if (!Array.isArray(arr)) return false;
-      return arr.every((item, i) => {
-        const inner: Scope = { ...scope, bindings: { ...scope.bindings, [bindName]: item, $index: i } };
-        return Boolean(evaluate(body, inner, builtins));
-      });
-    }
-
-    // some — dual arity: [arr, "name", body] or ["name", body]
-    if ("some" in op) {
-      const args = op.some as unknown[];
-      let arr: unknown;
-      let bindName: string;
-      let body: Expr;
-      if (args.length === 3 && typeof args[1] === "string") {
-        arr = evaluate(args[0] as Expr, scope, builtins);
-        bindName = args[1];
-        body = args[2] as Expr;
-      } else {
-        arr = scope.bindings.$;
-        bindName = args[0] as string;
-        body = args[1] as Expr;
-      }
-      if (!Array.isArray(arr)) return false;
-      return arr.some((item, i) => {
-        const inner: Scope = { ...scope, bindings: { ...scope.bindings, [bindName]: item, $index: i } };
-        return Boolean(evaluate(body, inner, builtins));
-      });
-    }
+    // Iteration operators — filter, map, every, some, reduce
+    if ("filter" in op) return evaluateIteration("filter", op.filter as unknown[], scope, builtins);
+    if ("map" in op) return evaluateIteration("map", op.map as unknown[], scope, builtins);
+    if ("every" in op) return evaluateIteration("every", op.every as unknown[], scope, builtins);
+    if ("some" in op) return evaluateIteration("some", op.some as unknown[], scope, builtins);
+    if ("reduce" in op) return evaluateReduce(op.reduce as unknown[], scope, builtins);
 
     // fn — call a registered builtin
     if ("fn" in op) {
@@ -366,4 +285,108 @@ export function evaluate(
   }
 
   return expr;
+}
+
+// ─── Iteration helpers ────────────────────────────────────────────────────────
+
+type IterOp = "filter" | "map" | "every" | "some";
+
+function parseDualArity(
+  args: unknown[],
+  scope: Scope,
+  builtins?: BuiltinRegistry,
+): { arr: unknown; bindName: string; body: Expr } {
+  if (args.length === 3 && typeof args[1] === "string") {
+    return {
+      arr: evaluate(args[0] as Expr, scope, builtins),
+      bindName: args[1],
+      body: args[2] as Expr,
+    };
+  }
+  return {
+    arr: scope.bindings.$,
+    bindName: args[0] as string,
+    body: args[1] as Expr,
+  };
+}
+
+function evaluateIteration(
+  kind: IterOp,
+  args: unknown[],
+  scope: Scope,
+  builtins?: BuiltinRegistry,
+): unknown {
+  const { arr, bindName, body } = parseDualArity(args, scope, builtins);
+
+  if (!Array.isArray(arr)) {
+    return kind === "every" ? false : kind === "some" ? false : [];
+  }
+
+  const makeInner = (item: unknown, i: number): Scope => ({
+    ...scope, bindings: { ...scope.bindings, [bindName]: item, $index: i },
+  });
+
+  switch (kind) {
+    case "filter":
+      return arr.filter((item, i) => Boolean(evaluate(body, makeInner(item, i), builtins)));
+    case "map":
+      return arr.map((item, i) => evaluate(body, makeInner(item, i), builtins));
+    case "every":
+      return arr.every((item, i) => Boolean(evaluate(body, makeInner(item, i), builtins)));
+    case "some":
+      return arr.some((item, i) => Boolean(evaluate(body, makeInner(item, i), builtins)));
+  }
+}
+
+function evaluateReduce(args: unknown[], scope: Scope, builtins?: BuiltinRegistry): unknown {
+  let arr: unknown;
+  let accName: string;
+  let itemName: string;
+  let body: Expr;
+  let hasInit: boolean;
+  let init: Expr | undefined;
+
+  if (typeof args[0] === "string") {
+    // Transducer: ["acc", "item", body] or ["acc", "item", body, init]
+    arr = scope.bindings.$;
+    accName = args[0] as string;
+    itemName = args[1] as string;
+    body = args[2] as Expr;
+    hasInit = args.length >= 4;
+    init = hasInit ? (args[3] as Expr) : undefined;
+  } else {
+    // Eager: [arr, "acc", "item", body] or [arr, "acc", "item", body, init]
+    arr = evaluate(args[0] as Expr, scope, builtins);
+    accName = args[1] as string;
+    itemName = args[2] as string;
+    body = args[3] as Expr;
+    hasInit = args.length >= 5;
+    init = hasInit ? (args[4] as Expr) : undefined;
+  }
+
+  if (!Array.isArray(arr)) {
+    return hasInit ? evaluate(init!, scope, builtins) : undefined;
+  }
+  const a = arr as unknown[];
+  if (a.length === 0) {
+    return hasInit ? evaluate(init!, scope, builtins) : undefined;
+  }
+
+  let acc: unknown;
+  let startIdx: number;
+  if (hasInit) {
+    acc = evaluate(init!, scope, builtins);
+    startIdx = 0;
+  } else {
+    acc = a[0];
+    startIdx = 1;
+  }
+
+  for (let i = startIdx; i < a.length; i++) {
+    const inner: Scope = { ...scope, bindings: {
+      ...scope.bindings, [accName]: acc, [itemName]: a[i], $index: i,
+    }};
+    acc = evaluate(body, inner, builtins);
+  }
+  return acc;
 }

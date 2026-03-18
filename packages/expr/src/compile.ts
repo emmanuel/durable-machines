@@ -161,117 +161,12 @@ export function compile(expr: Expr, builtins?: BuiltinRegistry): CompiledExpr {
     };
   }
 
-  // filter — dual arity
-  if ("filter" in op) {
-    const args = op.filter as unknown[];
-    if (args.length === 3 && typeof args[1] === "string") {
-      const cArr = compile(args[0] as Expr, builtins);
-      const bindName = args[1] as string;
-      const cBody = compile(args[2] as Expr, builtins);
-      return (s) => {
-        const arr = cArr(s);
-        if (!Array.isArray(arr)) return [];
-        return (arr as unknown[]).filter((item, i) => {
-          const inner: Scope = { ...s, bindings: { ...s.bindings, [bindName]: item, $index: i } };
-          return Boolean(cBody(inner));
-        });
-      };
-    }
-    const bindName = args[0] as string;
-    const cBody = compile(args[1] as Expr, builtins);
-    return (s) => {
-      const arr = s.bindings.$;
-      if (!Array.isArray(arr)) return [];
-      return (arr as unknown[]).filter((item, i) => {
-        const inner: Scope = { ...s, bindings: { ...s.bindings, [bindName]: item, $index: i } };
-        return Boolean(cBody(inner));
-      });
-    };
-  }
-
-  // map — dual arity
-  if ("map" in op) {
-    const args = op.map as unknown[];
-    if (args.length === 3 && typeof args[1] === "string") {
-      const cArr = compile(args[0] as Expr, builtins);
-      const bindName = args[1] as string;
-      const cBody = compile(args[2] as Expr, builtins);
-      return (s) => {
-        const arr = cArr(s);
-        if (!Array.isArray(arr)) return [];
-        return (arr as unknown[]).map((item, i) => {
-          const inner: Scope = { ...s, bindings: { ...s.bindings, [bindName]: item, $index: i } };
-          return cBody(inner);
-        });
-      };
-    }
-    const bindName = args[0] as string;
-    const cBody = compile(args[1] as Expr, builtins);
-    return (s) => {
-      const arr = s.bindings.$;
-      if (!Array.isArray(arr)) return [];
-      return (arr as unknown[]).map((item, i) => {
-        const inner: Scope = { ...s, bindings: { ...s.bindings, [bindName]: item, $index: i } };
-        return cBody(inner);
-      });
-    };
-  }
-
-  // every — dual arity
-  if ("every" in op) {
-    const args = op.every as unknown[];
-    if (args.length === 3 && typeof args[1] === "string") {
-      const cArr = compile(args[0] as Expr, builtins);
-      const bindName = args[1] as string;
-      const cBody = compile(args[2] as Expr, builtins);
-      return (s) => {
-        const arr = cArr(s);
-        if (!Array.isArray(arr)) return false;
-        return (arr as unknown[]).every((item, i) => {
-          const inner: Scope = { ...s, bindings: { ...s.bindings, [bindName]: item, $index: i } };
-          return Boolean(cBody(inner));
-        });
-      };
-    }
-    const bindName = args[0] as string;
-    const cBody = compile(args[1] as Expr, builtins);
-    return (s) => {
-      const arr = s.bindings.$;
-      if (!Array.isArray(arr)) return false;
-      return (arr as unknown[]).every((item, i) => {
-        const inner: Scope = { ...s, bindings: { ...s.bindings, [bindName]: item, $index: i } };
-        return Boolean(cBody(inner));
-      });
-    };
-  }
-
-  // some — dual arity
-  if ("some" in op) {
-    const args = op.some as unknown[];
-    if (args.length === 3 && typeof args[1] === "string") {
-      const cArr = compile(args[0] as Expr, builtins);
-      const bindName = args[1] as string;
-      const cBody = compile(args[2] as Expr, builtins);
-      return (s) => {
-        const arr = cArr(s);
-        if (!Array.isArray(arr)) return false;
-        return (arr as unknown[]).some((item, i) => {
-          const inner: Scope = { ...s, bindings: { ...s.bindings, [bindName]: item, $index: i } };
-          return Boolean(cBody(inner));
-        });
-      };
-    }
-    const bindName = args[0] as string;
-    const cBody = compile(args[1] as Expr, builtins);
-    return (s) => {
-      const arr = s.bindings.$;
-      if (!Array.isArray(arr)) return false;
-      return (arr as unknown[]).some((item, i) => {
-        const inner: Scope = { ...s, bindings: { ...s.bindings, [bindName]: item, $index: i } };
-        return Boolean(cBody(inner));
-      });
-    };
-  }
+  // Iteration operators — filter, map, every, some, reduce
+  if ("filter" in op) return compileIteration("filter", op.filter as unknown[], builtins);
+  if ("map" in op) return compileIteration("map", op.map as unknown[], builtins);
+  if ("every" in op) return compileIteration("every", op.every as unknown[], builtins);
+  if ("some" in op) return compileIteration("some", op.some as unknown[], builtins);
+  if ("reduce" in op) return compileReduce(op.reduce as unknown[], builtins);
 
   // fn — builtin call
   if ("fn" in op) {
@@ -284,6 +179,60 @@ export function compile(expr: Expr, builtins?: BuiltinRegistry): CompiledExpr {
   }
 
   return () => expr;
+}
+
+// ─── Iteration compilation helpers ────────────────────────────────────────────
+
+type IterOp = "filter" | "map" | "every" | "some";
+
+function compileIteration(kind: IterOp, args: unknown[], builtins?: BuiltinRegistry): CompiledExpr {
+  const isEager = args.length === 3 && typeof args[1] === "string";
+  const cArr = isEager ? compile(args[0] as Expr, builtins) : undefined;
+  const bindName = isEager ? (args[1] as string) : (args[0] as string);
+  const cBody = compile((isEager ? args[2] : args[1]) as Expr, builtins);
+  const emptyVal = kind === "every" ? true : kind === "some" ? false : [];
+  const nonArrayVal = kind === "every" ? false : kind === "some" ? false : [];
+
+  return (s) => {
+    const arr = isEager ? cArr!(s) : s.bindings.$;
+    if (!Array.isArray(arr)) return nonArrayVal;
+    const a = arr as unknown[];
+    const makeInner = (item: unknown, i: number): Scope => ({
+      ...s, bindings: { ...s.bindings, [bindName]: item, $index: i },
+    });
+    switch (kind) {
+      case "filter": return a.filter((item, i) => Boolean(cBody(makeInner(item, i))));
+      case "map": return a.map((item, i) => cBody(makeInner(item, i)));
+      case "every": return a.every((item, i) => Boolean(cBody(makeInner(item, i))));
+      case "some": return a.some((item, i) => Boolean(cBody(makeInner(item, i))));
+    }
+  };
+}
+
+function compileReduce(args: unknown[], builtins?: BuiltinRegistry): CompiledExpr {
+  const isTransducer = typeof args[0] === "string";
+  const cArr = isTransducer ? undefined : compile(args[0] as Expr, builtins);
+  const accName = isTransducer ? (args[0] as string) : (args[1] as string);
+  const itemName = isTransducer ? (args[1] as string) : (args[2] as string);
+  const cBody = compile((isTransducer ? args[2] : args[3]) as Expr, builtins);
+  const hasInit = isTransducer ? args.length >= 4 : args.length >= 5;
+  const cInit = hasInit ? compile((isTransducer ? args[3] : args[4]) as Expr, builtins) : undefined;
+
+  return (s) => {
+    const arr = isTransducer ? s.bindings.$ : cArr!(s);
+    if (!Array.isArray(arr)) return hasInit ? cInit!(s) : undefined;
+    const a = arr as unknown[];
+    if (a.length === 0) return hasInit ? cInit!(s) : undefined;
+    let acc: unknown;
+    let startIdx: number;
+    if (hasInit) { acc = cInit!(s); startIdx = 0; }
+    else { acc = a[0]; startIdx = 1; }
+    for (let i = startIdx; i < a.length; i++) {
+      const inner: Scope = { ...s, bindings: { ...s.bindings, [accName]: acc, [itemName]: a[i], $index: i } };
+      acc = cBody(inner);
+    }
+    return acc;
+  };
 }
 
 // ─── Path compilation ─────────────────────────────────────────────────────────

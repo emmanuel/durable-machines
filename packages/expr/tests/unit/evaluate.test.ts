@@ -225,3 +225,26 @@ describe("evaluate — object construction", () => {
     expect(evaluate({ object: { a: 1, b: "two" } }, scope)).toEqual({ a: 1, b: "two" });
   });
 });
+
+describe("evaluate — len", () => {
+  it("returns array length", () => {
+    const scope = createScope({ context: { nums: [1, 2, 3, 4, 5] } });
+    expect(evaluate({ len: { select: ["context", "nums"] } }, scope)).toBe(5);
+  });
+  it("returns object key count", () => {
+    const scope = createScope({ context: {} });
+    expect(evaluate({ len: { object: { a: 1, b: 2 } } }, scope)).toBe(2);
+  });
+  it("returns string length", () => {
+    const scope = createScope({ context: {} });
+    expect(evaluate({ len: "hello" }, scope)).toBe(5);
+  });
+  it("returns 0 for null", () => {
+    const scope = createScope({ context: {} });
+    expect(evaluate({ len: { select: ["context", "missing"] } }, scope)).toBe(0);
+  });
+  it("returns 0 for number", () => {
+    const scope = createScope({ context: {} });
+    expect(evaluate({ len: 42 }, scope)).toBe(0);
+  });
+});

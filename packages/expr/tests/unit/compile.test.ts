@@ -172,6 +172,22 @@ describe("compile — object", () => {
   });
 });
 
+describe("compile — len", () => {
+  it("array length", () => {
+    const scope = createScope({ context: { items: [1, 2, 3] } });
+    expect(compile({ len: { select: ["context", "items"] } })(scope)).toBe(3);
+  });
+  it("object key count", () => {
+    expect(compile({ len: { object: { a: 1, b: 2 } } })(emptyScope)).toBe(2);
+  });
+  it("string length", () => {
+    expect(compile({ len: "hello" })(emptyScope)).toBe(5);
+  });
+  it("0 for null/undefined", () => {
+    expect(compile({ len: { select: ["context", "missing"] } })(emptyScope)).toBe(0);
+  });
+});
+
 describe("compile — fn (builtins)", () => {
   it("calls builtin with no args", () => {
     const builtins = createBuiltinRegistry({ fixed: () => "ok" });

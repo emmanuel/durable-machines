@@ -123,6 +123,18 @@ export function compile(expr: Expr, builtins?: BuiltinRegistry): CompiledExpr {
     };
   }
 
+  // len — length of array/string/object
+  if ("len" in op) {
+    const fn = compile(op.len as Expr, builtins);
+    return (s) => {
+      const val = fn(s);
+      if (Array.isArray(val)) return val.length;
+      if (typeof val === "string") return val.length;
+      if (val !== null && typeof val === "object") return Object.keys(val).length;
+      return 0;
+    };
+  }
+
   // fn — builtin call
   if ("fn" in op) {
     const fnArgs = op.fn as [string, ...Expr[]];

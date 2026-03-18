@@ -235,6 +235,28 @@ export function evaluate(
       return result;
     }
 
+    // len — length of array/string/object
+    if ("len" in op) {
+      const val = evaluate(op.len as Expr, scope, builtins);
+      if (Array.isArray(val)) return val.length;
+      if (typeof val === "string") return val.length;
+      if (val !== null && typeof val === "object") return Object.keys(val).length;
+      return 0;
+    }
+
+    // merge — shallow object merge, later keys win, non-objects skipped
+    if ("merge" in op) {
+      const exprs = op.merge as Expr[];
+      const result: Record<string, unknown> = {};
+      for (const e of exprs) {
+        const val = evaluate(e, scope, builtins);
+        if (val !== null && typeof val === "object" && !Array.isArray(val)) {
+          Object.assign(result, val);
+        }
+      }
+      return result;
+    }
+
     // fn — call a registered builtin
     if ("fn" in op) {
       const fnArgs = op.fn as [string, ...Expr[]];

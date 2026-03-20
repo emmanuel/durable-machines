@@ -614,3 +614,75 @@ describe("compile — ref stays bindings-only (backward compat)", () => {
     expectCompiledMatchesEvaluated(expr, scope);
   });
 });
+
+describe("compile — %.param sugar", () => {
+  it("%.auId resolves param", () => {
+    const scope = createScope({ context: {}, params: { auId: "au-1" } });
+    expect(compile("%.auId")(scope)).toBe("au-1");
+    expectCompiledMatchesEvaluated("%.auId", scope);
+  });
+
+  it("%.missing returns undefined", () => {
+    const scope = createScope({ context: {} });
+    expect(compile("%.missing")(scope)).toBeUndefined();
+  });
+
+  it("in operator position: { eq: ['$.event.auId', '%.auId'] }", () => {
+    const scope = createScope({
+      context: {},
+      event: { auId: "au-1" },
+      params: { auId: "au-1" },
+    });
+    const expr = { eq: ["$.event.auId", "%.auId"] };
+    expect(compile(expr)(scope)).toBe(true);
+    expectCompiledMatchesEvaluated(expr, scope);
+  });
+
+  it("nested in object expr", () => {
+    const scope = createScope({ context: {}, params: { auId: "au-1" } });
+    const expr = { object: { id: "%.auId" } };
+    expect(compile(expr)(scope)).toEqual({ id: "au-1" });
+    expectCompiledMatchesEvaluated(expr, scope);
+  });
+
+  it("% without dot is literal", () => {
+    const scope = createScope({ context: {} });
+    expect(compile("%notDot")(scope)).toBe("%notDot");
+    expect(compile("%")(scope)).toBe("%");
+  });
+});
+
+describe("compile — @.ref sugar", () => {
+  it("@.score resolves binding", () => {
+    const scope = createScope({ context: {} });
+    scope.bindings.score = 85;
+    expect(compile("@.score")(scope)).toBe(85);
+    expectCompiledMatchesEvaluated("@.score", scope);
+  });
+
+  it("@.missing returns undefined", () => {
+    const scope = createScope({ context: {} });
+    expect(compile("@.missing")(scope)).toBeUndefined();
+  });
+
+  it("in operator position: { add: ['@.count', 1] }", () => {
+    const scope = createScope({ context: {} });
+    scope.bindings.count = 10;
+    const expr = { add: ["@.count", 1] };
+    expect(compile(expr)(scope)).toBe(11);
+    expectCompiledMatchesEvaluated(expr, scope);
+  });
+
+  it("in let body", () => {
+    const scope = createScope({ context: { count: 42 } });
+    const expr = { let: [{ total: "$.context.count" }, "@.total"] };
+    expect(compile(expr)(scope)).toBe(42);
+    expectCompiledMatchesEvaluated(expr, scope);
+  });
+
+  it("@ without dot is literal", () => {
+    const scope = createScope({ context: {} });
+    expect(compile("@notDot")(scope)).toBe("@notDot");
+    expect(compile("@")(scope)).toBe("@");
+  });
+});

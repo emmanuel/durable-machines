@@ -3,7 +3,7 @@ import { rewriteWhereStrings } from "./where.js";
 import {
   compileIteration, compileReduce, compileDeepSelect, compileCondPath,
 } from "./compile-collection-ops.js";
-import { parseDollarPath } from "./desugar.js";
+import { parseDollarPath, parseParamSugar, parseRefSugar } from "./desugar.js";
 
 /**
  * Compile an expression tree into a closure.
@@ -17,6 +17,8 @@ export function compile(expr: Expr, builtins?: BuiltinRegistry): CompiledExpr {
   if (expr === null || expr === undefined) return () => expr;
   if (typeof expr === "string") {
     if (expr.startsWith("$.")) return compile(parseDollarPath(expr), builtins);
+    if (expr.startsWith("%.")) { const { param: name } = parseParamSugar(expr); return (s) => s.params[name]; }
+    if (expr.startsWith("@.")) { const { ref: name } = parseRefSugar(expr); return (s) => s.bindings[name]; }
     return () => expr;
   }
   if (typeof expr === "number" || typeof expr === "boolean") return () => expr;

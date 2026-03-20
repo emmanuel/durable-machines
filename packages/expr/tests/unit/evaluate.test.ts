@@ -1026,3 +1026,87 @@ describe("evaluate — ref stays bindings-only (backward compat)", () => {
     expect(evaluate(expr, scope)).toEqual({ type: "CLICK" });
   });
 });
+
+describe("evaluate — %.param sugar", () => {
+  it("%.auId resolves like { param: 'auId' }", () => {
+    const scope = createScope({ context: {}, params: { auId: "au-1" } });
+    expect(evaluate("%.auId", scope)).toBe("au-1");
+    expect(evaluate("%.auId", scope)).toBe(evaluate({ param: "auId" }, scope));
+  });
+
+  it("%.missing returns undefined", () => {
+    const scope = createScope({ context: {} });
+    expect(evaluate("%.missing", scope)).toBeUndefined();
+  });
+
+  it("in operator position: { eq: ['$.event.auId', '%.auId'] }", () => {
+    const scope = createScope({
+      context: {},
+      event: { auId: "au-1" },
+      params: { auId: "au-1" },
+    });
+    expect(evaluate({ eq: ["$.event.auId", "%.auId"] }, scope)).toBe(true);
+  });
+
+  it("nested in object expr", () => {
+    const scope = createScope({ context: {}, params: { auId: "au-1" } });
+    expect(evaluate({ object: { id: "%.auId" } }, scope)).toEqual({ id: "au-1" });
+  });
+
+  it("% without dot is literal", () => {
+    const scope = createScope({ context: {} });
+    expect(evaluate("%notDot", scope)).toBe("%notDot");
+  });
+
+  it("bare % is literal", () => {
+    const scope = createScope({ context: {} });
+    expect(evaluate("%", scope)).toBe("%");
+  });
+
+  it("%. with invalid name throws", () => {
+    const scope = createScope({ context: {} });
+    expect(() => evaluate("%.", scope)).toThrow();
+    expect(() => evaluate("%.foo.bar", scope)).toThrow();
+  });
+});
+
+describe("evaluate — @.ref sugar", () => {
+  it("@.score resolves like { ref: 'score' }", () => {
+    const scope = createScope({ context: {} });
+    scope.bindings.score = 85;
+    expect(evaluate("@.score", scope)).toBe(85);
+    expect(evaluate("@.score", scope)).toBe(evaluate({ ref: "score" }, scope));
+  });
+
+  it("@.missing returns undefined", () => {
+    const scope = createScope({ context: {} });
+    expect(evaluate("@.missing", scope)).toBeUndefined();
+  });
+
+  it("in operator position: { add: ['@.count', 1] }", () => {
+    const scope = createScope({ context: {} });
+    scope.bindings.count = 10;
+    expect(evaluate({ add: ["@.count", 1] }, scope)).toBe(11);
+  });
+
+  it("in let body: { let: [{ total: '$.context.count' }, '@.total'] }", () => {
+    const scope = createScope({ context: { count: 42 } });
+    expect(evaluate({ let: [{ total: "$.context.count" }, "@.total"] }, scope)).toBe(42);
+  });
+
+  it("@ without dot is literal", () => {
+    const scope = createScope({ context: {} });
+    expect(evaluate("@notDot", scope)).toBe("@notDot");
+  });
+
+  it("bare @ is literal", () => {
+    const scope = createScope({ context: {} });
+    expect(evaluate("@", scope)).toBe("@");
+  });
+
+  it("@. with invalid name throws", () => {
+    const scope = createScope({ context: {} });
+    expect(() => evaluate("@.", scope)).toThrow();
+    expect(() => evaluate("@.foo.bar", scope)).toThrow();
+  });
+});

@@ -4,7 +4,7 @@ import {
   evaluateIteration, evaluateReduce, evaluateMapVals,
   evaluateFilterKeys, evaluateDeepSelect, evaluatePipe,
 } from "./eval-collection-ops.js";
-import { parseDollarPath } from "./desugar.js";
+import { parseDollarPath, parseParamSugar, parseRefSugar } from "./desugar.js";
 
 // ─── Path navigation ─────────────────────────────────────────────────────────
 
@@ -103,6 +103,8 @@ export function evaluate(expr: Expr, scope: Scope, builtins?: BuiltinRegistry): 
   if (expr === null || expr === undefined) return expr;
   if (typeof expr === "string") {
     if (expr.startsWith("$.")) return evaluate(parseDollarPath(expr), scope, builtins);
+    if (expr.startsWith("%.")) { const { param: name } = parseParamSugar(expr); return scope.params[name]; }
+    if (expr.startsWith("@.")) { const { ref: name } = parseRefSugar(expr); return scope.bindings[name]; }
     return expr;
   }
   if (typeof expr === "number" || typeof expr === "boolean") return expr;

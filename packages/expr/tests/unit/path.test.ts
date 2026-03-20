@@ -241,6 +241,25 @@ describe("applyTransforms — where navigator", () => {
   });
 });
 
+describe("selectPath — sigil sugar in where predicates", () => {
+  it("%.param in where predicate first operand filters by param value", () => {
+    const scope = createScope({
+      context: {
+        entries: {
+          a: { type: "x", val: 1 },
+          b: { type: "y", val: 2 },
+        },
+      },
+      params: { filterType: "x" },
+    });
+    const result = selectPath(
+      ["context", "entries", { where: { eq: ["%.filterType", { ref: "type" }] } }],
+      scope,
+    );
+    expect(result).toEqual({ a: { type: "x", val: 1 } });
+  });
+});
+
 describe("selectPath — sigil path steps", () => {
   it("%.param as path step in selectPath", () => {
     const scope = createScope({

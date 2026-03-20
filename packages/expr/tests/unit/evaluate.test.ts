@@ -1141,3 +1141,49 @@ describe("evaluate — %.param and @.ref as path steps", () => {
     expect(evaluate({ select: ["context", "items", "%.missing"] }, scope)).toBeUndefined();
   });
 });
+
+describe("evaluate — %.param and @.ref in where predicates", () => {
+  it("%.param in first operand position triggers wrapIfString", () => {
+    const scope = createScope({
+      context: {
+        items: {
+          a: { auId: "au-1", score: 80 },
+          b: { auId: "au-2", score: 90 },
+          c: { auId: "au-1", score: 70 },
+        },
+      },
+      params: { targetAu: "au-1" },
+    });
+    // "%.targetAu" is in the FIRST operand — wrapIfString converts it to { param: "targetAu" }
+    // { ref: "auId" } is in the SECOND operand — matches entry's auId field per-entry
+    const result = evaluate(
+      { select: ["context", "items", { where: { eq: ["%.targetAu", { ref: "auId" }] } }] },
+      scope,
+    );
+    expect(result).toEqual({
+      a: { auId: "au-1", score: 80 },
+      c: { auId: "au-1", score: 70 },
+    });
+  });
+
+  it("@.ref in first operand position triggers wrapIfString", () => {
+    const scope = createScope({
+      context: {
+        items: {
+          a: { status: "active", value: 1 },
+          b: { status: "inactive", value: 2 },
+        },
+      },
+    });
+    scope.bindings.target = "active";
+    // "@.target" is in the FIRST operand — wrapIfString converts it to { ref: "target" }
+    // { ref: "status" } is in the SECOND operand — matches entry's status field per-entry
+    const result = evaluate(
+      { select: ["context", "items", { where: { eq: ["@.target", { ref: "status" }] } }] },
+      scope,
+    );
+    expect(result).toEqual({
+      a: { status: "active", value: 1 },
+    });
+  });
+});

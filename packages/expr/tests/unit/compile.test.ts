@@ -687,6 +687,38 @@ describe("compile — @.ref sugar", () => {
   });
 });
 
+describe("compile — %.param and @.ref in where predicates", () => {
+  it("%.param in where predicate first operand (compile parity)", () => {
+    const scope = createScope({
+      context: {
+        items: {
+          a: { auId: "au-1", score: 80 },
+          b: { auId: "au-2", score: 90 },
+        },
+      },
+      params: { targetAu: "au-1" },
+    });
+    const expr = { select: ["context", "items", { where: { eq: ["%.targetAu", { ref: "auId" }] } }] };
+    expect(compile(expr)(scope)).toEqual({ a: { auId: "au-1", score: 80 } });
+    expectCompiledMatchesEvaluated(expr, scope);
+  });
+
+  it("@.ref in where predicate first operand (compile parity)", () => {
+    const scope = createScope({
+      context: {
+        items: {
+          a: { status: "active", value: 1 },
+          b: { status: "inactive", value: 2 },
+        },
+      },
+    });
+    scope.bindings.target = "active";
+    const expr = { select: ["context", "items", { where: { eq: ["@.target", { ref: "status" }] } }] };
+    expect(compile(expr)(scope)).toEqual({ a: { status: "active", value: 1 } });
+    expectCompiledMatchesEvaluated(expr, scope);
+  });
+});
+
 describe("compile — %.param and @.ref as path steps", () => {
   it("%.auId as path step looks up param value as key", () => {
     const scope = createScope({

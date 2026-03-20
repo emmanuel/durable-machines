@@ -12,3 +12,33 @@ export function parseDollarPath(s: string): { select: string[] } {
   }
   return { select: path.split(".") };
 }
+
+/**
+ * Parse a `%.name` sugar string into a `param` expression.
+ *
+ * @param s — a string starting with `%.` (e.g. `"%.auId"`)
+ * @returns an object `{ param: string }` ready for evaluation
+ * @throws if the name is empty or contains dots
+ */
+export function parseParamSugar(s: string): { param: string } {
+  const name = s.slice(2); // strip "%."
+  if (name === "" || name.includes(".")) {
+    throw new Error(`Invalid param sugar: "${s}"`);
+  }
+  return { param: name };
+}
+
+/**
+ * Parse a `@.name` sugar string into a `ref` expression.
+ *
+ * @param s — a string starting with `@.` (e.g. `"@.score"`)
+ * @returns an object `{ ref: string }` ready for evaluation
+ * @throws if the name is empty or contains dots
+ */
+export function parseRefSugar(s: string): { ref: string } {
+  const name = s.slice(2); // strip "@."
+  if (name === "" || name.includes(".")) {
+    throw new Error(`Invalid ref sugar: "${s}"`);
+  }
+  return { ref: name };
+}

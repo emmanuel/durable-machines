@@ -483,3 +483,61 @@ describe("compile — equivalence with evaluate", () => {
     it(name, () => expectCompiledMatchesEvaluated(expr, scope));
   }
 });
+
+describe("compile — $.path sugar", () => {
+  it("$.context.count resolves like select", () => {
+    const scope = createScope({ context: { count: 42 } });
+    const fn = compile("$.context.count");
+    expect(fn(scope)).toBe(42);
+    expectCompiledMatchesEvaluated("$.context.count", scope);
+  });
+
+  it("$.event.output resolves like select", () => {
+    const scope = createScope({ context: {}, event: { output: "ok" } });
+    expect(compile("$.event.output")(scope)).toBe("ok");
+    expectCompiledMatchesEvaluated("$.event.output", scope);
+  });
+
+  it("$.context returns full context object", () => {
+    const ctx = { a: 1, b: 2 };
+    const scope = createScope({ context: ctx });
+    expect(compile("$.context")(scope)).toBe(ctx);
+  });
+
+  it("$.binding resolves from bindings", () => {
+    const scope = createScope({ context: {} });
+    scope.bindings.myVar = "hello";
+    expect(compile("$.myVar")(scope)).toBe("hello");
+    expectCompiledMatchesEvaluated("$.myVar", scope);
+  });
+
+  it("nested in object expr", () => {
+    const scope = createScope({ context: {}, event: { y: 99 } });
+    const fn = compile({ object: { x: "$.event.y" } });
+    expect(fn(scope)).toEqual({ x: 99 });
+    expectCompiledMatchesEvaluated({ object: { x: "$.event.y" } }, scope);
+  });
+
+  it("in let body", () => {
+    const scope = createScope({ context: { count: 10 } });
+    const fn = compile({ let: [{ total: "$.context.count" }, "$.total"] });
+    expect(fn(scope)).toBe(10);
+    expectCompiledMatchesEvaluated({ let: [{ total: "$.context.count" }, "$.total"] }, scope);
+  });
+
+  it("plain strings are unchanged", () => {
+    expect(compile("hello")(emptyScope)).toBe("hello");
+  });
+
+  it("$ without dot is literal", () => {
+    expect(compile("$notDotPath")(emptyScope)).toBe("$notDotPath");
+  });
+
+  it("bare $ is literal", () => {
+    expect(compile("$")(emptyScope)).toBe("$");
+  });
+
+  it("$. with invalid path throws", () => {
+    expect(() => compile("$.")).toThrow();
+  });
+});

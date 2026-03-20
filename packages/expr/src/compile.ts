@@ -3,6 +3,7 @@ import { rewriteWhereStrings } from "./where.js";
 import {
   compileIteration, compileReduce, compileDeepSelect, compileCondPath,
 } from "./compile-collection-ops.js";
+import { parseDollarPath } from "./desugar.js";
 
 /**
  * Compile an expression tree into a closure.
@@ -14,7 +15,11 @@ import {
 export function compile(expr: Expr, builtins?: BuiltinRegistry): CompiledExpr {
   // Literals
   if (expr === null || expr === undefined) return () => expr;
-  if (typeof expr === "string" || typeof expr === "number" || typeof expr === "boolean") return () => expr;
+  if (typeof expr === "string") {
+    if (expr.startsWith("$.")) return compile(parseDollarPath(expr), builtins);
+    return () => expr;
+  }
+  if (typeof expr === "number" || typeof expr === "boolean") return () => expr;
   if (Array.isArray(expr)) return () => expr;
 
   if (typeof expr !== "object") return () => expr;

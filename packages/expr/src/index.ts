@@ -5,7 +5,7 @@ export { applyTransforms } from "./transforms.js";
 export { defaultBuiltins, createBuiltinRegistry } from "./builtins.js";
 export { createScope } from "./types.js";
 export { compile } from "./compile.js";
-export { parseDollarPath } from "./desugar.js";
+export { parseDollarPath, parseParamSugar, parseRefSugar } from "./desugar.js";
 export { compileGuard, compileAction } from "./compile-actions.js";
 export { isExprOperator } from "./introspection.js";
 export type {

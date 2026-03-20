@@ -4,6 +4,7 @@ import {
   evaluateIteration, evaluateReduce, evaluateMapVals,
   evaluateFilterKeys, evaluateDeepSelect, evaluatePipe,
 } from "./eval-collection-ops.js";
+import { parseDollarPath } from "./desugar.js";
 
 // ─── Path navigation ─────────────────────────────────────────────────────────
 
@@ -100,7 +101,11 @@ export function resolveStep(
 export function evaluate(expr: Expr, scope: Scope, builtins?: BuiltinRegistry): unknown {
   // Literals
   if (expr === null || expr === undefined) return expr;
-  if (typeof expr === "string" || typeof expr === "number" || typeof expr === "boolean") return expr;
+  if (typeof expr === "string") {
+    if (expr.startsWith("$.")) return evaluate(parseDollarPath(expr), scope, builtins);
+    return expr;
+  }
+  if (typeof expr === "number" || typeof expr === "boolean") return expr;
   if (Array.isArray(expr)) return expr;
 
   // Operator dispatch

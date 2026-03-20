@@ -919,3 +919,60 @@ describe("evaluate — concat", () => {
     )).toEqual([4, 5, 6]);
   });
 });
+
+describe("evaluate — $.path sugar", () => {
+  it("$.context.count resolves like select", () => {
+    const scope = createScope({ context: { count: 42 } });
+    expect(evaluate("$.context.count", scope)).toBe(42);
+    expect(evaluate("$.context.count", scope)).toBe(
+      evaluate({ select: ["context", "count"] }, scope),
+    );
+  });
+
+  it("$.event.output resolves like select", () => {
+    const scope = createScope({ context: {}, event: { output: "ok" } });
+    expect(evaluate("$.event.output", scope)).toBe("ok");
+  });
+
+  it("$.context returns the full context object", () => {
+    const ctx = { a: 1, b: 2 };
+    const scope = createScope({ context: ctx });
+    expect(evaluate("$.context", scope)).toBe(ctx);
+  });
+
+  it("$.binding resolves from bindings via selectPath", () => {
+    const scope = createScope({ context: {} });
+    scope.bindings.myVar = "hello";
+    expect(evaluate("$.myVar", scope)).toBe("hello");
+  });
+
+  it("nested in object expr", () => {
+    const scope = createScope({ context: {}, event: { y: 99 } });
+    expect(evaluate({ object: { x: "$.event.y" } }, scope)).toEqual({ x: 99 });
+  });
+
+  it("in let body", () => {
+    const scope = createScope({ context: { count: 10 } });
+    expect(evaluate({ let: [{ total: "$.context.count" }, "$.total"] }, scope)).toBe(10);
+  });
+
+  it("plain strings are unchanged", () => {
+    const scope = createScope({ context: {} });
+    expect(evaluate("hello", scope)).toBe("hello");
+  });
+
+  it("$ without dot is literal", () => {
+    const scope = createScope({ context: {} });
+    expect(evaluate("$notDotPath", scope)).toBe("$notDotPath");
+  });
+
+  it("bare $ is literal", () => {
+    const scope = createScope({ context: {} });
+    expect(evaluate("$", scope)).toBe("$");
+  });
+
+  it("$.  with invalid path throws", () => {
+    const scope = createScope({ context: {} });
+    expect(() => evaluate("$.", scope)).toThrow();
+  });
+});

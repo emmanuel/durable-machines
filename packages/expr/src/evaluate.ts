@@ -74,6 +74,16 @@ export function resolveStep(
   builtins?: BuiltinRegistry,
 ): string | undefined {
   if (typeof step === "string") {
+    if (step.startsWith("%.")) {
+      const { param: name } = parseParamSugar(step);
+      const val = scope.params[name];
+      return val !== undefined ? String(val) : undefined;
+    }
+    if (step.startsWith("@.")) {
+      const { ref: name } = parseRefSugar(step);
+      const val = scope.bindings[name];
+      return val !== undefined ? String(val) : undefined;
+    }
     return step;
   }
   if ("param" in step && typeof (step as { param: string }).param === "string") {

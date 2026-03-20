@@ -1110,3 +1110,34 @@ describe("evaluate — @.ref sugar", () => {
     expect(() => evaluate("@.foo.bar", scope)).toThrow();
   });
 });
+
+describe("evaluate — %.param and @.ref as path steps", () => {
+  it("%.auId as path step looks up param value as key", () => {
+    const scope = createScope({
+      context: { aus: { "au-1": { hasPassed: true } } },
+      params: { auId: "au-1" },
+    });
+    expect(evaluate({ select: ["context", "aus", "%.auId", "hasPassed"] }, scope)).toBe(true);
+    // Equivalent to { param: "auId" } object form:
+    expect(evaluate({ select: ["context", "aus", "%.auId", "hasPassed"] }, scope)).toBe(
+      evaluate({ select: ["context", "aus", { param: "auId" }, "hasPassed"] }, scope),
+    );
+  });
+
+  it("@.sessionId as path step looks up binding value as key", () => {
+    const scope = createScope({
+      context: { sessions: { "s-1": { state: "active" } } },
+    });
+    scope.bindings.sessionId = "s-1";
+    expect(evaluate({ select: ["context", "sessions", "@.sessionId", "state"] }, scope)).toBe("active");
+    // Equivalent to { ref: "sessionId" } object form:
+    expect(evaluate({ select: ["context", "sessions", "@.sessionId", "state"] }, scope)).toBe(
+      evaluate({ select: ["context", "sessions", { ref: "sessionId" }, "state"] }, scope),
+    );
+  });
+
+  it("%.missing param returns undefined", () => {
+    const scope = createScope({ context: { items: { a: 1 } } });
+    expect(evaluate({ select: ["context", "items", "%.missing"] }, scope)).toBeUndefined();
+  });
+});

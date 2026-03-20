@@ -223,8 +223,24 @@ function compilePath(path: Path, builtins?: BuiltinRegistry): CompiledExpr {
 }
 
 function compilePathStep(step: PathNavigator, builtins?: BuiltinRegistry): CompiledPathStep {
-  // Static key
-  if (typeof step === "string") return (current) => current[step];
+  // Static key (with sigil prefix support)
+  if (typeof step === "string") {
+    if (step.startsWith("%.")) {
+      const { param: name } = parseParamSugar(step);
+      return (current, scope) => {
+        const key = scope.params[name];
+        return key !== undefined ? current[String(key)] : undefined;
+      };
+    }
+    if (step.startsWith("@.")) {
+      const { ref: name } = parseRefSugar(step);
+      return (current, scope) => {
+        const key = scope.bindings[name];
+        return key !== undefined ? current[String(key)] : undefined;
+      };
+    }
+    return (current) => current[step];
+  }
 
   // param
   if ("param" in step && typeof (step as { param: string }).param === "string") {

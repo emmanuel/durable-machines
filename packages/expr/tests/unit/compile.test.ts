@@ -686,3 +686,30 @@ describe("compile — @.ref sugar", () => {
     expect(compile("@")(scope)).toBe("@");
   });
 });
+
+describe("compile — %.param and @.ref as path steps", () => {
+  it("%.auId as path step looks up param value as key", () => {
+    const scope = createScope({
+      context: { aus: { "au-1": { hasPassed: true } } },
+      params: { auId: "au-1" },
+    });
+    const expr = { select: ["context", "aus", "%.auId", "hasPassed"] };
+    expect(compile(expr)(scope)).toBe(true);
+    expectCompiledMatchesEvaluated(expr, scope);
+  });
+
+  it("@.sessionId as path step looks up binding value as key", () => {
+    const scope = createScope({
+      context: { sessions: { "s-1": { state: "active" } } },
+    });
+    scope.bindings.sessionId = "s-1";
+    const expr = { select: ["context", "sessions", "@.sessionId", "state"] };
+    expect(compile(expr)(scope)).toBe("active");
+    expectCompiledMatchesEvaluated(expr, scope);
+  });
+
+  it("%.missing param returns undefined", () => {
+    const scope = createScope({ context: { items: { a: 1 } } });
+    expect(compile({ select: ["context", "items", "%.missing"] })(scope)).toBeUndefined();
+  });
+});

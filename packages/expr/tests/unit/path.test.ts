@@ -240,3 +240,21 @@ describe("applyTransforms — where navigator", () => {
     expect(ctx.items.a.val).toBe(1); // original unchanged
   });
 });
+
+describe("selectPath — sigil path steps", () => {
+  it("%.param as path step in selectPath", () => {
+    const scope = createScope({
+      context: { aus: { "au-1": { score: 95 } } },
+      params: { auId: "au-1" },
+    });
+    expect(selectPath(["context", "aus", "%.auId", "score"], scope)).toBe(95);
+  });
+
+  it("@.ref as path step in selectPath", () => {
+    const scope = createScope({
+      context: { sessions: { "s-1": { active: true } } },
+    });
+    scope.bindings.sid = "s-1";
+    expect(selectPath(["context", "sessions", "@.sid", "active"], scope)).toBe(true);
+  });
+});

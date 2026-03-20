@@ -541,3 +541,21 @@ describe("compile — $.path sugar", () => {
     expect(() => compile("$.")).toThrow();
   });
 });
+
+describe("compile — $.path sugar inside where predicates", () => {
+  it("$.path sugar works inside compiled where predicates", () => {
+    const fn = compile({
+      select: ["context", "items", { where: { eq: ["state", "$.event.targetState"] } }],
+    });
+    const scope = createScope({
+      context: {
+        items: {
+          a: { state: "active", value: 1 },
+          b: { state: "done", value: 2 },
+        },
+      },
+      event: { targetState: "active" },
+    });
+    expect(fn(scope)).toEqual({ a: { state: "active", value: 1 } });
+  });
+});

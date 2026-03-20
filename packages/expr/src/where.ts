@@ -1,4 +1,5 @@
 import type { Expr, Scope, BuiltinRegistry } from "./types.js";
+import { parseDollarPath } from "./desugar.js";
 
 /** Evaluator function signature — injected to avoid circular imports. */
 type EvaluatorFn = (expr: Expr, scope: Scope, builtins?: BuiltinRegistry) => unknown;
@@ -51,6 +52,7 @@ export function rewriteWhereStrings(expr: Expr): Expr {
 
 function wrapIfString(expr: Expr): Expr {
   if (typeof expr === "string") {
+    if (expr.startsWith("$.")) return parseDollarPath(expr);
     return { ref: expr };
   }
   return expr;

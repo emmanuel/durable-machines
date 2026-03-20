@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { selectPath } from "../../src/path.js";
 import { applyTransforms } from "../../src/transforms.js";
 import { createScope } from "../../src/types.js";
+import { evaluate } from "../../src/evaluate.js";
 
 describe("selectPath", () => {
   it("navigates static keys", () => {
@@ -183,6 +184,28 @@ describe("selectPath — collection navigators", () => {
       scope,
     );
     expect(result).toEqual({ u1: { role: "admin" }, u3: { role: "admin" } });
+  });
+
+  it("$.path sugar works inside where predicates", () => {
+    const scope = createScope({
+      context: {
+        items: {
+          a: { state: "active", value: 1 },
+          b: { state: "done", value: 2 },
+          c: { state: "active", value: 3 },
+        },
+      },
+      event: { targetState: "active" },
+    });
+    // Use $.event.targetState as the comparison value inside a where predicate
+    const result = evaluate(
+      { select: ["context", "items", { where: { eq: ["state", "$.event.targetState"] } }] },
+      scope,
+    );
+    expect(result).toEqual({
+      a: { state: "active", value: 1 },
+      c: { state: "active", value: 3 },
+    });
   });
 });
 

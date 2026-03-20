@@ -67,6 +67,28 @@ Add two functions alongside the existing `parseDollarPath`:
 
 Both throw on empty name or dots in the name segment.
 
+```ts
+export function parseParamSugar(s: string): { param: string } {
+  const name = s.slice(2); // strip "%."
+  if (name === "" || name.includes(".")) {
+    throw new Error(`Invalid param sugar: "${s}"`);
+  }
+  return { param: name };
+}
+
+export function parseRefSugar(s: string): { ref: string } {
+  const name = s.slice(2); // strip "@."
+  if (name === "" || name.includes(".")) {
+    throw new Error(`Invalid ref sugar: "${s}"`);
+  }
+  return { ref: name };
+}
+```
+
+### Sigil detection ordering
+
+The three sigil prefixes are checked in order at the top of the string branch: `$.` first, then `%.`, then `@.`. They are **mutually exclusive** — a string can only match one prefix. Sigil prefixes inside `$.` path segments are NOT recognized (e.g., `"$.%.auId"` desugars to `{ select: ["%.auId"] }`, not to a param lookup).
+
 ### Integration: `evaluate.ts`
 
 The string handling branch (currently lines 104-107) expands:
@@ -100,17 +122,17 @@ if (expr.startsWith("@.")) { const { ref: name } = parseRefSugar(expr); return (
 
 ### Integration: `resolveStep()` in `evaluate.ts`
 
-The string path step handler currently just returns the string as a static key. Add prefix checks:
+The string path step handler currently just returns the string as a static key. Add prefix checks, using the parse functions for validation:
 
 ```ts
 if (typeof step === "string") {
   if (step.startsWith("%.")) {
-    const name = step.slice(2);
+    const { param: name } = parseParamSugar(step);
     const val = scope.params[name];
     return val !== undefined ? String(val) : undefined;
   }
   if (step.startsWith("@.")) {
-    const name = step.slice(2);
+    const { ref: name } = parseRefSugar(step);
     const val = scope.bindings[name];
     return val !== undefined ? String(val) : undefined;
   }
@@ -120,19 +142,19 @@ if (typeof step === "string") {
 
 ### Integration: `compilePathStep()` in `compile.ts`
 
-Same pattern for the compiled path step handler:
+Same pattern for the compiled path step handler, using parse functions for validation:
 
 ```ts
 if (typeof step === "string") {
   if (step.startsWith("%.")) {
-    const name = step.slice(2);
+    const { param: name } = parseParamSugar(step);
     return (current, scope) => {
       const key = scope.params[name];
       return key !== undefined ? current[String(key)] : undefined;
     };
   }
   if (step.startsWith("@.")) {
-    const name = step.slice(2);
+    const { ref: name } = parseRefSugar(step);
     return (current, scope) => {
       const key = scope.bindings[name];
       return key !== undefined ? current[String(key)] : undefined;
@@ -157,6 +179,8 @@ function wrapIfString(expr: Expr): Expr {
   return expr;
 }
 ```
+
+Note: `wrapIfString` is called from `rewriteWhereStrings` in operator positions of `where` predicates. Bare strings without sigils wrap as `{ ref: expr }`, resolving from bindings (populated with the entry's fields in `where` context). Using `%.` or `@.` in a `where` predicate operator position intentionally escapes the entry-field-reference convention — `"%.auId"` looks up `scope.params["auId"]`, not an entry field. This is useful for comparing entry fields against machine params or outer bindings.
 
 ### Integration: `index.ts`
 
@@ -201,6 +225,12 @@ Export `parseParamSugar` and `parseRefSugar` from public API.
 - `{ select: ["context", "sessions", "@.sessionId"] }` — ref as path step
 - Both produce same results as `{ param: "x" }` and `{ ref: "x" }` object path steps
 - Both work in compile path too
+
+### Where predicate tests
+
+- `{ select: ["context", "aus", { where: { eq: ["%.auId", "au-123"] } }] }` — param sugar in where predicate
+- `{ select: ["context", "items", { where: { eq: ["@.target", "x"] } }] }` — ref sugar in where predicate
+- Both produce same results as `{ param: "x" }` and `{ ref: "x" }` object forms in where predicates
 
 ### Compiler parity
 

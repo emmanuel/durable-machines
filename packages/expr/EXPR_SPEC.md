@@ -48,23 +48,44 @@ Scopes are immutable. Operators that introduce bindings create a new scope with 
 | string | the same string |
 | array | the same array (returned as-is, not copied) |
 
-### 3.2 Operator Objects
+### 3.2 Dollar-Path Sugar
+
+If the input is a **string** starting with `$.`, it is desugared to a `select` expression before evaluation:
+
+| Input string | Equivalent expression |
+|---|---|
+| `"$.context.count"` | `{ "select": ["context", "count"] }` |
+| `"$.event.data.id"` | `{ "select": ["event", "data", "id"] }` |
+| `"$.myBinding"` | `{ "select": ["myBinding"] }` |
+
+**Rules:**
+- The `$.` prefix is stripped and the remainder is split on `.` to form the `select` path array.
+- Each segment must be non-empty. `"$."`, `"$.a..b"`, and `"$.a."` are errors.
+- Strings starting with `$` but without a following `.` (e.g., `"$notDot"`, `"$"`) remain string literals.
+- `"$.x"` resolves via `select` (scope-wide: context → event → params → bindings). This differs from `{ "ref": "x" }`, which resolves from `bindings` only.
+
+**Interaction with special bindings:**
+- `"$.$"` resolves the `pipe` accumulator (`bindings.$`)
+- `"$.$index"` resolves the iteration index (`bindings.$index`)
+- `"$.$key"` resolves the current key in `mapVals`/`filterKeys` (`bindings.$key`)
+
+### 3.3 Operator Objects
 
 If the input is an object (not null, not an array), it is checked for recognized operator keys. The **first** matching key determines which operator handles it. Operator key matching uses insertion order of the keys in the object.
 
 If no recognized operator key is found, the object is returned unchanged.
 
-### 3.3 Recognized Operator Keys
+### 3.4 Recognized Operator Keys
 
 Listed in evaluation priority order:
 
 `select`, `eq`, `neq`, `gt`, `lt`, `gte`, `lte`, `and`, `or`, `not`, `if`, `cond`, `in`, `ref`, `param`, `let`, `coalesce`, `isNull`, `add`, `sub`, `mul`, `div`, `object`, `len`, `at`, `merge`, `concat`, `filter`, `map`, `every`, `some`, `reduce`, `mapVals`, `filterKeys`, `deepSelect`, `pipe`, `pick`, `prepend`, `multiSelect`, `condPath`, `fn`
 
-### 3.4 Truthiness
+### 3.5 Truthiness
 
 Several operators coerce values to boolean. The rule is the standard JavaScript truthiness test: `null`, `undefined`, `false`, `0`, `NaN`, and `""` are falsy; everything else is truthy.
 
-### 3.5 Error Handling
+### 3.6 Error Handling
 
 There are no exceptions. Type mismatches produce default values rather than errors:
 

@@ -255,7 +255,7 @@ Export `parseParamSugar` and `parseRefSugar` from public API.
 | `packages/expr/tests/unit/evaluate.test.ts` | Expression + path step tests |
 | `packages/expr/tests/unit/compile.test.ts` | Expression + path step + parity tests |
 | `packages/expr/tests/unit/path.test.ts` | Path step tests in selectPath context |
-| `packages/expr/EXPR_SPEC.md` | Document `%.` and `@.` sugar |
+| `packages/expr/EXPR_SPEC.md` | Add §3.3 Param Sugar, §3.4 Ref Sugar; update §4.1 path step table for sigil strings; renumber subsequent sections |
 | `packages/expr/src/compile-actions.ts` | No changes — transitive |
 | `packages/expr/src/transforms.ts` | No changes — transitive |
 | `packages/expr/src/actions.ts` | No changes — transitive |

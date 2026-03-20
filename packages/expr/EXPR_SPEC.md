@@ -69,23 +69,59 @@ If the input is a **string** starting with `$.`, it is desugared to a `select` e
 - `"$.$index"` resolves the iteration index (`bindings.$index`)
 - `"$.$key"` resolves the current key in `mapVals`/`filterKeys` (`bindings.$key`)
 
-### 3.3 Operator Objects
+### 3.3 Param Sugar
+
+If the input is a **string** starting with `%.`, it is desugared to a `param` lookup:
+
+| Input string | Equivalent expression |
+|---|---|
+| `"%.auId"` | `{ "param": "auId" }` |
+| `"%.foo-bar"` | `{ "param": "foo-bar" }` |
+
+**Rules:**
+- The `%.` prefix is stripped and the remainder is the param name.
+- The name must be non-empty and must not contain dots. `"%."` and `"%.foo.bar"` are errors.
+- Strings starting with `%` but without a following `.` (e.g., `"%notDot"`, `"%"`) remain string literals.
+- `"%.x"` resolves to `scope.params[x]` — identical semantics to `{ "param": "x" }`.
+
+**As a path step:** `"%.auId"` in a `select` path or transform `path` array is equivalent to `{ "param": "auId" }` — looks up `scope.params["auId"]`, coerces to string, and uses the result as a property key.
+
+### 3.4 Ref Sugar
+
+If the input is a **string** starting with `@.`, it is desugared to a `ref` (binding) lookup:
+
+| Input string | Equivalent expression |
+|---|---|
+| `"@.score"` | `{ "ref": "score" }` |
+| `"@.total"` | `{ "ref": "total" }` |
+
+**Rules:**
+- The `@.` prefix is stripped and the remainder is the binding name.
+- The name must be non-empty and must not contain dots. `"@."` and `"@.foo.bar"` are errors.
+- Strings starting with `@` but without a following `.` (e.g., `"@notDot"`, `"@"`) remain string literals.
+- `"@.x"` resolves to `scope.bindings[x]` — identical semantics to `{ "ref": "x" }`. This is bindings-only, NOT scope-wide like `"$.x"`.
+
+**As a path step:** `"@.sessionId"` in a `select` path or transform `path` array is equivalent to `{ "ref": "sessionId" }` — looks up `scope.bindings["sessionId"]`, coerces to string, and uses the result as a property key.
+
+**Sigil detection ordering:** The three sigil prefixes (`$.`, `%.`, `@.`) are checked in order and are mutually exclusive. Sigil prefixes inside `$.` path segments are not recognized (e.g., `"$.%.auId"` desugars to `{ "select": ["%.auId"] }`).
+
+### 3.5 Operator Objects
 
 If the input is an object (not null, not an array), it is checked for recognized operator keys. The **first** matching key determines which operator handles it. Operator key matching uses insertion order of the keys in the object.
 
 If no recognized operator key is found, the object is returned unchanged.
 
-### 3.4 Recognized Operator Keys
+### 3.6 Recognized Operator Keys
 
 Listed in evaluation priority order:
 
 `select`, `eq`, `neq`, `gt`, `lt`, `gte`, `lte`, `and`, `or`, `not`, `if`, `cond`, `in`, `ref`, `param`, `let`, `coalesce`, `isNull`, `add`, `sub`, `mul`, `div`, `object`, `len`, `at`, `merge`, `concat`, `filter`, `map`, `every`, `some`, `reduce`, `mapVals`, `filterKeys`, `deepSelect`, `pipe`, `pick`, `prepend`, `multiSelect`, `condPath`, `fn`
 
-### 3.5 Truthiness
+### 3.7 Truthiness
 
 Several operators coerce values to boolean. The rule is the standard JavaScript truthiness test: `null`, `undefined`, `false`, `0`, `NaN`, and `""` are falsy; everything else is truthy.
 
-### 3.6 Error Handling
+### 3.8 Error Handling
 
 There are no exceptions. Type mismatches produce default values rather than errors:
 
@@ -117,7 +153,9 @@ There are no exceptions. Type mismatches produce default values rather than erro
 
 | Step shape | Resolution |
 |------------|------------|
-| `"key"` (string) | Property lookup: `current[key]` |
+| `"key"` (plain string) | Property lookup: `current[key]` |
+| `"%.name"` (string) | Shorthand for `{ "param": "name" }` — see below |
+| `"@.name"` (string) | Shorthand for `{ "ref": "name" }` — see below |
 | `{ "param": "name" }` | Look up `scope.params[name]`, coerce to string, use as key. If the param value is undefined, return `undefined`. |
 | `{ "ref": "name" }` | Look up `scope.bindings[name]`, coerce to string, use as key. If the binding value is undefined, return `undefined`. |
 | `{ "where": predicate }` | See §4.1.1 |
@@ -509,7 +547,7 @@ A transform applies a mutation to a context object at a specified path.
 
 ## 8. Special Bindings
 
-These bindings are introduced automatically by specific operators. They are injected into `scope.bindings` and can be accessed via `{ "ref": "name" }`.
+These bindings are introduced automatically by specific operators. They are injected into `scope.bindings` and can be accessed via `{ "ref": "name" }` or `"@.name"` sugar.
 
 | Binding | Introduced by | Value |
 |---------|---------------|-------|
@@ -607,8 +645,11 @@ The compilation phase may capture builtin function references at compile time. I
 ## Appendix B: Grammar (Informal)
 
 ```
-Expr       = Literal | OperatorObj | UnknownObj
+Expr       = Literal | SugarString | OperatorObj | UnknownObj
 Literal    = null | boolean | number | string | array
+SugarString = "$." path       (→ select)
+            | "%." name       (→ param)
+            | "@." name       (→ ref)
 OperatorObj = { operatorKey: operands }
 UnknownObj = { ... }  (no recognized operator key → passthrough)
 

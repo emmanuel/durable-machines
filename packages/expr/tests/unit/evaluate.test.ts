@@ -976,3 +976,32 @@ describe("evaluate — $.path sugar", () => {
     expect(() => evaluate("$.", scope)).toThrow();
   });
 });
+
+describe("evaluate — $.path sugar with pipe and special bindings", () => {
+  it("$.$ inside pipe resolves pipe accumulator", () => {
+    const scope = createScope({ context: { nums: [1, 2, 3] } });
+    const expr = {
+      pipe: [
+        { select: ["context", "nums"] },
+        { len: "$.$" },
+      ],
+    };
+    expect(evaluate(expr, scope)).toBe(3);
+  });
+
+  it("$.$index inside map resolves iteration index", () => {
+    const scope = createScope({ context: { items: ["a", "b", "c"] } });
+    const expr = {
+      map: [{ select: ["context", "items"] }, "item", "$.$index"],
+    };
+    expect(evaluate(expr, scope)).toEqual([0, 1, 2]);
+  });
+
+  it("$.$key inside mapVals resolves current key", () => {
+    const scope = createScope({ context: { obj: { x: 1, y: 2 } } });
+    const expr = {
+      mapVals: [{ select: ["context", "obj"] }, "val", "$.$key"],
+    };
+    expect(evaluate(expr, scope)).toEqual({ x: "x", y: "y" });
+  });
+});

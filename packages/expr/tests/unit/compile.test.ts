@@ -559,3 +559,35 @@ describe("compile — $.path sugar inside where predicates", () => {
     expect(fn(scope)).toEqual({ a: { state: "active", value: 1 } });
   });
 });
+
+describe("compile — $.path sugar with pipe and special bindings", () => {
+  it("$.$ inside pipe resolves pipe accumulator", () => {
+    const scope = createScope({ context: { nums: [1, 2, 3] } });
+    const expr = {
+      pipe: [
+        { select: ["context", "nums"] },
+        { len: "$.$" },
+      ],
+    };
+    expect(compile(expr)(scope)).toBe(3);
+    expectCompiledMatchesEvaluated(expr, scope);
+  });
+
+  it("$.$index inside map resolves iteration index", () => {
+    const scope = createScope({ context: { items: ["a", "b", "c"] } });
+    const expr = {
+      map: [{ select: ["context", "items"] }, "item", "$.$index"],
+    };
+    expect(compile(expr)(scope)).toEqual([0, 1, 2]);
+    expectCompiledMatchesEvaluated(expr, scope);
+  });
+
+  it("$.$key inside mapVals resolves current key", () => {
+    const scope = createScope({ context: { obj: { x: 1, y: 2 } } });
+    const expr = {
+      mapVals: [{ select: ["context", "obj"] }, "val", "$.$key"],
+    };
+    expect(compile(expr)(scope)).toEqual({ x: "x", y: "y" });
+    expectCompiledMatchesEvaluated(expr, scope);
+  });
+});

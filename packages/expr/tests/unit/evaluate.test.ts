@@ -1005,3 +1005,24 @@ describe("evaluate — $.path sugar with pipe and special bindings", () => {
     expect(evaluate(expr, scope)).toEqual({ x: "x", y: "y" });
   });
 });
+
+describe("evaluate — ref stays bindings-only (backward compat)", () => {
+  it("ref resolves from bindings", () => {
+    const scope = createScope({ context: {} });
+    scope.bindings.x = "hello";
+    expect(evaluate({ ref: "x" }, scope)).toBe("hello");
+  });
+
+  it("let-bound name shadowing scope root: ref returns binding", () => {
+    const scope = createScope({ context: {}, event: { type: "CLICK" } });
+    const expr = { let: [{ event: "someValue" }, { ref: "event" }] };
+    expect(evaluate(expr, scope)).toBe("someValue");
+  });
+
+  it("$.event resolves scope root (different from ref)", () => {
+    const scope = createScope({ context: {}, event: { type: "CLICK" } });
+    const expr = { let: [{ event: "someValue" }, "$.event"] };
+    // $.event → { select: ["event"] } → scope.event (the root, not the binding)
+    expect(evaluate(expr, scope)).toEqual({ type: "CLICK" });
+  });
+});

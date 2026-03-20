@@ -591,3 +591,26 @@ describe("compile — $.path sugar with pipe and special bindings", () => {
     expectCompiledMatchesEvaluated(expr, scope);
   });
 });
+
+describe("compile — ref stays bindings-only (backward compat)", () => {
+  it("ref resolves from bindings", () => {
+    const scope = createScope({ context: {} });
+    scope.bindings.x = "hello";
+    expect(compile({ ref: "x" })(scope)).toBe("hello");
+    expectCompiledMatchesEvaluated({ ref: "x" }, scope);
+  });
+
+  it("let-bound name shadowing scope root: ref returns binding", () => {
+    const scope = createScope({ context: {}, event: { type: "CLICK" } });
+    const expr = { let: [{ event: "someValue" }, { ref: "event" }] };
+    expect(compile(expr)(scope)).toBe("someValue");
+    expectCompiledMatchesEvaluated(expr, scope);
+  });
+
+  it("$.event resolves scope root (different from ref)", () => {
+    const scope = createScope({ context: {}, event: { type: "CLICK" } });
+    const expr = { let: [{ event: "someValue" }, "$.event"] };
+    expect(compile(expr)(scope)).toEqual({ type: "CLICK" });
+    expectCompiledMatchesEvaluated(expr, scope);
+  });
+});

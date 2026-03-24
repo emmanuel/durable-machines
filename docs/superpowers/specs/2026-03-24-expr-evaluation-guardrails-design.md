@@ -45,7 +45,15 @@ Every place the evaluator does meaningful work must decrement:
 
 1. **Top of `evaluate()`** — each recursive call is a step. This covers all operator dispatch in the interpreted path.
 
-2. **Compiled closure invocations** — each closure returned by `compile()` must decrement when called at runtime. The closure captures a reference to `scope.budget` via the scope parameter it receives.
+2. **Compiled closure invocations** — every individual operator closure returned by `compile()` must call `deductStep(s)` at the start of its runtime execution. The pattern is: compile the inner logic, then wrap it:
+
+    ```ts
+    // Example: compiled `eq` operator
+    const [ca, cb] = compilePair(op, builtins);
+    return (s) => { deductStep(s); return ca(s) === cb(s); };
+    ```
+
+    This applies to every operator branch in `compile()` — not just the top-level return. Each compiled sub-expression decrements independently when invoked at runtime, mirroring how `evaluate()` decrements at the top of every recursive call.
 
 3. **Collection iteration callbacks** — `evaluateIteration()` (filter/map/every/some), `evaluateReduce()`, `evaluateMapVals()`, `evaluateFilterKeys()`, `evaluateDeepSelect()`. Each element processed is a step, in addition to the body evaluation steps.
 
@@ -53,7 +61,7 @@ Every place the evaluator does meaningful work must decrement:
 
 5. **Transform fan-out** — in `applyOneTransform()` (transforms.ts lines 46-60), each matching entry that triggers a sub-transform costs a step.
 
-6. **Compiled collection ops** — `compileIteration()`, `compileReduce()`, `compileDeepSelect()` runtime closures. Each element processed at runtime decrements.
+6. **Compiled collection ops** — `compileIteration()` (covers filter/map/every/some and also mapVals/filterKeys object iteration), `compileReduce()`, `compileDeepSelect()` runtime closures. Each element processed at runtime decrements.
 
 ### Step counting helper
 
@@ -86,17 +94,18 @@ Configured per deployment, not per machine definition. Reasonable starting point
 
 ### Scope creation
 
-`createScope()` in `types.ts` gains an optional `budget` parameter:
+`createScope()` in `types.ts` gains an optional `budget` field in its existing options object:
 
 ```ts
-export function createScope(
-  context: Record<string, unknown>,
-  event: Record<string, unknown>,
-  params?: Record<string, unknown>,
-  bindings?: Record<string, unknown>,
-  budget?: { remaining: number },
-): Scope
+export function createScope(partial: {
+  context: Record<string, unknown>;
+  event?: Record<string, unknown>;
+  params?: Record<string, unknown>;
+  budget?: { remaining: number };
+}): Scope
 ```
+
+When `budget` is provided, the returned scope carries the same mutable reference.
 
 ### Interaction with `selectPath`
 
@@ -128,7 +137,7 @@ export function validateExprComplexity(
 ): ComplexityResult
 ```
 
-Throws `ExprComplexityExceeded` if either metric exceeds its limit.
+The function completes the full tree walk before checking limits, so the returned `ComplexityResult` always reflects accurate totals for both metrics. Throws `ExprComplexityExceeded` if either metric exceeds its limit.
 
 ### Tree walk
 
@@ -216,14 +225,16 @@ All three guardrails are additive — they reject evaluation or definitions that
 | File | Change |
 |------|--------|
 | `packages/expr/src/types.ts` | Add `budget?: { remaining: number }` to `Scope`; update `createScope()`; add `StepBudgetExceeded` error class; add `deductStep()` helper |
-| `packages/expr/src/evaluate.ts` | Call `deductStep(scope)` at top of `evaluate()`; call in `selectPath()` where loop and `resolveStep()` |
-| `packages/expr/src/compile.ts` | Compiled closures call `deductStep(scope)` at runtime; compiled path step closures call `deductStep()` in where iteration |
-| `packages/expr/src/eval-collection-ops.ts` | Call `deductStep(scope)` per element in iteration/reduce/mapVals/filterKeys/deepSelect |
-| `packages/expr/src/compile-collection-ops.ts` | Runtime closures call `deductStep(scope)` per element |
+| `packages/expr/src/evaluate.ts` | Call `deductStep(scope)` at top of `evaluate()`; call in `selectPath()` where loop. Note: `path.ts` is a re-export shim for `selectPath` — the implementation lives in `evaluate.ts` |
+| `packages/expr/src/compile.ts` | Every compiled operator closure wraps its logic with `deductStep(s)` at runtime entry; compiled path step closures call `deductStep()` in where iteration |
+| `packages/expr/src/eval-collection-ops.ts` | Call `deductStep(scope)` per element in iteration/reduce/mapVals/filterKeys/deepSelect. No change needed for `evaluatePipe()` — it delegates to `evaluate()` which already decrements. |
+| `packages/expr/src/compile-collection-ops.ts` | Runtime closures call `deductStep(scope)` per element in iteration (filter/map/every/some/mapVals/filterKeys), reduce, and deepSelect |
 | `packages/expr/src/transforms.ts` | Call `deductStep(scope)` per matching entry in where fan-out |
 | `packages/expr/src/where.ts` | No changes — `matchesWhere()` receives scope which carries budget; step is counted by caller |
+| `packages/expr/src/actions.ts` | No changes — delegates all expression evaluation to `evaluate()` and `applyTransforms()`, which are already instrumented |
+| `packages/expr/src/compile-actions.ts` | No changes — compiled closures from `compile()` are already instrumented; `applyTransforms()` is called at runtime and already instrumented |
 | `packages/expr/src/validate.ts` | **New file.** `validateExprComplexity()`, `ComplexityResult`, `ComplexityLimits`, `ExprComplexityExceeded` |
-| `packages/expr/src/introspection.ts` | Export `EXPR_OPERATORS` set (currently private) for use by validate.ts |
+| `packages/expr/src/introspection.ts` | Export `EXPR_OPERATORS` set (currently private) for internal use by validate.ts. Not re-exported from `index.ts` — `isExprOperator()` remains the public API. |
 | `packages/expr/src/index.ts` | Export validation functions and error classes |
 | `packages/expr/EXPR_SPEC.md` | Add section on evaluation limits (step budget, complexity limits) |
 | Gateway (future) | Context size check after evaluation, before DB write |
@@ -236,6 +247,7 @@ All three guardrails are additive — they reject evaluation or definitions that
 - Budget decrements through compiled closure execution
 - `StepBudgetExceeded` thrown when budget exhausted mid-evaluation
 - `StepBudgetExceeded` thrown when budget exhausted in compiled path
+- `StepBudgetExceeded` thrown in compiled `where` path step with large collection and tight budget
 - Budget shared across nested scopes (`let`, iteration inner scopes)
 - Collection iteration (`filter`, `map`, `reduce`, `where`) each element costs a step
 - `deepSelect` recursive traversal costs a step per node visited

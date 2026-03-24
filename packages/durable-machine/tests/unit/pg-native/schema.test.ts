@@ -70,7 +70,7 @@ describe("NATIVE_SCHEMA_SQL", () => {
     );
   });
 
-  // ── Uses statecraft extension ─────────────────────────────────────────
+  // ── Uses statechart extension ─────────────────────────────────────────
 
   it("uses sc_create Rust extension call", () => {
     expect(NATIVE_SCHEMA_SQL).toContain("sc_create(");

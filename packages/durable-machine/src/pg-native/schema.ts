@@ -1,7 +1,7 @@
 /**
  * PG-native schema: extends the base schema with machine_definitions table
  * and PL/pgSQL functions that delegate state machine logic to the Rust
- * `statecraft` PostgreSQL extension (sc_create / sc_send).
+ * `statechart` PostgreSQL extension (sc_create / sc_send).
  */
 export const NATIVE_SCHEMA_SQL = `
 -- ============================================================================
@@ -80,7 +80,7 @@ BEGIN
     RAISE EXCEPTION 'No definition found for machine "%"', p_machine_name;
   END IF;
 
-  -- Call statecraft extension to compute initial state
+  -- Call statechart extension to compute initial state
   v_result := sc_create(v_config, p_input);
 
   v_snapshot     := v_result->'snapshot';
@@ -248,7 +248,7 @@ BEGIN
     ORDER BY seq ASC
     LIMIT p_limit
   LOOP
-    -- Call statecraft extension to compute next state
+    -- Call statechart extension to compute next state
     v_result := sc_send(v_config, v_snapshot, v_evt.payload->>'type', v_evt.payload);
 
     -- Update snapshot from result (must happen before invocation check

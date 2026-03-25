@@ -596,6 +596,37 @@ The compilation phase may capture builtin function references at compile time. I
 
 ---
 
+## 11. Evaluation Guardrails
+
+Conforming implementations may provide three optional guardrails to bound evaluation cost.
+
+### 11.1 Step Budget
+
+An optional `budget` field on the scope holds a mutable counter `{ remaining: number }`. Every evaluation step decrements the counter:
+
+- Each entry to the `evaluate()` function
+- Each compiled closure invocation at runtime
+- Each element processed in collection iteration (filter, map, reduce, every, some, mapVals, filterKeys, deepSelect)
+- Each entry tested in a `where` predicate
+- Each matching entry in a transform fan-out
+
+When `remaining` reaches zero, evaluation throws `StepBudgetExceeded`. The budget is optional — when absent, evaluation is unlimited. Inner scopes (from `let`, iteration, `pipe`) share the same mutable budget reference.
+
+### 11.2 Expression Complexity Limits
+
+A static analysis pass at machine definition time walks the expression tree and measures:
+
+- **Operator count:** total operator nodes in the tree
+- **Max depth:** deepest nesting level
+
+If either metric exceeds a configurable limit, the definition is rejected with `ExprComplexityExceeded`. Default limits: 500 operators, depth 15.
+
+### 11.3 Context Size Limit
+
+After evaluation produces a new context, the host checks its serialized JSON byte length. If it exceeds a configurable limit, the event is rejected with `ContextSizeLimitExceeded`. Default limit: 256 KB. This prevents unbounded context growth and protects database row sizes.
+
+---
+
 ## Appendix A: Operator Quick Reference
 
 | Operator | Syntax | Result type |

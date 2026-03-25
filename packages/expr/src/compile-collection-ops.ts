@@ -1,4 +1,5 @@
 import type { Expr, Scope, BuiltinRegistry, CompiledExpr } from "./types.js";
+import { deductStep } from "./types.js";
 
 type CompileFn = (expr: Expr, builtins?: BuiltinRegistry) => CompiledExpr;
 
@@ -17,6 +18,7 @@ export function compileIteration(kind: IterOp, args: unknown[], cc: CompileFn, b
       if (o === null || typeof o !== "object" || Array.isArray(o)) return {};
       const r: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(o as Record<string, unknown>)) {
+        deductStep(s);
         const inner = { ...s, bindings: { ...s.bindings, [bindName]: v, $key: k } };
         if (kind === "mapVals") r[k] = cBody(inner);
         else if (Boolean(cBody(inner))) r[k] = v;
@@ -33,10 +35,10 @@ export function compileIteration(kind: IterOp, args: unknown[], cc: CompileFn, b
       ...s, bindings: { ...s.bindings, [bindName]: item, $index: i },
     });
     switch (kind) {
-      case "filter": return a.filter((item, i) => Boolean(cBody(makeInner(item, i))));
-      case "map": return a.map((item, i) => cBody(makeInner(item, i)));
-      case "every": return a.every((item, i) => Boolean(cBody(makeInner(item, i))));
-      case "some": return a.some((item, i) => Boolean(cBody(makeInner(item, i))));
+      case "filter": return a.filter((item, i) => { deductStep(s); return Boolean(cBody(makeInner(item, i))); });
+      case "map": return a.map((item, i) => { deductStep(s); return cBody(makeInner(item, i)); });
+      case "every": return a.every((item, i) => { deductStep(s); return Boolean(cBody(makeInner(item, i))); });
+      case "some": return a.some((item, i) => { deductStep(s); return Boolean(cBody(makeInner(item, i))); });
     }
   };
 }
@@ -62,6 +64,7 @@ export function compileReduce(args: unknown[], cc: CompileFn, builtins?: Builtin
     if (hasInit) { acc = cInit!(s); startIdx = 0; }
     else { acc = a[0]; startIdx = 1; }
     for (let i = startIdx; i < a.length; i++) {
+      deductStep(s);
       const inner: Scope = { ...s, bindings: { ...s.bindings, [accName]: acc, [itemName]: a[i], $index: i } };
       acc = cBody(inner);
     }
@@ -80,6 +83,7 @@ export function compileDeepSelect(args: unknown[], cc: CompileFn, builtins?: Bui
     const source = isEager ? cSource!(s) : s.bindings.$;
     const results: unknown[] = [];
     const walk = (node: unknown): void => {
+      deductStep(s);
       if (Boolean(cBody({ ...s, bindings: { ...s.bindings, [bindName]: node } }))) results.push(node);
       if (Array.isArray(node)) { for (const item of node) walk(item); }
       else if (node !== null && typeof node === "object") {

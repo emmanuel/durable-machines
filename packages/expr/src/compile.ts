@@ -1,4 +1,5 @@
 import type { Expr, Scope, BuiltinRegistry, Path, PathNavigator, CompiledExpr } from "./types.js";
+import { deductStep } from "./types.js";
 import { rewriteWhereStrings } from "./where.js";
 import {
   compileIteration, compileReduce, compileDeepSelect, compileCondPath,
@@ -13,18 +14,18 @@ import { parseDollarPath, parseParamSugar, parseRefSugar } from "./desugar.js";
  * fresh values per call).
  */
 export function compile(expr: Expr, builtins?: BuiltinRegistry): CompiledExpr {
-  // Literals
-  if (expr === null || expr === undefined) return () => expr;
+  // Literals — deductStep on entry so budget applies to all paths
+  if (expr === null || expr === undefined) return (s) => { deductStep(s); return expr; };
   if (typeof expr === "string") {
     if (expr.startsWith("$.")) return compile(parseDollarPath(expr), builtins);
-    if (expr.startsWith("%.")) { const { param: name } = parseParamSugar(expr); return (s) => s.params[name]; }
-    if (expr.startsWith("@.")) { const { ref: name } = parseRefSugar(expr); return (s) => s.bindings[name]; }
-    return () => expr;
+    if (expr.startsWith("%.")) { const { param: name } = parseParamSugar(expr); return (s) => { deductStep(s); return s.params[name]; }; }
+    if (expr.startsWith("@.")) { const { ref: name } = parseRefSugar(expr); return (s) => { deductStep(s); return s.bindings[name]; }; }
+    return (s) => { deductStep(s); return expr; };
   }
-  if (typeof expr === "number" || typeof expr === "boolean") return () => expr;
-  if (Array.isArray(expr)) return () => expr;
+  if (typeof expr === "number" || typeof expr === "boolean") return (s) => { deductStep(s); return expr; };
+  if (Array.isArray(expr)) return (s) => { deductStep(s); return expr; };
 
-  if (typeof expr !== "object") return () => expr;
+  if (typeof expr !== "object") return (s) => { deductStep(s); return expr; };
 
   const op = expr as Record<string, unknown>;
 
@@ -32,29 +33,29 @@ export function compile(expr: Expr, builtins?: BuiltinRegistry): CompiledExpr {
   if ("select" in op) return compilePath(op.select as Path, builtins);
 
   // Comparisons
-  if ("eq" in op) { const [ca, cb] = compilePair(op.eq as [Expr, Expr], builtins); return (s) => ca(s) === cb(s); }
-  if ("neq" in op) { const [ca, cb] = compilePair(op.neq as [Expr, Expr], builtins); return (s) => ca(s) !== cb(s); }
-  if ("gt" in op) { const [ca, cb] = compilePair(op.gt as [Expr, Expr], builtins); return (s) => (ca(s) as number) > (cb(s) as number); }
-  if ("lt" in op) { const [ca, cb] = compilePair(op.lt as [Expr, Expr], builtins); return (s) => (ca(s) as number) < (cb(s) as number); }
-  if ("gte" in op) { const [ca, cb] = compilePair(op.gte as [Expr, Expr], builtins); return (s) => (ca(s) as number) >= (cb(s) as number); }
-  if ("lte" in op) { const [ca, cb] = compilePair(op.lte as [Expr, Expr], builtins); return (s) => (ca(s) as number) <= (cb(s) as number); }
+  if ("eq" in op) { const [ca, cb] = compilePair(op.eq as [Expr, Expr], builtins); return (s) => { deductStep(s); return ca(s) === cb(s); }; }
+  if ("neq" in op) { const [ca, cb] = compilePair(op.neq as [Expr, Expr], builtins); return (s) => { deductStep(s); return ca(s) !== cb(s); }; }
+  if ("gt" in op) { const [ca, cb] = compilePair(op.gt as [Expr, Expr], builtins); return (s) => { deductStep(s); return (ca(s) as number) > (cb(s) as number); }; }
+  if ("lt" in op) { const [ca, cb] = compilePair(op.lt as [Expr, Expr], builtins); return (s) => { deductStep(s); return (ca(s) as number) < (cb(s) as number); }; }
+  if ("gte" in op) { const [ca, cb] = compilePair(op.gte as [Expr, Expr], builtins); return (s) => { deductStep(s); return (ca(s) as number) >= (cb(s) as number); }; }
+  if ("lte" in op) { const [ca, cb] = compilePair(op.lte as [Expr, Expr], builtins); return (s) => { deductStep(s); return (ca(s) as number) <= (cb(s) as number); }; }
 
   // Logic
-  if ("and" in op) { const fns = (op.and as Expr[]).map(e => compile(e, builtins)); return (s) => fns.every(f => Boolean(f(s))); }
-  if ("or" in op) { const fns = (op.or as Expr[]).map(e => compile(e, builtins)); return (s) => fns.some(f => Boolean(f(s))); }
-  if ("not" in op) { const fn = compile(op.not as Expr, builtins); return (s) => !fn(s); }
-  if ("if" in op) { const [cc, ct, ce] = (op.if as [Expr, Expr, Expr]).map(e => compile(e, builtins)); return (s) => cc(s) ? ct(s) : ce(s); }
+  if ("and" in op) { const fns = (op.and as Expr[]).map(e => compile(e, builtins)); return (s) => { deductStep(s); return fns.every(f => Boolean(f(s))); }; }
+  if ("or" in op) { const fns = (op.or as Expr[]).map(e => compile(e, builtins)); return (s) => { deductStep(s); return fns.some(f => Boolean(f(s))); }; }
+  if ("not" in op) { const fn = compile(op.not as Expr, builtins); return (s) => { deductStep(s); return !fn(s); }; }
+  if ("if" in op) { const [cc, ct, ce] = (op.if as [Expr, Expr, Expr]).map(e => compile(e, builtins)); return (s) => { deductStep(s); return cc(s) ? ct(s) : ce(s); }; }
   if ("cond" in op) {
     const branches = (op.cond as [Expr, Expr][]).map(([g, v]) => [compile(g, builtins), compile(v, builtins)] as const);
-    return (s) => { for (const [g, v] of branches) { if (g(s)) return v(s); } return undefined; };
+    return (s) => { deductStep(s); for (const [g, v] of branches) { if (g(s)) return v(s); } return undefined; };
   }
 
   // Membership
-  if ("in" in op) { const [cv, ca] = compilePair(op.in as [Expr, Expr], builtins); return (s) => { const a = ca(s); return Array.isArray(a) ? a.includes(cv(s)) : false; }; }
+  if ("in" in op) { const [cv, ca] = compilePair(op.in as [Expr, Expr], builtins); return (s) => { deductStep(s); const a = ca(s); return Array.isArray(a) ? a.includes(cv(s)) : false; }; }
 
   // Bindings
-  if ("ref" in op) { const name = op.ref as string; return (s) => s.bindings[name]; }
-  if ("param" in op) { const name = op.param as string; return (s) => s.params[name]; }
+  if ("ref" in op) { const name = op.ref as string; return (s) => { deductStep(s); return s.bindings[name]; }; }
+  if ("param" in op) { const name = op.param as string; return (s) => { deductStep(s); return s.params[name]; }; }
 
   // let
   if ("let" in op) {
@@ -64,6 +65,7 @@ export function compile(expr: Expr, builtins?: BuiltinRegistry): CompiledExpr {
     );
     const body = compile(bodyExpr, builtins);
     return (s) => {
+      deductStep(s);
       const bindings = { ...s.bindings };
       const inner: Scope = { ...s, bindings };
       for (const { name, fn } of letEntries) {
@@ -76,15 +78,15 @@ export function compile(expr: Expr, builtins?: BuiltinRegistry): CompiledExpr {
   // Nullability
   if ("coalesce" in op) {
     const fns = (op.coalesce as Expr[]).map(e => compile(e, builtins));
-    return (s) => { for (const f of fns) { const v = f(s); if (v != null) return v; } return undefined; };
+    return (s) => { deductStep(s); for (const f of fns) { const v = f(s); if (v != null) return v; } return undefined; };
   }
-  if ("isNull" in op) { const fn = compile(op.isNull as Expr, builtins); return (s) => fn(s) == null; }
+  if ("isNull" in op) { const fn = compile(op.isNull as Expr, builtins); return (s) => { deductStep(s); return fn(s) == null; }; }
 
   // Arithmetic
-  if ("add" in op) { const [ca, cb] = compilePair(op.add as [Expr, Expr], builtins); return (s) => (ca(s) as number) + (cb(s) as number); }
-  if ("sub" in op) { const [ca, cb] = compilePair(op.sub as [Expr, Expr], builtins); return (s) => (ca(s) as number) - (cb(s) as number); }
-  if ("mul" in op) { const [ca, cb] = compilePair(op.mul as [Expr, Expr], builtins); return (s) => (ca(s) as number) * (cb(s) as number); }
-  if ("div" in op) { const [ca, cb] = compilePair(op.div as [Expr, Expr], builtins); return (s) => (ca(s) as number) / (cb(s) as number); }
+  if ("add" in op) { const [ca, cb] = compilePair(op.add as [Expr, Expr], builtins); return (s) => { deductStep(s); return (ca(s) as number) + (cb(s) as number); }; }
+  if ("sub" in op) { const [ca, cb] = compilePair(op.sub as [Expr, Expr], builtins); return (s) => { deductStep(s); return (ca(s) as number) - (cb(s) as number); }; }
+  if ("mul" in op) { const [ca, cb] = compilePair(op.mul as [Expr, Expr], builtins); return (s) => { deductStep(s); return (ca(s) as number) * (cb(s) as number); }; }
+  if ("div" in op) { const [ca, cb] = compilePair(op.div as [Expr, Expr], builtins); return (s) => { deductStep(s); return (ca(s) as number) / (cb(s) as number); }; }
 
   // Object construction
   if ("object" in op) {
@@ -92,6 +94,7 @@ export function compile(expr: Expr, builtins?: BuiltinRegistry): CompiledExpr {
       ([key, e]) => ({ key, fn: compile(e, builtins) }),
     );
     return (s) => {
+      deductStep(s);
       const result: Record<string, unknown> = {};
       for (const { key, fn } of fields) {
         result[key] = fn(s);
@@ -104,6 +107,7 @@ export function compile(expr: Expr, builtins?: BuiltinRegistry): CompiledExpr {
   if ("len" in op) {
     const fn = compile(op.len as Expr, builtins);
     return (s) => {
+      deductStep(s);
       const val = fn(s);
       if (Array.isArray(val)) return val.length;
       if (typeof val === "string") return val.length;
@@ -116,6 +120,7 @@ export function compile(expr: Expr, builtins?: BuiltinRegistry): CompiledExpr {
   if ("at" in op) {
     const [ca, ci] = compilePair(op.at as [Expr, Expr], builtins);
     return (s) => {
+      deductStep(s);
       const arr = ca(s);
       if (!Array.isArray(arr)) return undefined;
       return (arr as unknown[]).at(ci(s) as number);
@@ -126,6 +131,7 @@ export function compile(expr: Expr, builtins?: BuiltinRegistry): CompiledExpr {
   if ("merge" in op) {
     const fns = (op.merge as Expr[]).map(e => compile(e, builtins));
     return (s) => {
+      deductStep(s);
       const result: Record<string, unknown> = {};
       for (const f of fns) {
         const val = f(s);
@@ -141,6 +147,7 @@ export function compile(expr: Expr, builtins?: BuiltinRegistry): CompiledExpr {
   if ("concat" in op) {
     const fns = (op.concat as Expr[]).map(e => compile(e, builtins));
     return (s) => {
+      deductStep(s);
       const result: unknown[] = [];
       for (const f of fns) {
         const val = f(s);
@@ -164,8 +171,9 @@ export function compile(expr: Expr, builtins?: BuiltinRegistry): CompiledExpr {
   // pipe — sequential composition with $ binding
   if ("pipe" in op) {
     const steps = (op.pipe as Expr[]).map(e => compile(e, builtins));
-    if (steps.length === 0) return () => undefined;
+    if (steps.length === 0) return (s) => { deductStep(s); return undefined; };
     return (s) => {
+      deductStep(s);
       let current = steps[0](s);
       for (let i = 1; i < steps.length; i++) {
         const inner: Scope = { ...s, bindings: { ...s.bindings, $: current } };
@@ -176,9 +184,9 @@ export function compile(expr: Expr, builtins?: BuiltinRegistry): CompiledExpr {
   }
 
   // Simple operators
-  if ("pick" in op) { const [ca, ck] = compilePair(op.pick as [Expr, Expr], builtins); return (s) => { const o = ca(s); const k = ck(s); if (o === null || typeof o !== "object" || Array.isArray(o) || !Array.isArray(k)) return {}; const r: Record<string, unknown> = {}; for (const key of k as string[]) { if (key in (o as Record<string, unknown>)) r[key] = (o as Record<string, unknown>)[key]; } return r; }; }
-  if ("prepend" in op) { const [ca, cv] = compilePair(op.prepend as [Expr, Expr], builtins); return (s) => { const a = ca(s); const v = cv(s); return Array.isArray(a) ? [v, ...a] : [v]; }; }
-  if ("multiSelect" in op) { const fns = (op.multiSelect as Expr[]).map(e => compile(e, builtins)); return (s) => fns.map(f => f(s)); }
+  if ("pick" in op) { const [ca, ck] = compilePair(op.pick as [Expr, Expr], builtins); return (s) => { deductStep(s); const o = ca(s); const k = ck(s); if (o === null || typeof o !== "object" || Array.isArray(o) || !Array.isArray(k)) return {}; const r: Record<string, unknown> = {}; for (const key of k as string[]) { if (key in (o as Record<string, unknown>)) r[key] = (o as Record<string, unknown>)[key]; } return r; }; }
+  if ("prepend" in op) { const [ca, cv] = compilePair(op.prepend as [Expr, Expr], builtins); return (s) => { deductStep(s); const a = ca(s); const v = cv(s); return Array.isArray(a) ? [v, ...a] : [v]; }; }
+  if ("multiSelect" in op) { const fns = (op.multiSelect as Expr[]).map(e => compile(e, builtins)); return (s) => { deductStep(s); return fns.map(f => f(s)); }; }
   if ("condPath" in op) return compileCondPath(op.condPath as unknown[], compile, builtins);
 
   // fn — builtin call
@@ -186,12 +194,12 @@ export function compile(expr: Expr, builtins?: BuiltinRegistry): CompiledExpr {
     const fnArgs = op.fn as [string, ...Expr[]];
     const [name, ...argExprs] = fnArgs;
     const fn = builtins?.[name];
-    if (!fn) return () => undefined;
+    if (!fn) return (s) => { deductStep(s); return undefined; };
     const argFns = argExprs.map(a => compile(a, builtins));
-    return (s) => fn(...argFns.map(f => f(s)));
+    return (s) => { deductStep(s); return fn(...argFns.map(f => f(s))); };
   }
 
-  return () => expr;
+  return (s) => { deductStep(s); return expr; };
 }
 
 // ─── Path compilation ─────────────────────────────────────────────────────────
@@ -206,6 +214,7 @@ function compilePath(path: Path, builtins?: BuiltinRegistry): CompiledExpr {
   const steps = rest.map(step => compilePathStep(step, builtins));
 
   return (scope) => {
+    deductStep(scope);
     let current: unknown;
     if (root === "context") current = scope.context;
     else if (root === "event") current = scope.event;
@@ -268,6 +277,7 @@ function compilePathStep(step: PathNavigator, builtins?: BuiltinRegistry): Compi
     return (current, scope) => {
       const filtered: Record<string, unknown> = {};
       for (const [key, value] of Object.entries(current)) {
+        deductStep(scope);
         const entryBindings =
           value !== null && typeof value === "object" && !Array.isArray(value)
             ? { ...(value as Record<string, unknown>) }

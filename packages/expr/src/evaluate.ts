@@ -1,4 +1,5 @@
 import type { Expr, Scope, BuiltinRegistry, Path, PathNavigator } from "./types.js";
+import { deductStep } from "./types.js";
 import { matchesWhere } from "./where.js";
 import {
   evaluateIteration, evaluateReduce, evaluateMapVals,
@@ -44,6 +45,7 @@ export function selectPath(path: Path, scope: Scope, builtins?: BuiltinRegistry)
       const predicate = step.where as Record<string, unknown>;
       const filtered: Record<string, unknown> = {};
       for (const [key, value] of Object.entries(current as Record<string, unknown>)) {
+        deductStep(scope);
         if (matchesWhere(value, predicate, scope, evaluate, builtins)) {
           filtered[key] = value;
         }
@@ -109,6 +111,7 @@ export function resolveStep(
 // ─── Evaluator ───────────────────────────────────────────────────────────────
 
 export function evaluate(expr: Expr, scope: Scope, builtins?: BuiltinRegistry): unknown {
+  deductStep(scope);
   // Literals
   if (expr === null || expr === undefined) return expr;
   if (typeof expr === "string") {

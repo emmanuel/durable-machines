@@ -1,4 +1,5 @@
 import type { Expr, Scope, BuiltinRegistry } from "./types.js";
+import { deductStep } from "./types.js";
 
 type EvalFn = (expr: Expr, scope: Scope, builtins?: BuiltinRegistry) => unknown;
 
@@ -59,13 +60,13 @@ export function evaluateIteration(
 
   switch (kind) {
     case "filter":
-      return arr.filter((item, i) => Boolean(ev(body, makeInner(item, i), builtins)));
+      return arr.filter((item, i) => { deductStep(scope); return Boolean(ev(body, makeInner(item, i), builtins)); });
     case "map":
-      return arr.map((item, i) => ev(body, makeInner(item, i), builtins));
+      return arr.map((item, i) => { deductStep(scope); return ev(body, makeInner(item, i), builtins); });
     case "every":
-      return arr.every((item, i) => Boolean(ev(body, makeInner(item, i), builtins)));
+      return arr.every((item, i) => { deductStep(scope); return Boolean(ev(body, makeInner(item, i), builtins)); });
     case "some":
-      return arr.some((item, i) => Boolean(ev(body, makeInner(item, i), builtins)));
+      return arr.some((item, i) => { deductStep(scope); return Boolean(ev(body, makeInner(item, i), builtins)); });
   }
 }
 
@@ -114,6 +115,7 @@ export function evaluateReduce(args: unknown[], scope: Scope, ev: EvalFn, builti
   }
 
   for (let i = startIdx; i < a.length; i++) {
+    deductStep(scope);
     const inner: Scope = { ...scope, bindings: {
       ...scope.bindings, [accName]: acc, [itemName]: a[i], $index: i,
     }};
@@ -129,6 +131,7 @@ export function evaluateMapVals(args: unknown[], scope: Scope, ev: EvalFn, built
   if (obj === null || typeof obj !== "object" || Array.isArray(obj)) return {};
   const result: Record<string, unknown> = {};
   for (const [key, val] of Object.entries(obj as Record<string, unknown>)) {
+    deductStep(scope);
     const inner: Scope = { ...scope, bindings: { ...scope.bindings, [bindName]: val, $key: key } };
     result[key] = ev(body, inner, builtins);
   }
@@ -140,6 +143,7 @@ export function evaluateFilterKeys(args: unknown[], scope: Scope, ev: EvalFn, bu
   if (obj === null || typeof obj !== "object" || Array.isArray(obj)) return {};
   const result: Record<string, unknown> = {};
   for (const [key, val] of Object.entries(obj as Record<string, unknown>)) {
+    deductStep(scope);
     const inner: Scope = { ...scope, bindings: { ...scope.bindings, [bindName]: val, $key: key } };
     if (Boolean(ev(body, inner, builtins))) result[key] = val;
   }
@@ -157,6 +161,7 @@ export function evaluateDeepSelect(args: unknown[], scope: Scope, ev: EvalFn, bu
   }
   const results: unknown[] = [];
   const walk = (node: unknown): void => {
+    deductStep(scope);
     const inner: Scope = { ...scope, bindings: { ...scope.bindings, [bindName]: node } };
     if (Boolean(ev(body, inner, builtins))) results.push(node);
     if (Array.isArray(node)) { for (const item of node) walk(item); }

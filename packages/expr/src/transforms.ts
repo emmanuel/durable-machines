@@ -1,4 +1,5 @@
 import type { Scope, Transform, BuiltinRegistry, PathNavigator } from "./types.js";
+import { deductStep } from "./types.js";
 import { resolveStep } from "./path.js";
 import { evaluate } from "./evaluate.js";
 import { matchesWhere } from "./where.js";
@@ -47,6 +48,7 @@ function applyOneTransform(
       const predicate = step.where;
       const remainingPath = [...path.slice(i + 1)];
       for (const [entryKey, entryValue] of Object.entries(parent)) {
+        deductStep(scope);
         if (matchesWhere(entryValue, predicate, scope, evaluate, builtins)) {
           // Navigate into this entry and apply remaining path
           const subTransform: Transform = { ...transform, path: remainingPath };

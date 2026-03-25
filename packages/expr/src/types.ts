@@ -7,6 +7,8 @@ export interface Scope {
   params: Record<string, unknown>;
   /** Named values from `let` bindings. Extend via spreading. */
   bindings: Record<string, unknown>;
+  /** Optional step budget — when present, each evaluation step decrements. */
+  budget?: { remaining: number };
 }
 
 /** Create a scope with defaults for optional fields. */
@@ -14,13 +16,32 @@ export function createScope(partial: {
   context: Record<string, unknown>;
   event?: Record<string, unknown>;
   params?: Record<string, unknown>;
+  budget?: { remaining: number };
 }): Scope {
   return {
     context: partial.context,
     event: partial.event ?? {},
     params: partial.params ?? {},
     bindings: {},
+    budget: partial.budget,
   };
+}
+
+// ─── Step Budget ────────────────────────────────────────────────────────────
+
+/** Thrown when the evaluation step budget is exhausted. */
+export class StepBudgetExceeded extends Error {
+  constructor() {
+    super("Expression evaluation step budget exceeded");
+    this.name = "StepBudgetExceeded";
+  }
+}
+
+/** Decrement the step budget. No-op when budget is undefined. */
+export function deductStep(scope: Scope): void {
+  if (scope.budget !== undefined && --scope.budget.remaining < 0) {
+    throw new StepBudgetExceeded();
+  }
 }
 
 // ─── Expressions ────────────────────────────────────────────────────────────

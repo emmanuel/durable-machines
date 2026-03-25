@@ -2,7 +2,7 @@
  * Set of recognized expr operator keys.
  * Must stay in sync with `compile.ts`.
  */
-const EXPR_OPERATORS = new Set([
+export const EXPR_OPERATORS = new Set([
   "select", "eq", "neq", "gt", "lt", "gte", "lte",
   "and", "or", "not", "if", "cond",
   "in", "ref", "param", "let",

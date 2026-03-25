@@ -55,6 +55,39 @@ export function validateExprComplexity(
   return result;
 }
 
+// ─── Context Size ───────────────────────────────────────────────────────────
+
+/** Thrown when serialized context exceeds the byte limit. */
+export class ContextSizeLimitExceeded extends Error {
+  actualBytes: number;
+  limitBytes: number;
+
+  constructor(actualBytes: number, limitBytes: number) {
+    super(`Context size ${actualBytes} bytes exceeds limit of ${limitBytes} bytes`);
+    this.name = "ContextSizeLimitExceeded";
+    this.actualBytes = actualBytes;
+    this.limitBytes = limitBytes;
+  }
+}
+
+/**
+ * Check that a context object's serialized size is within the byte limit.
+ * Throws ContextSizeLimitExceeded if the limit is exceeded.
+ */
+export function checkContextSize(
+  context: Record<string, unknown>,
+  limitBytes: number,
+): number {
+  const serialized = JSON.stringify(context);
+  const bytes = Buffer.byteLength(serialized, "utf8");
+  if (bytes > limitBytes) {
+    throw new ContextSizeLimitExceeded(bytes, limitBytes);
+  }
+  return bytes;
+}
+
+// ─── Tree walk (internal) ───────────────────────────────────────────────────
+
 function walk(node: unknown, depth: number, result: ComplexityResult): void {
   // Primitives contribute nothing
   if (node === null || node === undefined) return;

@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { validateExprComplexity, ExprComplexityExceeded } from "../../src/validate.js";
+import {
+  validateExprComplexity, ExprComplexityExceeded,
+  checkContextSize, ContextSizeLimitExceeded,
+} from "../../src/validate.js";
 import type { ComplexityLimits } from "../../src/validate.js";
 
 const generous: ComplexityLimits = { maxOperatorCount: 500, maxDepth: 15 };
@@ -157,5 +160,47 @@ describe("validateExprComplexity", () => {
       expect(err.operatorCount).toBe(20);
       expect(err.maxDepth).toBe(20);
     }
+  });
+});
+
+// ─── Context size ───────────────────────────────────────────────────────────
+
+describe("checkContextSize", () => {
+  it("context under limit: returns byte count", () => {
+    const bytes = checkContextSize({ x: 1 }, 1024);
+    expect(bytes).toBeGreaterThan(0);
+    expect(bytes).toBeLessThanOrEqual(1024);
+  });
+
+  it("context over limit: throws with actual and limit bytes", () => {
+    const big = { data: "x".repeat(1000) };
+    try {
+      checkContextSize(big, 100);
+      expect.unreachable("should have thrown");
+    } catch (e) {
+      expect(e).toBeInstanceOf(ContextSizeLimitExceeded);
+      const err = e as ContextSizeLimitExceeded;
+      expect(err.actualBytes).toBeGreaterThan(100);
+      expect(err.limitBytes).toBe(100);
+    }
+  });
+
+  it("context exactly at limit: no error", () => {
+    const ctx = { a: 1 };
+    const serialized = JSON.stringify(ctx);
+    const exactLimit = Buffer.byteLength(serialized, "utf8");
+    expect(() => checkContextSize(ctx, exactLimit)).not.toThrow();
+  });
+
+  it("UTF-8 multi-byte characters counted correctly", () => {
+    // "é" is 2 bytes in UTF-8, "你" is 3 bytes
+    const ctx = { text: "éé你你" };
+    const serialized = JSON.stringify(ctx);
+    const bytes = Buffer.byteLength(serialized, "utf8");
+    const charLength = serialized.length;
+    // byte length should be greater than character length due to multi-byte chars
+    expect(bytes).toBeGreaterThan(charLength);
+    expect(checkContextSize(ctx, bytes)).toBe(bytes);
+    expect(() => checkContextSize(ctx, bytes - 1)).toThrow(ContextSizeLimitExceeded);
   });
 });

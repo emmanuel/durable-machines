@@ -324,14 +324,15 @@ describe("createNativeDurableMachine", () => {
   // ── 5. send() ─────────────────────────────────────────────────────────
 
   describe("send()", () => {
-    it("appends event then calls dm_process_events", async () => {
+    it("calls dm_send_event in a single round-trip", async () => {
       pool.query.mockResolvedValue({
         rows: [
           {
-            dm_process_events: {
-              processed: 0,
+            dm_send_event: {
+              processed: 1,
               status: "running",
               invocation: null,
+              snapshot: { value: "running", context: {} },
             },
           },
         ],
@@ -342,15 +343,18 @@ describe("createNativeDurableMachine", () => {
 
       await handle.send({ type: "NEXT" });
 
-      // store.appendEvent was called with the event
-      expect(store.appendEvent).toHaveBeenCalledWith(TEST_WORKFLOW_ID, {
-        type: "NEXT",
-      });
+      // Uses dm_send_event prepared statement (not appendEvent + process)
+      const sendCalls = queryCallsByName(pool, "dm_send_event");
+      expect(sendCalls).toHaveLength(1);
+      expect(sendCalls[0][0].values).toEqual([
+        TEST_WORKFLOW_ID,
+        "NEXT",
+        JSON.stringify({ type: "NEXT" }),
+        null,
+      ]);
 
-      // pool.query was called with dm_native_process_events
-      const processCalls = queryCallsByName(pool, "dm_native_process_events");
-      expect(processCalls).toHaveLength(1);
-      expect(processCalls[0][0].values).toEqual([TEST_WORKFLOW_ID, 50]);
+      // store.appendEvent should NOT be called
+      expect(store.appendEvent).not.toHaveBeenCalled();
     });
   });
 

@@ -74,6 +74,10 @@
       "types": "./dist/pg/index.d.ts",
       "import": "./dist/pg/index.js"
     },
+    "./pg-native": {
+      "types": "./dist/pg-native/index.d.ts",
+      "import": "./dist/pg-native/index.js"
+    },
     "./cmi5": {
       "types": "./dist/cmi5/index.d.ts",
       "import": "./dist/cmi5/index.js"

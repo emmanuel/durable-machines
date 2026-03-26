@@ -36,6 +36,51 @@ describe("NATIVE_SCHEMA_SQL", () => {
     );
   });
 
+  it("declares _dm_drain_events helper function", () => {
+    expect(NATIVE_SCHEMA_SQL).toContain(
+      "CREATE OR REPLACE FUNCTION _dm_drain_events",
+    );
+  });
+
+  it("declares dm_send_event function", () => {
+    expect(NATIVE_SCHEMA_SQL).toContain(
+      "CREATE OR REPLACE FUNCTION dm_send_event",
+    );
+  });
+
+  it("declares fire_due_timeouts_native function", () => {
+    expect(NATIVE_SCHEMA_SQL).toContain(
+      "CREATE OR REPLACE FUNCTION fire_due_timeouts_native",
+    );
+  });
+
+  it("dm_send_event accepts UUID, TEXT, JSONB, optional idempotency key, source, and limit", () => {
+    expect(NATIVE_SCHEMA_SQL).toMatch(
+      /dm_send_event\(\s*p_instance_id\s+UUID,\s*p_event_type\s+TEXT,\s*p_payload\s+JSONB/s,
+    );
+  });
+
+  it("dm_send_event calls _dm_drain_events", () => {
+    const sendFn = NATIVE_SCHEMA_SQL.match(
+      /CREATE OR REPLACE FUNCTION dm_send_event[\s\S]*?^\$\$;/m,
+    )?.[0] ?? "";
+    expect(sendFn).toContain("_dm_drain_events");
+  });
+
+  it("dm_process_events delegates to _dm_drain_events", () => {
+    // Find the dm_process_events function body
+    const processFn = NATIVE_SCHEMA_SQL.match(
+      /CREATE OR REPLACE FUNCTION dm_process_events[\s\S]*?^\$\$;/m,
+    )?.[0] ?? "";
+    expect(processFn).toContain("_dm_drain_events");
+  });
+
+  it("fire_due_timeouts_native returns TABLE with instance_id UUID", () => {
+    expect(NATIVE_SCHEMA_SQL).toMatch(
+      /fire_due_timeouts_native\(\)\s*\nRETURNS TABLE\(instance_id UUID\)/s,
+    );
+  });
+
   // ── Function signatures ───────────────────────────────────────────────
 
   it("dm_register_definition accepts TEXT and JSONB parameters", () => {
@@ -86,8 +131,13 @@ describe("NATIVE_SCHEMA_SQL", () => {
     expect(NATIVE_SCHEMA_SQL).toContain("FOR NO KEY UPDATE");
   });
 
-  it("does not use SKIP LOCKED", () => {
-    expect(NATIVE_SCHEMA_SQL).not.toMatch(/SKIP\s+LOCKED/i);
+  it("drain loop does not use SKIP LOCKED", () => {
+    // _dm_drain_events and dm_process_events use FOR NO KEY UPDATE (wait,
+    // don't skip). SKIP LOCKED is only used by fire_due_timeouts_native.
+    const drainFn = NATIVE_SCHEMA_SQL.match(
+      /CREATE OR REPLACE FUNCTION _dm_drain_events[\s\S]*?^\$\$;/m,
+    )?.[0] ?? "";
+    expect(drainFn).not.toMatch(/SKIP\s+LOCKED/i);
   });
 
   // ── UNNEST batch insert pattern ──────────────────────────────────────

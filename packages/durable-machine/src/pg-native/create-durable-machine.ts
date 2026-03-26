@@ -23,6 +23,7 @@ import {
   Q_REGISTER_DEFINITION,
   Q_NATIVE_CREATE_INSTANCE,
   Q_NATIVE_PROCESS_EVENTS,
+  Q_SEND_EVENT,
 } from "./queries.js";
 import { validateDefinition } from "../definition/validate-definition.js";
 
@@ -214,12 +215,10 @@ export function createNativeDurableMachine(
       workflowId,
 
       async send(event: AnyEventObject): Promise<void> {
-        await store.appendEvent(workflowId, event);
-        try {
-          await consumeAndProcess(workflowId);
-        } catch {
-          // Will be retried via NOTIFY or polling
-        }
+        await pool.query({
+          ...Q_SEND_EVENT,
+          values: [workflowId, event.type, JSON.stringify(event), null],
+        });
       },
 
       async getState(): Promise<DurableStateSnapshot | null> {

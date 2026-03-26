@@ -141,10 +141,11 @@ END;
 $$;
 
 -- ============================================================================
--- 1c: dm_process_events
+-- 1c: _dm_drain_events (shared drain loop used by dm_process_events
+--     and dm_send_event)
 -- ============================================================================
 
-CREATE OR REPLACE FUNCTION dm_process_events(
+CREATE OR REPLACE FUNCTION _dm_drain_events(
   p_instance_id  UUID,
   p_limit        INTEGER DEFAULT 50
 ) RETURNS JSONB
@@ -196,17 +197,16 @@ BEGIN
 
   -- Bail if not found
   IF NOT FOUND THEN
-    RETURN jsonb_build_object('processed', 0, 'status', 'not_found', 'invocation', NULL);
+    RETURN jsonb_build_object('processed', 0, 'status', 'not_found', 'invocation', NULL, 'snapshot', NULL);
   END IF;
 
   -- Bail if not running
   IF v_mi.status != 'running' THEN
-    RETURN jsonb_build_object('processed', 0, 'status', v_mi.status, 'invocation', NULL);
+    RETURN jsonb_build_object('processed', 0, 'status', v_mi.status, 'invocation', NULL,
+      'snapshot', jsonb_build_object('value', v_mi.state_value, 'context', v_mi.context));
   END IF;
 
   -- Step 3: Load config from definition_override or machine_definitions
-  -- Use subquery (not JOIN) so definition_override works even when no
-  -- machine_definitions row exists for this machine_name
   v_config := COALESCE(
     v_mi.definition_override,
     (SELECT definition FROM machine_definitions WHERE machine_name = v_mi.machine_name)
@@ -337,7 +337,111 @@ BEGIN
   END IF;
 
   -- Step 10: Return result
-  RETURN jsonb_build_object('processed', v_processed, 'status', v_status, 'invocation', v_invocation);
+  RETURN jsonb_build_object(
+    'processed', v_processed,
+    'status', v_status,
+    'invocation', v_invocation,
+    'snapshot', v_snapshot
+  );
+END;
+$$;
+
+-- ============================================================================
+-- 1d: dm_process_events (thin wrapper around _dm_drain_events)
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION dm_process_events(
+  p_instance_id  UUID,
+  p_limit        INTEGER DEFAULT 50
+) RETURNS JSONB
+LANGUAGE plpgsql AS $$
+DECLARE
+  v_result JSONB;
+BEGIN
+  v_result := _dm_drain_events(p_instance_id, p_limit);
+  -- Strip snapshot from return value for backwards compatibility
+  RETURN jsonb_build_object(
+    'processed', v_result->'processed',
+    'status', v_result->>'status',
+    'invocation', v_result->'invocation'
+  );
+END;
+$$;
+
+-- ============================================================================
+-- 1e: dm_send_event (insert event + drain in one call)
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION dm_send_event(
+  p_instance_id     UUID,
+  p_event_type      TEXT,
+  p_payload         JSONB,
+  p_idempotency_key TEXT DEFAULT NULL,
+  p_source          TEXT DEFAULT 'event',
+  p_limit           INTEGER DEFAULT 50
+) RETURNS JSONB
+LANGUAGE plpgsql AS $$
+DECLARE
+  v_inserted BOOLEAN := TRUE;
+  v_now      BIGINT := (EXTRACT(EPOCH FROM clock_timestamp()) * 1000)::BIGINT;
+  v_result   JSONB;
+BEGIN
+  -- Step 1: Insert event into event_log
+  IF p_idempotency_key IS NOT NULL THEN
+    INSERT INTO event_log (instance_id, topic, payload, source, idempotency_key, created_at)
+    VALUES (p_instance_id, p_source, p_payload, 'system:send', p_idempotency_key, v_now)
+    ON CONFLICT (instance_id, idempotency_key) DO NOTHING;
+
+    -- Check if the insert actually happened (xmax = 0 means new row)
+    IF NOT FOUND THEN
+      v_inserted := FALSE;
+    END IF;
+  ELSE
+    INSERT INTO event_log (instance_id, topic, payload, source, created_at)
+    VALUES (p_instance_id, p_source, p_payload, 'system:send', v_now);
+  END IF;
+
+  -- Step 2: Drain all pending events (including the one just inserted)
+  v_result := _dm_drain_events(p_instance_id, p_limit);
+
+  RETURN v_result;
+END;
+$$;
+
+-- ============================================================================
+-- 1f: fire_due_timeouts_native (returns affected instance IDs)
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION fire_due_timeouts_native()
+RETURNS TABLE(instance_id UUID)
+LANGUAGE plpgsql AS $$
+DECLARE
+  v_now BIGINT := (EXTRACT(EPOCH FROM clock_timestamp()) * 1000)::BIGINT;
+BEGIN
+  RETURN QUERY
+  WITH due AS (
+    SELECT mi.id, mi.wake_event
+    FROM machine_instances mi
+    WHERE mi.status = 'running'
+      AND mi.wake_at IS NOT NULL
+      AND mi.wake_at <= v_now
+    FOR NO KEY UPDATE SKIP LOCKED
+  )
+  , inserted AS (
+    INSERT INTO event_log (instance_id, topic, payload, source, created_at)
+    SELECT due.id, 'event', due.wake_event, 'system:timeout', v_now
+    FROM due
+    WHERE due.wake_event IS NOT NULL
+    RETURNING event_log.instance_id
+  )
+  , cleared AS (
+    UPDATE machine_instances mi SET
+      wake_at = NULL,
+      wake_event = NULL
+    FROM due
+    WHERE mi.id = due.id
+  )
+  SELECT DISTINCT inserted.instance_id FROM inserted;
 END;
 $$;
 `;
